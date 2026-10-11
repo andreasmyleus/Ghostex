@@ -2804,9 +2804,8 @@ Related settings: `sidebarTheme`, `darkThemePreset`, `lightThemePreset`,
 
 ## Sending feedback
 
-The chat-bubble button at the top of the sidebar, after Search, opens Send
-Feedback (when the sidebar is too narrow the button moves into the sidebar
-menu; Search and Notifications always stay in the top row). Write what is broken, confusing or missing and paste
+The chat-bubble button in the sidebar's bottom bar, right of the workspace
+switcher, opens Send Feedback. Write what is broken, confusing or missing and paste
 screenshots into the text box with Cmd+V (Ctrl+V on Windows and Linux): up to
 five PNG, JPEG or WebP images of 5 MB each; a larger PNG screenshot is scaled
 down to fit. Review then shows the exact GitHub issue, title and description,

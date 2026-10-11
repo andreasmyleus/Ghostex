@@ -63,9 +63,8 @@ pub(crate) const SIDEBAR_MIN_WIDTH: f32 = 190.0;
 /// User: "300 px min sidebar width on windows is good", then corrected: "i want 300px actual px
 /// with 1.5x scaling not 450". On Windows the sidebar cannot be dragged narrower than 200 logical
 /// px (300 physical px at 150% display scaling), and a saved width below it is clamped up on the
-/// next start. At that width the top row holds exactly Search, Notifications and the menu button,
-/// and Send Feedback lives in the menu. macOS and Linux keep 190px. This supersedes the 300 logical
-/// px minimum set earlier the same day.
+/// next start. At that width the top row holds exactly Search, Notifications and the menu button.
+/// macOS and Linux keep 190px. This supersedes the 300 logical px minimum set earlier the same day.
 #[cfg(target_os = "windows")]
 pub(crate) const SIDEBAR_MIN_WIDTH: f32 = 200.0;
 

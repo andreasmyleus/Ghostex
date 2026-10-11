@@ -39,7 +39,7 @@ impl GhostexGpuiApp {
         } else {
             &snapshot.search_shortcut
         };
-        let mut more_menu = snapshot.more_menu.clone();
+        let more_menu = snapshot.more_menu.clone();
         /*
         CDXC:Sidebar 2026-09-20 DECISION:
         User: with the titlebar row deleted, the sidebar's Search row is what sits in the window's
@@ -71,15 +71,13 @@ impl GhostexGpuiApp {
         width threshold and its 2026-10-11 441px revision.
         */
         /*
-        CDXC:Sidebar 2026-10-05 DECISION:
+        CDXC:Sidebar 2026-10-11 DECISION:
         User: "i actually want search and notifications to be always shown, there's space for those
-        too in all cases, just hide feedback in case of a narrow sidebar". Search, the bell and the
-        menu button stay in the top row at every sidebar width; when the row has no room for the
-        Send Feedback button too, only that button leaves the row and becomes the top item of the
-        sidebar menu, with a separator below it. This supersedes the 2026-09-23 rule that moved
-        Search and Notifications into the menu together.
+        too in all cases" (2026-10-05). Search, the bell and the menu button stay in the top row at
+        every sidebar width, and nothing collapses into the sidebar menu any more now that Send
+        Feedback sits in the bottom bar. This supersedes the 2026-09-23 rule that moved Search and
+        Notifications into the menu together and the 2026-10-05 rule that moved Send Feedback there.
         */
-        let compact_button_slot = 38.0 * scale;
         /*
         CDXC:Sidebar 2026-09-21 DECISION:
         User: the Toggle sidebar button sits left of Search, so it stays in exactly the same spot
@@ -88,46 +86,11 @@ impl GhostexGpuiApp {
         workarea header draws it (`SIDEBAR_TOGGLE_LEADING_X`); the header only draws it while
         collapsed.
         */
-        // Two buttons of the same shape: Toggle sidebar and the Agents Panel toggle after it.
-        let sidebar_toggle_width = if owns_window_corner {
-            2.0 * (TITLEBAR_BUTTON_HORIZONTAL_PADDING * 2.0
-                + TITLEBAR_SIDEBAR_COLLAPSE_ICON_LEFT_OFFSET
-                + TITLEBAR_SIDEBAR_COLLAPSE_ICON_SIZE)
-                + 4.0
-        } else {
-            0.0
-        };
         // With Spaces on, the Hermes button is the Space row's last slot instead.
         let bots_toggle = (!footer && snapshot.bots_enabled && !snapshot.spaces_enabled)
             .then_some(snapshot.bots_mode);
-        let compact_room = self.sidebar_width
-            - if owns_window_corner {
-                SIDEBAR_TOGGLE_LEADING_X
-            } else {
-                5.0 * scale
-            }
-            - sidebar_toggle_width
-            - bots_toggle.map_or(0.0, |_| (super::bots::BOTS_TOGGLE_WIDTH + 4.0) * scale)
-            - 5.0 * scale;
         let bell_visible = !footer && self.titlebar_notification_bell_visible();
         let work_visible = !footer && !snapshot.work_mode_project_ids().is_empty();
-        // Search, Send Feedback and the menu button, plus the bell and the briefcase when they show.
-        let shown_buttons =
-            3.0 + f32::from(u8::from(bell_visible)) + f32::from(u8::from(work_visible));
-        let feedback_collapsed = !footer && compact_room < shown_buttons * compact_button_slot;
-        if feedback_collapsed && let Some(items) = more_menu.as_array_mut() {
-            items.splice(
-                0..0,
-                [
-                    json!({
-                        "label": "Send Feedback",
-                        "icon": "messageCircle",
-                        "command": {"type": "sidebarAction", "action": "feedback"},
-                    }),
-                    json!({"separator": true}),
-                ],
-            );
-        }
         let icon_path = if footer {
             "titlebar/bolt.svg"
         } else {
@@ -182,7 +145,7 @@ impl GhostexGpuiApp {
                     ),
                 )
                 // The negative margin cancels the row gap this zero-width spacer adds, so the
-                // buttons right of it take exactly the 38px slots `compact_room` counts.
+                // buttons right of it keep their even 38px slots.
                 .child(div().flex_1().mr(px(-4.0 * scale)))
             })
             .when_some(bots_toggle, |row, bots_mode| {
@@ -231,11 +194,45 @@ impl GhostexGpuiApp {
             })
             // CDXC:Workspaces 2026-10-11 DECISION: User: move the workspace picker out of the Spaces row to the bottom left of the app, in the sidebar's bottom bar, with 5px more margin from the sidebar's left side than the bar's own padding so it lines up with the account row above it. The bar's other buttons sit right of the spacer.
             .when(footer, |row| {
-                row.children(
-                    self.render_native_sidebar_footer_workspace_tile(appearance, cx)
-                        .map(|tile| div().flex_shrink_0().ml(px(5.0 * scale)).child(tile)),
-                )
-                .child(div().flex_1())
+                let tile = self.render_native_sidebar_footer_workspace_tile(appearance, cx);
+                let tile_shown = tile.is_some();
+                row.children(tile.map(|tile| div().flex_shrink_0().ml(px(5.0 * scale)).child(tile)))
+                    // CDXC:Feedback 2026-10-11 DECISION:
+                    // User: "move the feedback button to be to the right of the workspace switcher button please". The chat-bubble Send Feedback button sits in the sidebar's bottom bar, directly right of the workspace switcher, and still opens the Send Feedback pop-up (window/feedback_modal/). This supersedes the 2026-10-04 rule that put it at the top of the sidebar after Search ("add a button at the top of the sidebar. It should be a chat bubble icon") and the 2026-10-05 rule that moved it into the sidebar menu when that row was narrow.
+                    .child(
+                        div()
+                            .id("native-sidebar-feedback")
+                            .role(gpui::Role::Button)
+                            .aria_label("Send Feedback")
+                            .when(!tile_shown, |button| button.ml(px(5.0 * scale)))
+                            .h(px(28.0 * scale))
+                            .w(px(34.0 * scale))
+                            .rounded(px(5.0 * scale))
+                            .flex()
+                            .flex_shrink_0()
+                            .items_center()
+                            .justify_center()
+                            .cursor_default()
+                            .hover(|row| row.bg(appearance.hover))
+                            .child(titlebar_svg_icon(
+                                "titlebar/message-circle.svg",
+                                15.0 * scale,
+                                appearance.muted,
+                            ))
+                            .on_click(cx.listener(move |app, _, _, cx| {
+                                cx.stop_propagation();
+                                app.dispatch_native_sidebar_ui(
+                                    json!({"type": "sidebarAction", "action": "feedback"}),
+                                    cx,
+                                );
+                            }))
+                            .managed_discrete_tooltip_with_placement(
+                                ManagedTooltipPlacement::Right,
+                                tooltip_delay,
+                                |window, cx| titlebar_tooltip("Send Feedback", window, cx),
+                            ),
+                    )
+                    .child(div().flex_1())
             })
             .child(
                 div()
@@ -270,43 +267,6 @@ impl GhostexGpuiApp {
                         move |window, cx| titlebar_tooltip(tooltip_label.clone(), window, cx),
                     ),
             )
-            // CDXC:Feedback 2026-10-04 DECISION:
-            // User: "add a button at the top of the sidebar. It should be a chat bubble icon" that opens the Send Feedback pop-up (window/feedback_modal/). It sits after Search, and moves into the sidebar menu when the row has no room; Search and Notifications never leave the row (CDXC:Sidebar 2026-10-05).
-            .when(!footer && !feedback_collapsed, |row| {
-                row.child(
-                    div()
-                        .id("native-sidebar-feedback")
-                        .role(gpui::Role::Button)
-                        .aria_label("Send Feedback")
-                        .when(cfg!(target_os = "windows"), |button| button.occlude())
-                        .h(px(28.0 * scale))
-                        .w(px(34.0 * scale))
-                        .rounded(px(5.0 * scale))
-                        .flex()
-                        .flex_shrink_0()
-                        .items_center()
-                        .justify_center()
-                        .cursor_default()
-                        .hover(|row| row.bg(appearance.hover))
-                        .child(titlebar_svg_icon(
-                            "titlebar/message-circle.svg",
-                            15.0 * scale,
-                            appearance.muted,
-                        ))
-                        .on_click(cx.listener(move |app, _, _, cx| {
-                            cx.stop_propagation();
-                            app.dispatch_native_sidebar_ui(
-                                json!({"type": "sidebarAction", "action": "feedback"}),
-                                cx,
-                            );
-                        }))
-                        .managed_discrete_tooltip_with_placement(
-                            ManagedTooltipPlacement::Right,
-                            tooltip_delay,
-                            |window, cx| titlebar_tooltip("Send Feedback", window, cx),
-                        ),
-                )
-            })
             // CDXC:Notifications 2026-09-20 DECISION:
             // User: the notification bell sits in the sidebar's top row, before the sidebar menu button.
             .when(bell_visible, |row| {
