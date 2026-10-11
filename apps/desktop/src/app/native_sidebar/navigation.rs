@@ -230,10 +230,13 @@ impl GhostexGpuiApp {
                         ),
                 )
             })
-            // CDXC:Workspaces 2026-10-11 DECISION: User: move the workspace picker out of the Spaces row to the bottom left of the app, in the sidebar's bottom bar. The bar's other buttons sit right of the spacer.
+            // CDXC:Workspaces 2026-10-11 DECISION: User: move the workspace picker out of the Spaces row to the bottom left of the app, in the sidebar's bottom bar, with 5px more margin from the sidebar's left side than the bar's own padding so it lines up with the account row above it. The bar's other buttons sit right of the spacer.
             .when(footer, |row| {
-                row.children(self.render_native_sidebar_footer_workspace_tile(appearance, cx))
-                    .child(div().flex_1())
+                row.children(
+                    self.render_native_sidebar_footer_workspace_tile(appearance, cx)
+                        .map(|tile| div().flex_shrink_0().ml(px(5.0 * scale)).child(tile)),
+                )
+                .child(div().flex_1())
             })
             .child(
                 div()

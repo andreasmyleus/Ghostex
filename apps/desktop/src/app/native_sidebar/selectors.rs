@@ -89,8 +89,8 @@ impl GhostexGpuiApp {
         v_flex().w_full().flex_shrink_0()
             .children(self.render_native_machine_tabs(snapshot, appearance, cx))
             .child(div().h(px(13.0 * scale)).flex_shrink_0())
-            // CDXC:Spaces 2026-10-11 DECISION: User: the Spaces row is aligned to the left instead of centred, with no background track behind it (one was tried and removed the same day), and Create a space fits its content. The workspace tile left the row for the sidebar's bottom bar (workspace_tile.rs). This supersedes the 2026-09-21 rule that the buttons are centred.
-            .when(snapshot.spaces_enabled, |column| column.child(h_flex().id("native-sidebar-space-track").sidebar_drop_target("space-row", String::new(), None, cx).w_full().h(px(40.0 * scale)).pb(px(12.0 * scale)).px(px(6.5 * scale)).justify_start().gap(px(4.0 * scale))
+            // CDXC:Spaces 2026-10-11 DECISION: User: Create a space fits its content, and the Spaces row stays centred with no background behind it (a left-aligned row in a rounded track was tried and removed the same day). The workspace tile left the row for the sidebar's bottom bar (workspace_tile.rs).
+            .when(snapshot.spaces_enabled, |column| column.child(h_flex().id("native-sidebar-space-track").sidebar_drop_target("space-row", String::new(), None, cx).w_full().h(px(40.0 * scale)).pb(px(12.0 * scale)).px(px(6.5 * scale)).justify_center().gap(px(4.0 * scale))
                 .when(user_spaces.is_empty(), |row| row.child(h_flex().id("native-sidebar-create-space").role(gpui::Role::Button).aria_label("Create space").flex_shrink_0().h(px(28.0 * scale)).px(px(10.0 * scale)).gap(px(6.0 * scale)).rounded(px(6.0 * scale)).border_1().border_color(appearance.muted.opacity(0.25)).text_size(px(12.0 * scale))
                     .child(titlebar_svg_icon("titlebar/plus.svg", 14.0 * scale, appearance.muted)).child("Create space")
                     .on_click(cx.listener(|app, _, _, cx| { cx.stop_propagation(); app.dispatch_native_sidebar_ui(json!({"type": "editSpace"}), cx); }))))
@@ -168,9 +168,8 @@ impl GhostexGpuiApp {
             .opacity(if has_status { 0.8 } else { 1.0 });
         /*
         CDXC:Spaces 2026-09-21 DECISION:
-        User: every Space's icon has a very light outline. A selected Space, or one holding the active
-        session, keeps its stronger outline. (The row's centring was superseded on 2026-10-11, see
-        `render_native_sidebar_selectors`.)
+        User: the Spaces row's buttons are centred in the sidebar, and every Space's icon has a very
+        light outline. A selected Space, or one holding the active session, keeps its stronger outline.
         */
         v_flex().id(format!("native-sidebar-space-{id}")).role(gpui::Role::Button).aria_label(format!("Space {name}")).aria_selected(space.selected).relative().size(px(28.0 * scale)).flex_shrink_0().items_center().justify_center().rounded(px(6.0 * scale)).border_1().border_color(appearance.foreground.opacity(0.08)).cursor_pointer()
             .when(self.native_sidebar.is_dragging("space", &id), |row| row.opacity(0.3))
