@@ -22,7 +22,11 @@
 <h3 align="center"><a href="#install"><ins>Download Ghostex</ins></a> &nbsp;·&nbsp; <a href="https://ghostex.dev">Website</a> &nbsp;·&nbsp; <a href="https://youtu.be/QzjFB4J6-8E">Watch the 3-minute tour</a></h3>
 
 <p align="center">
-  <a href="media/readme/gx-hero-dark.jpg"><picture><source media="(prefers-color-scheme: dark)" srcset="media/readme/gx-hero-dark.gif" /><img src="media/readme/gx-hero-light.gif" alt="Ghostex with see-through glass over a moving meadow: projects and agent sessions in the sidebar, a chat in the middle and the view picker on the right" width="960" /></picture></a>
+  <a href="media/readme/gx-hero-dark.jpg">
+    <picture>
+      <img width="960" alt="image" src="https://github.com/user-attachments/assets/1013fbfc-a556-4624-8794-1508af8a5653" />
+    </picture>
+  </a>
 </p>
 
 Ghostex is built for developers who keep many agents alive at once. A chat view for every agent, a native Rust/GPUI shell, embedded Chromium panes, and a mobile app share one workspace, and every session survives restarts.
