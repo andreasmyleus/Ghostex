@@ -1,7 +1,7 @@
 //! What a finished turn's work fold says while it is closed, and what each tool row reports on its
 //! right: the counts beside "Worked 2m 5s", every call's duration, and a failed call's reason.
 //!
-//! CDXC:SessionChat 2026-10-11 DECISION: User picked the "proposed" work and reply look (docs/2026-10-10/chat-cards-questions/06-work.html): "Worked 2m 5s" carries its counts beside it (tool calls, files, a failure that was fixed) so the closed fold still tells the story; tool rows get a check or cross and their duration on the right, and a failed call is tinted and says what failed. The same day the user took back the design's labelled reply toolbar (Copy · Annotate · Save): a reply's actions stay the icon-only buttons shown on hover. The GPUI chat (`completed_work_row.rs`, `tool_run.rs`) and the phone (`TranscriptItemRow.tsx`, `ToolRows.tsx`) draw what this file decides.
+//! CDXC:SessionChat 2026-10-11 DECISION: User picked the "proposed" work and reply look (docs/2026-10-10/chat-cards-questions/06-work.html): "Worked 2m 5s" carries its counts beside it (tool calls, files; the failure chip was dropped 2026-10-12, see `work_stats`) so the closed fold still tells the story; tool rows get a check or cross and their duration on the right, and a failed call is tinted and says what failed. The same day the user took back the design's labelled reply toolbar (Copy · Annotate · Save): a reply's actions stay the icon-only buttons shown on hover. The GPUI chat (`completed_work_row.rs`, `tool_run.rs`) and the phone (`TranscriptItemRow.tsx`, `ToolRows.tsx`) draw what this file decides.
 
 use std::collections::HashMap;
 
@@ -10,7 +10,6 @@ use serde_json::{json, Value};
 
 use crate::transcript::jsstr::js_trim;
 use crate::transcript::tool_fold::{pair_tool_blocks, split_blocks};
-use crate::transcript::tool_rows::is_command_tool;
 use crate::transcript::tool_summary::truncate_tool_preview;
 
 /// How long a failed call's reason may run beside its preview.
@@ -124,33 +123,24 @@ pub fn failure_note(output: &str) -> String {
     truncate_tool_preview(line, FAILURE_NOTE_LENGTH)
 }
 
-/// The counts beside a finished turn's "Worked 2m 5s": its tool calls, the files it changed, and
-/// its failed calls, which read "then passed" once a later identical call succeeded.
+/// The counts beside a finished turn's "Worked 2m 5s": its tool calls and the files it changed.
 ///
-/// Each entry is `{kind, label}`; `kind` is `tools`, `files`, `failed` or `recovered`, which the
-/// renderers turn into the chip's glyph and tone. A turn whose rows are still on the server
-/// (`deferredWork`) knows only its files until it is opened.
+/// CDXC:SessionChat 2026-10-12 DECISION: User: "no need to show "Failed" here" (the "1 failed" chip beside "Worked 5m 19s"). The fold counts only tool calls and files; a failed call still shows its cross and reason on its own row once the fold is opened. Supersedes the 2026-10-11 design's failure chip ("a failure that was fixed").
+///
+/// Each entry is `{kind, label}`; `kind` is `tools` or `files`, which the renderers turn into the
+/// chip's glyph. A turn whose rows are still on the server (`deferredWork`) knows only its files
+/// until it is opened.
 pub fn work_stats(rows: &[&ChatMessage], changed_files: usize) -> Vec<Value> {
-    let mut calls = 0usize;
-    // Every call with its result, in the order they ran: (name, what it ran, failed, answered).
-    let mut outcomes: Vec<(&str, &Value, bool, bool)> = Vec::new();
-    for message in rows {
-        let (_, tools) = split_blocks(&message.blocks);
-        for pair in pair_tool_blocks(tools) {
-            let (Some(name), Some(input)) = (pair.call_name(), pair.call_input()) else {
-                continue;
-            };
-            calls += 1;
-            // A shell call is the same call again when it runs the same command line: agents
-            // give each call its own description beside it.
-            let key = if is_command_tool(name) {
-                input.get("command").unwrap_or(input)
-            } else {
-                input
-            };
-            outcomes.push((name, key, pair.result_is_error(), pair.result.is_some()));
-        }
-    }
+    let calls: usize = rows
+        .iter()
+        .map(|message| {
+            let (_, tools) = split_blocks(&message.blocks);
+            pair_tool_blocks(tools)
+                .iter()
+                .filter(|pair| pair.call_name().is_some() && pair.call_input().is_some())
+                .count()
+        })
+        .sum();
     let mut stats = Vec::new();
     if calls > 0 {
         stats.push(json!({
@@ -163,26 +153,6 @@ pub fn work_stats(rows: &[&ChatMessage], changed_files: usize) -> Vec<Value> {
             "kind": "files",
             "label": format!("{changed_files} {}", if changed_files == 1 { "file" } else { "files" }),
         }));
-    }
-    let mut failed = 0usize;
-    let mut recovered = 0usize;
-    for (at, (name, input, is_error, _)) in outcomes.iter().enumerate() {
-        if !is_error {
-            continue;
-        }
-        failed += 1;
-        if outcomes[at + 1..].iter().any(|(later_name, later_input, later_error, answered)| {
-            later_name == name && later_input == input && *answered && !later_error
-        }) {
-            recovered += 1;
-        }
-    }
-    if failed > 0 {
-        stats.push(if recovered == failed {
-            json!({"kind": "recovered", "label": format!("{failed} failed, then passed")})
-        } else {
-            json!({"kind": "failed", "label": format!("{failed} failed")})
-        });
     }
     stats
 }
