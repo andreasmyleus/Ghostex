@@ -218,7 +218,18 @@ impl AccountUsagePanel {
             "" => text(&self.account, "selector"),
             value => value,
         };
-        let updated = local_date(text(&self.account, "usageUpdatedAt"), false);
+        let stamp = text(&self.account, "usageUpdatedAt");
+        let updated = if self.account["usageStale"] == true {
+            match age_text(stamp).as_str() {
+                "" => String::new(),
+                age => format!("Last updated {age} ago"),
+            }
+        } else {
+            match local_date(stamp, false).as_str() {
+                "" => String::new(),
+                time => format!("Updated {time}"),
+            }
+        };
         h_flex()
             .w_full()
             .h(px(43.25))
@@ -306,7 +317,7 @@ impl AccountUsagePanel {
             )
             .when(!updated.is_empty(), |this| {
                 this.child(
-                    label(format!("Updated {updated}"), 10.0, p.dim)
+                    label(updated, 10.0, p.dim)
                         .flex_shrink_0()
                         .whitespace_nowrap()
                         .self_start()
