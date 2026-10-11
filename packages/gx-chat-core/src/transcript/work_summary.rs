@@ -1,7 +1,7 @@
 //! What a finished turn's work fold says while it is closed, and what each tool row reports on its
 //! right: the counts beside "Worked 2m 5s", every call's duration, and a failed call's reason.
 //!
-//! CDXC:SessionChat 2026-10-11 DECISION: User picked the "proposed" work and reply look (docs/2026-10-10/chat-cards-questions/06-work.html): "Worked 2m 5s" carries its counts beside it (tool calls, files, a failure that was fixed) so the closed fold still tells the story; tool rows get a check or cross and their duration on the right, and a failed call is tinted and says what failed; the reply's actions become one small labelled toolbar on hover (Copy · Annotate · Save). The GPUI chat (`completed_work_row.rs`, `tool_run.rs`, `message_actions.rs`) and the phone (`TranscriptItemRow.tsx`, `ToolRows.tsx`, `MessageActions.tsx`) draw what this file decides.
+//! CDXC:SessionChat 2026-10-11 DECISION: User picked the "proposed" work and reply look (docs/2026-10-10/chat-cards-questions/06-work.html): "Worked 2m 5s" carries its counts beside it (tool calls, files, a failure that was fixed) so the closed fold still tells the story; tool rows get a check or cross and their duration on the right, and a failed call is tinted and says what failed. The same day the user took back the design's labelled reply toolbar (Copy · Annotate · Save): a reply's actions stay the icon-only buttons shown on hover. The GPUI chat (`completed_work_row.rs`, `tool_run.rs`) and the phone (`TranscriptItemRow.tsx`, `ToolRows.tsx`) draw what this file decides.
 
 use std::collections::HashMap;
 
