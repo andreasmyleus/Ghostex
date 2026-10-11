@@ -17,7 +17,7 @@
 <h3 align="center"><a href="#install"><ins>Download Ghostex</ins></a> &nbsp;·&nbsp; <a href="https://ghostex.dev">Website</a> &nbsp;·&nbsp; <a href="https://youtu.be/QzjFB4J6-8E">Watch the 3-minute tour</a></h3>
 
 <p align="center">
-  <a href="media/readme/gx-hero-dark.jpg">
+  <a href="https://github.com/user-attachments/assets/1013fbfc-a556-4624-8794-1508af8a5653">
     <picture>
       <img width="960" alt="image" src="https://github.com/user-attachments/assets/1013fbfc-a556-4624-8794-1508af8a5653" />
     </picture>
@@ -42,7 +42,7 @@ Talk to Claude Code, Codex, or any other agent in a proper chat GUI: clickable i
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-diff.jpg" alt="A chat showing the agent's code change as a diff" width="100%" />
+  <img src="media/readme/gx-diff.png" alt="A chat showing the agent's code change as a diff" width="100%" />
 </td>
 </tr>
 <tr>
@@ -74,7 +74,7 @@ Claude Code, Codex, OpenCode, Pi, Gemini, Grok, Cursor, and more. Pick the model
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-agent-picker.gif" alt="The model picker switching between agents" width="100%" />
+  <img src="media/readme/gx-agent-picker.png" alt="The model picker switching between agents" width="100%" />
 </td>
 </tr>
 <tr>
@@ -82,15 +82,15 @@ Claude Code, Codex, OpenCode, Pi, Gemini, Grok, Cursor, and more. Pick the model
 
 <br/>
 
-### Embedded Chromium browser
+### Annotate Markdown, HTML and diagrams
 
-Click any element, type what should change, and the note lands in the agent's prompt. Agents can drive your tabs too, through the built-in browser-use skill.
+Open plans, HTML prototypes, and Excalidraw diagrams next to your agent, select anything, and leave a note or mark it Looks good, Clarify, or Needs tests. One click sends every note to the agent's prompt as numbered feedback with line numbers.
 
 <br/>
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-browser-pane.jpg" alt="A chat next to the built-in browser" width="100%" />
+  <img src="media/readme/gx-annotate.png" alt="A Markdown plan in the Files view with a comment, a Clarify mark and a Needs tests mark in the Annotations list" width="100%" />
 </td>
 </tr>
 <tr>
@@ -122,7 +122,7 @@ Fuzzy search every prompt you ever sent, across all your agents, and press Enter
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-search.gif" alt="Searching every past prompt" width="100%" />
+  <img src="media/readme/gx-search.png" alt="Searching every past prompt" width="100%" />
 </td>
 </tr>
 <tr>
@@ -138,7 +138,7 @@ Agents can open sessions, send prompts, and read replies from other agents throu
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-threads.jpg" alt="An orchestrator with its threads in the sidebar and the Threads panel" width="100%" />
+  <img src="media/readme/gx-threads.png" alt="An orchestrator with its threads in the sidebar and the Threads panel" width="100%" />
 </td>
 </tr>
 </table>
