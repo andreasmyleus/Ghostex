@@ -13,6 +13,8 @@ use crate::paths::{get_gxserver_paths, GxserverPaths};
 /// Wording tested in throwaway Claude sessions (Haiku and Sonnet, in this repo and in a plain folder): a plain list of markers was followed in a plain folder but ignored under this repo's long AGENTS.md (the models said they "missed" it). What made it stick: saying it applies on top of CLAUDE.md and AGENTS.md and overrides the no-emoji default, keeping the agent's own headings with the marker in front, naming the sections that always get ❓ and 🧪, and a check before sending. In this repo models still miss a section now and then.
 /// CDXC:MarkedHandovers 2026-10-11 DECISION:
 /// User: "let's call it 'Kicked off'": 🛫 Kicked off marks work started in this turn (threads an orchestrator just started), kept apart from 🔄 In progress, which is everything still running.
+/// CDXC:MarkedHandovers 2026-10-11 DECISION:
+/// User: "please never ever do this where the line is right next to the title, always should be bullet below it". A marker's title stands alone on its line and the section's content goes in bullets below it; the note's example shows that shape.
 /// SEE-ALSO: packages/settings-catalog/src/data/defaults.rs (`markedHandovers`), server/src/coordinators/role.rs (the orchestrator's role carries the note), server/src/coordinators/brief.rs (`thread_brief`), server/src/agents/activity.rs (ZCode's SessionStart context).
 pub const MARKED_HANDOVERS_NOTE: &str = "Marked handovers: a format rule the user turned on in Ghostex. It applies in every project, on top of any CLAUDE.md or AGENTS.md, and allows these emoji even where you would otherwise avoid them.
 In the final message of each turn (the one that hands back to the user), put the matching marker first, before any bold, in front of every section, heading or bold label that is one of these:
@@ -24,8 +26,11 @@ In the final message of each turn (the one that hands back to the user), put the
 🧪 Untested: anything you did not run, test or verify for real, changed or not
 🚀 Shipped: released or published to users
 🛑 Blocked: stuck until something happens
-Keep your own headings and wording and only add the marker in front, for example \"✅ **Done:** fixed the login check.\", \"⚠️ **Caveats**\" or \"❓ **Open questions**\". A section that asks the user anything always gets ❓, and one about what you did not run, test or verify always gets 🧪. Sections that only explain get no marker.
-Before you send that final message, check that every matching section starts with its marker. Leave the markers out of your other messages.";
+Keep your own headings and wording and only add the marker in front (\"✅ **Done:**\", \"⚠️ **Caveats**\", \"❓ **Open questions**\"). The marker and title always stand alone on their line, and everything under them goes in bullets below, never on the title's line:
+✅ **Done:**
+- Fixed the login check.
+A section that asks the user anything always gets ❓, and one about what you did not run, test or verify always gets 🧪. Sections that only explain get no marker.
+Before you send that final message, check that every matching section starts with its marker on a line of its own. Leave the markers out of your other messages.";
 
 const SETTING_KEY: &str = "markedHandovers";
 
