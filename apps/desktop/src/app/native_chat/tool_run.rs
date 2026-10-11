@@ -172,8 +172,8 @@ impl NativeChatView {
     }
 
     /// A `!` command the user ran (`shellCard`, gx-chat-core's `shell_card`), in the user's bubble:
-    /// a header with the terminal glyph, the command, its status and a copy button, opening onto
-    /// the output alone. It shows in simple mode too, since it is what the user typed. It folds
+    /// a header with the terminal glyph, the command and its failure status, opening onto the
+    /// output alone; its copy button floats outside the bubble, on its left. It shows in simple mode too, since it is what the user typed. It folds
     /// like every disclosure: the header and the rail both flip it, and a running card that opened
     /// on its own records the close against that default.
     pub(super) fn shell_command_card(
@@ -182,7 +182,6 @@ impl NativeChatView {
         p: &ChatAppearance,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        const GROUP: &str = "native-chat-shell-card";
         let s = p.scale;
         let card = &message["shellCard"];
         let key = format!("shell:{}", text(message, "id"));
@@ -263,24 +262,7 @@ impl NativeChatView {
                         .text_color(if failed { p.error() } else { p.muted })
                         .child(status),
                 )
-            })
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .invisible()
-                    .group_hover(GROUP, |style| style.visible())
-                    .child(super::code_block::action(
-                        SharedString::from(format!("copy:{key}")),
-                        "titlebar/copy.svg",
-                        p,
-                        move |cx| {
-                            crate::app::helpers::gpui_copy_to_clipboard(
-                                ClipboardItem::new_string(full_command.clone()),
-                                cx,
-                            )
-                        },
-                    )),
-            );
+            });
         let bubble = |content: AnyElement| {
             div()
                 .max_w(gpui::relative(0.8))
@@ -289,6 +271,9 @@ impl NativeChatView {
                 .bg(p.input)
                 .child(content)
         };
+        // The copy button floats outside the bubble on its left, the message action of an ordinary
+        // prompt, shown while the row is hovered.
+        let copy = self.shell_command_copy_action(message, &full_command, p, cx);
         let mut column = div()
             .flex()
             .flex_col()
@@ -297,10 +282,19 @@ impl NativeChatView {
             .w_full()
             .min_w_0()
             .child(
-                bubble(header.into_any_element())
-                    .group(GROUP)
-                    .px(px(12.0 * s))
-                    .py(px(8.0 * s)),
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .gap(px(4.0 * s))
+                    .w_full()
+                    .min_w_0()
+                    .child(copy)
+                    .child(
+                        bubble(header.into_any_element())
+                            .px(px(12.0 * s))
+                            .py(px(8.0 * s)),
+                    ),
             );
         // The output opens in a bubble of its own below the header, which keeps its collapsed size;
         // the header is its toggle, so it carries no rail.
