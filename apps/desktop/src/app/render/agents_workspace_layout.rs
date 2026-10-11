@@ -357,9 +357,12 @@ impl GhostexGpuiApp {
         // outline along their own top instead of running it up around the header.
         let header_reach =
             (rail_edges.top && self.agents_column_solo_gpui_chat().is_some()).then(|| {
-                self.workarea_header_column_top_inset(
-                    self.agents_column_flows_under_workarea_header(cx),
-                )
+                HeaderReach {
+                    above: self.workarea_header_column_top_inset(
+                        self.agents_column_flows_under_workarea_header(cx),
+                    ),
+                    frame_cover: window_frame_top_cover(window),
+                }
             });
 
         v_flex()
