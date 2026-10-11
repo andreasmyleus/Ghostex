@@ -1503,6 +1503,11 @@ including sessions that are already open, forks, and restored sessions, so a
 change there applies everywhere at once. To make one session behave differently,
 open More actions > Switch Account and click Customize under Keep going at a
 limit; Use session defaults returns it to the Settings values.
+A sleeping session whose account is already at its limit wakes on another
+account that has room. When every account set to Automatic is full, the
+session's chat shows "Weekly limit reached on every account" (or whichever limit
+it hit) with when it continues on its own, and the bell gets one notification;
+both go away once the session switches or resumes.
 Account sign-in terminals open in the active local project's folder and appear
 under that project. Before a first project is chosen, sign-in uses the home folder.
 When a newer usage reading cannot be fetched for a Claude account, for example

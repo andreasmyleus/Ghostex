@@ -261,6 +261,7 @@ fn collect(
         let planned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             plan_session(state, &db, &repo, &registry, &snapshot, &detector, &old)
         }));
+        super::limit_wait::settle(state, &repo, pid, sid);
         match planned {
             Ok(Ok(Some(plan))) => plans.push(plan),
             Ok(Ok(None)) => {}
@@ -315,6 +316,7 @@ fn restore_session(
         endpoint::update_session(repo, &session, runtime)?;
         session = repo.get_session(pid, sid)?.unwrap_or(session);
     }
+    super::limit_wait::restore(&session);
     if let Some(since) = time(session.pointer("/runtimeSettings/accountSuppressedUsageNoticeAt")) {
         crate::session_chat_notice::suppress_account_usage_notice(pid, sid, since);
     }
@@ -642,7 +644,7 @@ fn plan_session(
                     .max()
             });
             let reason = if policy.at_limit == LimitAction::Switch {
-                "Waiting for an eligible account to have capacity."
+                super::limit_wait::NO_ROOM
             } else {
                 "Waiting for this account's usage to reset."
             };
@@ -687,6 +689,17 @@ fn plan_session(
                 .to_rfc3339());
             // An untracked default login has no trustworthy quota reading. Retry it conservatively rather than inventing an available percentage.
             if current_id.is_some() {
+                if policy.at_limit == LimitAction::Switch {
+                    let wait = super::limit_wait::describe(
+                        &registry,
+                        snapshot,
+                        provider,
+                        current_id.as_deref(),
+                        &model,
+                        now,
+                    );
+                    super::limit_wait::enter(state, repo, &session, &mut recovery, wait);
+                }
                 save(state, repo, &session, recovery)?;
                 return Ok(None);
             }
@@ -743,7 +756,7 @@ fn plan_session(
         prompt: queue.deliverable_head().map(|p| p.id.clone()),
     }))
 }
-fn relevant(window: &UsageWindow, model: &str) -> bool {
+pub(super) fn relevant(window: &UsageWindow, model: &str) -> bool {
     window.model.as_ref().is_none_or(|m| {
         !model.contains("claude")
             && !model.contains("gpt")

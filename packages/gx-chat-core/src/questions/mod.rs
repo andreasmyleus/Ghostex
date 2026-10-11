@@ -4,6 +4,7 @@
 //! This directory is family c's alone. It owns `ChatState::questions` and the document keys listed
 //! for family c in `docs/2026-09-21/rust-chat/FAMILIES.md`.
 
+pub mod account_wait;
 pub mod actions;
 pub mod async_answers;
 pub mod async_controller;

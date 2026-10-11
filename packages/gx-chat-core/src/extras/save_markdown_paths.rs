@@ -225,7 +225,7 @@ fn collapse_whitespace_runs(value: &str) -> String {
 }
 
 /// Howard Hinnant's `civil_from_days`, the inverse of the one in [`crate::extras::time`].
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
+pub(crate) fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let day_of_era = z - era * 146_097;

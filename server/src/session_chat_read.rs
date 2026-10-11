@@ -196,7 +196,15 @@ pub(crate) fn resolve_session_chat_read_state(
     poll cycle (≤20s) late, when the next probe refreshes the cache.
     */
     match cached_session_chat_terminal_notice(state, project_id, session_id) {
-        Some(notice) => notice.identity().hash(&mut hasher),
+        Some(notice) => {
+            notice.identity().hash(&mut hasher);
+            // The every-account-full wait changes the card's words without changing what the screen says.
+            notice
+                .account_wait
+                .as_ref()
+                .map(Value::to_string)
+                .hash(&mut hasher);
+        }
         None => 0u8.hash(&mut hasher),
     }
     /*

@@ -262,6 +262,8 @@ pub struct SessionChatTerminalNotice {
     /// A trust prompt on a remembered folder: the detection funnel answers it
     /// itself and clients never see it (session_chat_trust_memory.rs).
     pub auto_trust: bool,
+    /// A usage-limit notice while account recovery waits with every account full: what the card says about it (accounts/limit_wait.rs). Attached by `resolve_session_chat_terminal_notice`, never classified from the screen.
+    pub account_wait: Option<Value>,
     /// Server-side delivery policy for this particular detected state.
     blocks_input: bool,
 }
@@ -286,6 +288,7 @@ impl SessionChatTerminalNotice {
             dialog: None,
             conversation_lock: None,
             auto_trust: false,
+            account_wait: None,
             blocks_input: session_chat_notice_kind_blocks_input(kind),
         }
     }
@@ -365,6 +368,7 @@ impl SessionChatTerminalNotice {
     /// for the clients, though it is still the same instance.
     pub fn same_frame(&self, other: Option<&SessionChatTerminalNotice>) -> bool {
         self.same_notice(other)
+            && other.is_some_and(|other| self.account_wait == other.account_wait)
             && (!self.passes_keys_through()
                 || other.is_some_and(|other| self.screen_tail == other.screen_tail))
     }
@@ -471,6 +475,9 @@ impl SessionChatTerminalNotice {
         }
         map.insert("source".to_string(), json!(self.source.as_str()));
         map.insert("detectedAt".to_string(), json!(self.detected_at));
+        if let Some(wait) = self.account_wait.as_ref() {
+            map.insert("accountWait".to_string(), wait.clone());
+        }
         if !self.choices.is_empty() {
             map.insert(
                 "choices".to_string(),

@@ -25,7 +25,7 @@ use crate::state::{ChatContext, ChatState};
 /// is where they are projected for drawing. `prompt` goes out exactly as it was folded, and
 /// `terminalNotice` is the folded value plus the decorations the card draws, added onto the
 /// original object so a field this build does not model still reaches the renderer.
-pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) {
+pub fn document(state: &ChatState, context: &ChatContext, into: &mut Document) {
     let questions = &state.questions;
     let prompt = InteractivePrompt::parse(state.session.prompt.as_ref());
     let notice = TerminalNotice::parse(state.session.terminal_notice.as_ref());
@@ -35,7 +35,18 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
         None => Tri::Null,
     };
     into.terminal_notice = match (state.session.terminal_notice.as_ref(), notice.as_ref()) {
-        (Some(raw), Some(notice)) => Tri::Value(decorate_notice(raw, notice)),
+        (Some(raw), Some(notice)) => {
+            let mut decorated = decorate_notice(raw, notice);
+            if let Some(object) = decorated.as_object_mut() {
+                crate::questions::account_wait::decorate(
+                    object,
+                    state.core.hide_account_emails,
+                    context.now_ms,
+                    context.utc_offset_minutes,
+                );
+            }
+            Tri::Value(decorated)
+        }
         _ => Tri::Null,
     };
     into.notice_visible = gates::notice_visible(state);
