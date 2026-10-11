@@ -8,6 +8,67 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <link>https://github.com/maddada/Ghostex/releases</link>
         <description>Sparkle appcast for Ghostex macOS releases.</description>
         <item>
+            <title>10.20.0</title>
+            <pubDate>Sun, 11 Oct 2026 12:26:25 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://github.com/maddada/Ghostex/releases/tag/v10.20.0</sparkle:fullReleaseNotesLink>
+            <sparkle:version>102000</sparkle:version>
+            <sparkle:shortVersionString>10.20.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# Ghostex 10.20.0
+
+## 10.20.0 - 2026-10-11
+
+**Ghostex 10.20.0 is out.** Agents ask you questions as a form right in the chat, a message you send while an agent is still starting waits and goes through on its own, chat cards get a new look (questions, notices, agent messages, file changes, page previews), `/resume` and Ctrl+Enter interrupt-and-send work from the chat view, Ctrl+V no longer freezes Ghostex on Windows, and Work Mode can start Claude Code in the cloud.
+
+⚠️ **Teams:** run `ghostex team deploy` once after updating, so teammates' cloud sessions show on the Work page (team functions version 5).
+
+### 💬 Chat
+- **Questions as a form in the chat:** agents ask several questions at once in one card: click to pick (nothing preselected), "Other / none of these" with a note, text answers, one Send (or Ctrl/Cmd+Enter). Your picks are kept until you send, answers wait while the agent is busy, and the card turns green once answered, with each answer under its question.
+- **Question pages for visual choices:** agents' HTML pages can ask about mockups, with a Pick button and a note box at each mockup and each question right under what it asks about. The page's question cards look like the chat's and fill the page width; drafts are kept if you close the popup, and it closes once you send.
+- **Messages wait for a slow-starting agent:** a message you send while the agent is still starting stays in the chat and goes through on its own as soon as the agent is ready, even if you close the app. You can edit or delete it while it waits.
+- **Agent messages are one-line rows:** a message from or to another agent shows the agent's logo, the first line and its status (a check once delivered); click it to read the whole message, and Go to session appears on hover.
+- **New notice and approval cards** with a coloured icon for info, warnings, errors and successes.
+- **Page previews:** a page card shows a picture of the page once you've opened it in the floating window, and the file name until then.
+- **File change cards:** a header with the files' folder, totals and a ratio bar, one row per file with a change bar (the icon's colour tells an edit, a new file and a deletion apart), opening to a diff with line numbers; Review all opens the Code view's Source Control.
+- **Finished turns:** "Worked 16s" with rounded chips for tool calls, files and failures on the right, and tool rows with icons, durations and a status mark.
+- **`/resume` from the chat:** Claude Code's and Codex's conversation picker shows as a card you drive with ↑/↓, typing, Enter or a click; other agents' pickers show live in a card that takes the keyboard until you hand it back.
+- **Interrupt & Send:** Ctrl+Enter (or right-click Send) stops the agent's turn and sends your message right away; on the phone, hold Send while the agent works.
+- **Background tasks:** each running task shows what it's doing with a timer (two or more fold into one row), the working indicator always comes first, and the finished row says how long the task ran.
+- **Marked handovers:** orchestrators and their threads mark each part of their handover with ❓ ✅ ⚠️ 🛫 🔄 🧪 🚀 🛑 (Settings > Chat > Marked handovers in every session extends it to all agents), and the chat colours those sections in the style you pick. Settings > Chat > Show marker emojis (off by default) keeps the emojis next to the coloured titles.
+- **The chat's scrollbar matches the Files view's:** inset from the edge, a little wider when you point at it.
+
+### 🧭 Orchestrators
+- **The Threads card lists working threads first;** Show recent adds the latest finished ones, then 30 more at a time.
+- **Orchestrators ask you their questions as a form in the chat** (or a page when there's something to look at), bring their threads' questions and pages to you, and list every running thread in their handover.
+
+### 🪟 Windows
+- **Ctrl+V no longer freezes Ghostex** when the app you copied from is slow to hand over its data (Office, Remote Desktop, screenshot tools), in the chat, terminals, dialogs and Kanban.
+- **Codex and Antigravity hooks run on Windows again,** so their activity and transcripts reach Ghostex.
+
+### 🤖 Agents
+- **Antigravity chat no longer stalls** while it has a background task running.
+- **An agent started inside a session can no longer take that session over.**
+- **The Claude usage card says when its numbers are old** ("Last known", "Last updated 3 days ago") instead of claiming live limits.
+
+### 🧩 Workspaces and Work Mode
+- **Start in cloud (Claude Code), Link to current session and Open in terminal** for cloud sessions on the Work page.
+- **Linear pages stay in a workspace's browser,** and a site's question is a bar on its page instead of a dialog; Settings > Workspaces > Site permissions can forget your answers.
+- **Assigned to me keeps all your tickets, Clean up works on Windows,** and work-card buttons never shrink.
+
+### 🎨 Look and setup
+- **The sidebar's bottom bar holds the workspace switcher and Send Feedback** on the left, and Commands (a lightning button) and Settings on the right; the Spaces row sits centred without a background.
+- **Menus close when you click their button again,** and sidebar menus open 3px below their row (the workspace menu opens above its button).
+- **Your views can be deleted** from the view editor, with a confirmation.
+- **Setup's last page sets Agent approvals** (Keep default / Skip permissions).
+- **The blue attention outline's top line shows** at any display scale, and an orchestrator's thread count lines up with the time.
+
+### 📱 Phone
+- **The phone chat matches:** question forms, agent message rows, notice and approval cards, page previews, file change cards, the new turn look, the `/resume` card, background task rows, Interrupt & Send on a held Send, coloured handovers and the marker emoji switch.
+]]></description>
+            <enclosure url="https://github.com/maddada/Ghostex/releases/download/v10.20.0/ghostex-10.20.0-arm64.dmg" length="110872687" type="application/octet-stream" sparkle:edSignature="OtZ/gpLANVVAlJ2m6nFEmnTfeO129e63oaHKpBaL7PH6FYOK8TkQe7LeRwy7UFyzGuLj8yb9tiOKRN1aJkM+Dw=="/>
+        </item>
+        <item>
             <title>10.19.0</title>
             <pubDate>Sat, 10 Oct 2026 04:53:53 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://github.com/maddada/Ghostex/releases/tag/v10.19.0</sparkle:fullReleaseNotesLink>
@@ -221,51 +282,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <enclosure url="https://github.com/maddada/Ghostex/releases/download/v10.15.5/ghostex-10.15.5-arm64.dmg" length="115641581" type="application/octet-stream" sparkle:edSignature="pRepVGO+FQW2JtnegXrNTw4gJ++ueNh6aE4Ld5hNeuHle4P/rk+SZ5QuKdv7v48KrsA7fN6amoI+1cJynCPDAQ=="/>
         </item>
         <item>
-            <title>10.15.0</title>
-            <pubDate>Wed, 07 Oct 2026 21:37:16 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://github.com/maddada/Ghostex/releases/tag/v10.15.0</sparkle:fullReleaseNotesLink>
-            <sparkle:version>101500</sparkle:version>
-            <sparkle:shortVersionString>10.15.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Ghostex 10.15.0
-
-## 10.15.0 - 2026-10-08
-
-**Ghostex 10.15.0 is out.** Empryo joins as a built-in agent, the chat feels instant (sending, the model name, `!` shell commands), Windows terminals use PowerShell 7, and Easy Connect pairs Windows administrator accounts.
-
-### 🤖 Agents
-- **Empryo is a built-in agent:** chat, questions and approvals as cards, its model and effort picker, forks, resume, coordinators and threads, and its prompts in Search by Prompt and on the phone. It installs on Windows too and starts switched off in Settings > Agents, thanks to @banozz0.
-- **Haiku 5.5 replaces Haiku 4.5** in the Claude Code and Cursor model pickers, and auto titles and other background helpers run on Haiku 5.5.
-- **Chat messages reach OMP in all eight of its prompt layouts.**
-- **Codex's own update works again inside Ghostex sessions on Windows** (it failed with "Get-FileHash is not recognized").
-
-### 💬 Chat
-- **Sending is instant:** your message leaves the composer and shows in the chat the moment you press Enter, images included.
-- **The model name shows right away,** and new sessions start on the model you last picked.
-- **`!` shell commands show as a Shell card** with their output streaming live.
-- **Scrolling up past a long reply no longer jumps to its top.**
-- The loading notice sits in the middle of an empty chat, tree guide lines line up with the icon above, the answer field's pills always match its text, and the Tasks panel reopens the way you left it.
-
-### 🧭 Coordinators
-- **Clicking a thread in the Threads panel opens it,** resuming a closed one.
-- **The Threads panel shows working threads and those active in the last 2 hours,** and remembers whether you folded it.
-
-### 🗂️ Sidebar and Files
-- **An expanded project shows only New agent, the agent picker and a ⋯ menu;** everything else moved into the menu.
-- **Clicking the file name at the top of the Files view copies its full path.**
-
-### 🪟 Windows
-- **Terminals use PowerShell 7 wherever it is installed** (Program Files, your user folder, the Microsoft Store or PATH) and Windows PowerShell 5.1 until then; Settings > General > Terminal offers **Install PowerShell 7** when only 5.1 is present.
-- **Easy Connect pairs a phone with a Windows administrator account** after one Windows admin prompt.
-- **Every build shows the real Ghostex version,** and About shows the app icon.
-
-### 📱 Phone
-- **A simpler sessions list,** Empryo in chat and Find, and pairing waits for the computer's admin prompt.
-]]></description>
-            <enclosure url="https://github.com/maddada/Ghostex/releases/download/v10.15.0/ghostex-10.15.0-arm64.dmg" length="115989052" type="application/octet-stream" sparkle:edSignature="4P6Hukdbb0fWSoviKR3P/iAQQg4ZFFE5SbL5OGSryHERqzyAMOtpgy+rU1GqEF4Tg+X6VZlMGOiaQhfIfOr5BA=="/>
-        </item>
-        <item>
             <title>3.26.1</title>
             <pubDate>Mon, 01 Jun 2026 18:43:20 +0400</pubDate>
             <sparkle:fullReleaseNotesLink>https://github.com/maddada/Ghostex/releases/tag/v3.26.1</sparkle:fullReleaseNotesLink>
@@ -277,6 +293,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: Cri+7Kq7Z4ugraKDBb8LZ/nnHfvnSlbgmSGkSx7OPh0oGnAdMnzESFBDNXg7htnIkRWz4+1r/cNKhaEd/Y2dDQ==
-length: 21984
+edSignature: w8zvPTnhjxp/bdNaIxG+b6+XoA1RlfMLaMxyME14kc0vDYfomZmPVhhnNsweWmZzhPN4pbpS+2Oa6Yhp3ZMtBw==
+length: 25356
 -->
