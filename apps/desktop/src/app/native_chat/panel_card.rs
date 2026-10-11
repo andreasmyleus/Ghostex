@@ -58,12 +58,12 @@ impl NativeChatView {
                     .text_color(p.foreground)
                     .child(header.title),
             )
+            // CDXC:SessionChat 2026-10-11 DECISION: User: the muted detail ("3 working · 207 threads") is the same size as the title beside it, still muted, on every panel that shares this header.
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(px(12.0 * s))
                     .text_color(p.card_muted)
                     .child(header.meta),
             )

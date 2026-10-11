@@ -11,8 +11,8 @@ use super::{appearance::ChatAppearance, state::NativeChatView};
 use crate::app::helpers::ThrottledAnimationExt;
 use gpui::StatefulInteractiveElement as _;
 use gpui::{
-    AnyElement, FontFeatures, FontWeight, InteractiveElement, IntoElement, ParentElement, Styled,
-    div, px, relative, svg,
+    AnyElement, FontFeatures, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
+    relative, svg,
 };
 use serde_json::Value;
 use std::time::Duration;
@@ -128,37 +128,19 @@ impl NativeChatView {
                 )
                 .into_any_element()
         };
-        // One line of two runs, so the regular "Watching" and the bold title share a baseline and
-        // truncate together.
+        // CDXC:SessionChat 2026-10-11 DECISION: User: the task title takes the same regular weight as the Threads card's title, not bold.
         let prefix = row["prefix"]
             .as_str()
             .map(|prefix| format!("{prefix} "))
             .unwrap_or_default();
         let title = row["title"].as_str().unwrap_or_default();
-        let run = |len: usize, weight: FontWeight| gpui::TextRun {
-            len,
-            font: gpui::Font {
-                weight,
-                ..gpui::font(p.font.clone())
-            },
-            color: p.foreground,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
-        let runs = vec![
-            run(prefix.len(), FontWeight::NORMAL),
-            run(title.len(), FontWeight::SEMIBOLD),
-        ]
-        .into_iter()
-        .filter(|run| run.len > 0)
-        .collect();
         let mut name = div()
             .id(("chat-background-task-title", index))
             .flex_1()
             .min_w_0()
             .truncate()
-            .child(gpui::StyledText::new(format!("{prefix}{title}")).with_runs(runs));
+            .text_color(p.foreground)
+            .child(format!("{prefix}{title}"));
         // The command the agent ran, for whoever wants to know exactly what it is.
         if let Some(command) = row["command"]
             .as_str()
