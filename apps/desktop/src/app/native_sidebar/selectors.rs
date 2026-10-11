@@ -18,37 +18,35 @@ use super::{
 use crate::GhostexGpuiApp;
 use crate::app::helpers::*;
 
-/// The fill and outline of a selected Space-row tile.
+/// The fill of a selected Space-row tile.
 ///
 /// CDXC:Spaces 2026-09-21 DECISION:
 /// User: the selected Space's grey box looked bad in light mode, make it nicer. In light mode it is
-/// a raised white tile (white fill, hairline outline, small shadow); dark mode keeps its translucent
-/// fill.
-pub(super) fn space_tile_selected_colors(
-    appearance: &SidebarAppearance,
-) -> (gpui::Hsla, gpui::Hsla) {
+/// a raised white tile (white fill, small shadow); dark mode keeps its translucent fill. Its hairline
+/// outline went with the 2026-10-11 borderless buttons (`space_track_fill`).
+pub(super) fn space_tile_selected_background(appearance: &SidebarAppearance) -> gpui::Hsla {
     if appearance.light {
-        (
-            appearance.selected,
-            appearance.selected_outline.opacity(0.14 / 0.12),
-        )
+        appearance.selected
     } else {
-        (
-            appearance.foreground.opacity(0.12),
-            appearance.foreground.opacity(0.16),
-        )
+        appearance.foreground.opacity(0.12)
     }
 }
 
+/// The fill of a Space-row button that is neither selected nor holding the active session: a step
+/// above the track's own fill, since the buttons have no outline.
+pub(super) fn space_tile_fill(appearance: &SidebarAppearance) -> gpui::Hsla {
+    appearance.foreground.opacity(0.06)
+}
+
 /// The padding between the Spaces row's track and the buttons inside it.
-const SPACE_TRACK_PADDING: f32 = 3.0;
+const SPACE_TRACK_PADDING: f32 = 6.0;
 /// What the track adds to the row's width: its padding and hairline on both sides.
 const SPACE_TRACK_CHROME: f32 = 2.0 * (SPACE_TRACK_PADDING + 1.0);
 
 /// The fill of the track behind the Spaces row.
 ///
 /// CDXC:Spaces 2026-10-11 DECISION:
-/// User: give the Spaces row a rounded background so it does not look like it is floating, align it to the left instead of centring it, and make Create a space fit its content. The row is a left-aligned pill that hugs its buttons (the workspace tile, the Spaces, More, Hermes); this supersedes the 2026-09-21 rule that the buttons are centred.
+/// User: give the Spaces row a rounded background so it does not look like it is floating, align it to the left instead of centring it, and make Create a space fit its content; then make the track take the full width of the sidebar, remove the outline around the individual Space buttons and the workspace tile while keeping their fill different from the track, and add 3px to the track's padding. The track spans the sidebar with the buttons left-aligned inside it, and the buttons (the workspace tile, the Spaces, Hermes) are borderless filled tiles; this supersedes the 2026-09-21 rules that the buttons are centred and outlined.
 fn space_track_fill(appearance: &SidebarAppearance) -> gpui::Hsla {
     appearance
         .foreground
@@ -122,7 +120,7 @@ impl GhostexGpuiApp {
         v_flex().w_full().flex_shrink_0()
             .children(self.render_native_machine_tabs(snapshot, appearance, cx))
             .child(div().h(px(10.0 * scale)).flex_shrink_0())
-            .when(snapshot.spaces_enabled || shows_workspace_tile, |column| column.child(h_flex().id("native-sidebar-space-track").sidebar_drop_target("space-row", String::new(), None, cx).w_full().h(px((28.0 + SPACE_TRACK_CHROME + 8.0) * scale)).pb(px(8.0 * scale)).px(px(6.5 * scale)).justify_start().child(h_flex().id("native-sidebar-space-pill").max_w_full().p(px(SPACE_TRACK_PADDING * scale)).gap(px(4.0 * scale)).rounded(px((6.0 + SPACE_TRACK_PADDING + 1.0) * scale)).border_1().border_color(space_track_outline(appearance)).bg(space_track_fill(appearance))
+            .when(snapshot.spaces_enabled || shows_workspace_tile, |column| column.child(h_flex().id("native-sidebar-space-track").sidebar_drop_target("space-row", String::new(), None, cx).w_full().h(px((28.0 + SPACE_TRACK_CHROME + 8.0) * scale)).pb(px(8.0 * scale)).px(px(6.5 * scale)).justify_start().child(h_flex().id("native-sidebar-space-pill").w_full().p(px(SPACE_TRACK_PADDING * scale)).gap(px(4.0 * scale)).rounded(px((6.0 + SPACE_TRACK_PADDING + 1.0) * scale)).border_1().border_color(space_track_outline(appearance)).bg(space_track_fill(appearance))
                 .when(shows_workspace_tile, |row| row.children(self.render_native_sidebar_workspace_tile(appearance, cx)))
                 .when(snapshot.spaces_enabled && user_spaces.is_empty(), |row| row.child(h_flex().id("native-sidebar-create-space").role(gpui::Role::Button).aria_label("Create space").flex_shrink_0().h(px(28.0 * scale)).px(px(10.0 * scale)).gap(px(6.0 * scale)).rounded(px(6.0 * scale)).border_1().border_color(appearance.muted.opacity(0.25)).text_size(px(12.0 * scale))
                     .child(titlebar_svg_icon("titlebar/plus.svg", 14.0 * scale, appearance.muted)).child("Create space")
@@ -163,7 +161,8 @@ impl GhostexGpuiApp {
             .map(rgb)
             .map(gpui::Hsla::from)
             .unwrap_or(appearance.foreground);
-        let (selected_background, selected_outline) = space_tile_selected_colors(appearance);
+        let selected_background = space_tile_selected_background(appearance);
+        let fill = space_tile_fill(appearance);
         let dragged = SidebarDrag {
             kind: "space",
             id: id.clone(),
@@ -179,14 +178,7 @@ impl GhostexGpuiApp {
                 } else if space.contains_active_session {
                     appearance.selected
                 } else {
-                    appearance.foreground.opacity(0.08)
-                },
-                outline: if space.selected {
-                    selected_outline
-                } else if space.contains_active_session {
-                    appearance.selected_outline
-                } else {
-                    appearance.foreground.opacity(0.08)
+                    fill
                 },
                 pointer_y: px(0.0),
             }),
@@ -199,15 +191,10 @@ impl GhostexGpuiApp {
             .size(px(16.0 * scale))
             .text_color(color)
             .opacity(if has_status { 0.8 } else { 1.0 });
-        /*
-        CDXC:Spaces 2026-09-21 DECISION:
-        User: every Space's icon has a very light outline. A selected Space, or one holding the active
-        session, keeps its stronger outline.
-        */
-        v_flex().id(format!("native-sidebar-space-{id}")).role(gpui::Role::Button).aria_label(format!("Space {name}")).aria_selected(space.selected).relative().size(px(28.0 * scale)).flex_shrink_0().items_center().justify_center().rounded(px(6.0 * scale)).border_1().border_color(appearance.foreground.opacity(0.08)).cursor_pointer()
+        v_flex().id(format!("native-sidebar-space-{id}")).role(gpui::Role::Button).aria_label(format!("Space {name}")).aria_selected(space.selected).relative().size(px(28.0 * scale)).flex_shrink_0().items_center().justify_center().rounded(px(6.0 * scale)).bg(fill).cursor_pointer()
             .when(self.native_sidebar.is_dragging("space", &id), |row| row.opacity(0.3))
-            .when(space.contains_active_session && !space.selected, |row| row.bg(appearance.selected).border_color(appearance.selected_outline))
-            .when(space.selected, |row| row.bg(selected_background).border_color(selected_outline).when(appearance.light && !appearance.glass, |row| row.shadow_sm()))
+            .when(space.contains_active_session && !space.selected, |row| row.bg(appearance.selected))
+            .when(space.selected, |row| row.bg(selected_background).when(appearance.light && !appearance.glass, |row| row.shadow_sm()))
             .hover(|row| row.bg(appearance.hover))
             .child(icon)
             .children(drop_position.map(|position| super::space_drag::insertion_line(position, scale)))

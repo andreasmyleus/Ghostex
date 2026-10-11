@@ -51,8 +51,7 @@ impl GhostexGpuiApp {
         cx: &mut gpui::Context<Self>,
     ) -> AnyElement {
         let scale = appearance.scale;
-        let (selected_background, selected_outline) =
-            super::selectors::space_tile_selected_colors(appearance);
+        let selected_background = super::selectors::space_tile_selected_background(appearance);
         div()
             .flex()
             .flex_shrink_0()
@@ -74,12 +73,10 @@ impl GhostexGpuiApp {
                 )
                 .size(px(28.0 * scale))
                 .rounded(px(6.0 * scale))
-                .border_1()
-                .border_color(appearance.foreground.opacity(0.08))
+                .bg(super::selectors::space_tile_fill(appearance))
                 .cursor_pointer()
                 .when(bots_mode, |slot| {
                     slot.bg(selected_background)
-                        .border_color(selected_outline)
                         .when(appearance.light && !appearance.glass, |slot| {
                             slot.shadow_sm()
                         })
