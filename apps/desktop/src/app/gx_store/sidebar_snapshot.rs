@@ -936,6 +936,7 @@ fn build_session(
         favicon_data_url: row.favicon_data_url.clone(),
         has_composer_draft: row.has_composer_draft,
         queued_prompt_count: row.queued_prompt_count.unwrap_or(0),
+        rename_failed_at: row.rename_failed_at.clone(),
         work: row
             .work
             .as_ref()

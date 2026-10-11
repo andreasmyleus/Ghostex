@@ -88,7 +88,17 @@ pub fn plan_modal_action(view: &SidebarView, message: &Value) -> Option<ModalAct
                     Value::String(agent_icon.clone()),
                 );
             }
-            open.insert("initialTitle".to_string(), Value::String(title));
+            // CDXC:SessionTitles 2026-10-12 DECISION: a rename the agent never confirmed is
+            // offered again ("the user can rename again and he should see the new name he set
+            // there and be able to send it again"); gxserver drops it once a rename lands.
+            let initial_title = row
+                .rename_failed_title
+                .as_deref()
+                .map(crate::sidebar_view::text::js_trim)
+                .filter(|attempt| !attempt.is_empty())
+                .map(str::to_string)
+                .unwrap_or(title);
+            open.insert("initialTitle".to_string(), Value::String(initial_title));
             Some(ModalAction {
                 close_reason: "SettingsDismissal:sessionRowRename",
                 open: Value::Object(open),

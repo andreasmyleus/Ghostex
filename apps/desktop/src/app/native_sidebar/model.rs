@@ -110,6 +110,10 @@ pub(crate) struct NativeSidebarSession {
     pub(crate) has_composer_draft: bool,
     #[serde(default)]
     pub(crate) queued_prompt_count: u64,
+    /// When gxserver gave up on the user's last rename; the title shakes for a fresh one
+    /// (`ghostex_gx_core::rename_shake_key`).
+    #[serde(default)]
+    pub(crate) rename_failed_at: Option<String>,
     /// What a work-mode session is linked to, present only when it has links: the card's second
     /// line (native_sidebar/work_chips.rs).
     #[serde(skip)]

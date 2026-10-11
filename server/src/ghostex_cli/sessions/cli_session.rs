@@ -259,6 +259,9 @@ pub(super) fn to_cli_session(
     }
     map.insert("provider".to_string(), json!("zmx"));
     insert_js(&mut map, "providerSessionName", &[provider_session_name]);
+    // The phone shakes the title and prefills Rename from these (CDXC:SessionTitles 2026-10-12).
+    insert_js(&mut map, "renameFailedAt", &[p("renameFailedAt")]);
+    insert_js(&mut map, "renameFailedTitle", &[p("renameFailedTitle")]);
     if !provider_state.is_empty() {
         map.insert("providerSessionState".to_string(), json!(provider_state));
     }

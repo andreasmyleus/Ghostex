@@ -630,6 +630,9 @@ fn to_mobile_session_summary(session: &Value) -> Value {
         &[s("queuedPromptFailedCount")],
     );
     insert_js(&mut map, "hasComposerDraft", &[s("hasComposerDraft")]);
+    // CDXC:SessionTitles 2026-10-12 WHY: the same second-whitelist trap: the phone shakes the row title and prefills Rename from the rename the agent never confirmed.
+    insert_js(&mut map, "renameFailedTitle", &[s("renameFailedTitle")]);
+    insert_js(&mut map, "renameFailedAt", &[s("renameFailedAt")]);
     /*
      * CDXC:SessionNotes 2026-08-24:
      * Same SECOND-whitelist trap as the queue counts above: forwarding these in

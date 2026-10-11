@@ -306,6 +306,21 @@ impl RowNesting {
     }
 }
 
+/// How long after gxserver gives up on a rename its title still starts the shake, so a row drawn
+/// for the first time later (an app start, a scroll, an expanded section) does not shake for an
+/// old failure.
+pub const RENAME_SHAKE_FRESH_MS: i64 = 3_000;
+
+/// CDXC:SessionTitles 2026-10-12 DECISION:
+/// User: "if you don't get confirmation then show the name shake". The title shakes once when gxserver publishes a new `renameFailedAt` (the 8 seconds ran out and the row went back to the name the agent reports); this is the failure the renderer keys the shake on, or `None` once it is too old to shake for.
+pub fn rename_shake_key(rename_failed_at: Option<&str>, now_ms: i64) -> Option<&str> {
+    let failed_at = rename_failed_at?;
+    let age = now_ms - super::text::parse_iso_ms(failed_at)?;
+    (-RENAME_SHAKE_FRESH_MS..RENAME_SHAKE_FRESH_MS)
+        .contains(&age)
+        .then_some(failed_at)
+}
+
 impl SessionRow {
     /// CDXC:SessionStatus 2026-09-24 DECISION:
     /// User: a section, project, collection, Space or machine header shows the grey dot when it has no working session but has a grey-dot session, so the headers count exactly the rows that draw the grey dot: idle rows with a background shell or monitor still running.
@@ -362,7 +377,12 @@ pub struct SessionRow {
     pub delayed_send: Option<DelayedSendView>,
     pub close_after_done: Option<CloseAfterDoneInput>,
     pub is_generating_first_prompt_title: bool,
-    /// Inputs of the time-based values, which the renderer formats against its own clock.
+    /// The name of the user's last rename the agent never confirmed (gxserver gives up after 8
+    /// seconds): the next Rename opens with it. See `rename_seed_title`.
+    pub rename_failed_title: Option<String>,
+    /// When that rename was given up on; a new value is a failure the title shakes for.
+    pub rename_failed_at: Option<String>,
+    /// Inputs of the time-based values), which the renderer formats against its own clock.
     pub timing: SessionTiming,
     /// The session facts only the row's menus and its Copy Details text read.
     pub menu_facts: SessionMenuFacts,

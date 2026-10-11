@@ -174,6 +174,17 @@ impl GhostexGpuiApp {
         else {
             return false;
         };
+        // A rename the agent never confirmed is offered again, as the sidebar's Rename does
+        // (`plan_modal_action` in packages/gx-core/src/sidebar_actions/modals.rs).
+        let title = self
+            .gx_store
+            .core
+            .presentation()
+            .loaded(&ghostex_gx_core::MachineId::Local)
+            .and_then(|loaded| loaded.server_session(&key.project_id, &key.session_id))
+            .and_then(|session| session.rename_failed_title.clone())
+            .filter(|attempt| !attempt.trim().is_empty())
+            .unwrap_or(title);
         let modal = GpuiAppModalKind::RenameSession;
         let sidebar_state_message = self.gpui_app_modal_sidebar_state_message_for_open(modal, cx);
         let mut open_message = serde_json::json!({

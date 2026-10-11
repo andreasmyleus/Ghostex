@@ -726,6 +726,10 @@ syncs those names without running a first-prompt title job or blocking terminal
 input. Pi and OMP use the Title Generation Agent for first-prompt names.
 Manual Generate Name and `/rename` in chat remain available for Claude and Codex.
 In a Hermes chat, `/rename <name>` is sent as Hermes' own `/title <name>`.
+A renamed agent session shows its new name right away, on the computer and the
+phone, while the agent saves it. If the agent has not taken the name within 8
+seconds, the old name comes back with a short shake; open Rename again and the
+name you tried is already filled in, so you can send it again.
 Renaming an Empryo session from Ghostex (the Rename dialog or `ghostex rename-command`)
 types Empryo's own `/tab rename <name>`, so Empryo keeps the name too, and the
 Rename dialog's Generate Name can name an Empryo session from its recent messages.

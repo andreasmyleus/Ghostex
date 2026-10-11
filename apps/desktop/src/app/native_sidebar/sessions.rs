@@ -172,7 +172,7 @@ impl GhostexGpuiApp {
                 // decorations above keep their tops because it starts at the card's top.
                 .child(h_flex().h(px(SESSION_HEIGHT * scale)).flex_shrink_0().w_full().min_w_0().pl(px(indent * scale)).pr(px(6.0 * scale)).gap(px(6.0 * scale))
                 .child(self.render_native_session_identity(session, icon, hovered, appearance, cx))
-                .child(div().id(format!("native-session-title-{session_id}")).flex_1().min_w_0().h_full().flex().items_center().child(div().min_w_0().truncate().child(session.title().to_owned())).when(self.native_sidebar.pointer_inside && self.native_sidebar.menu.is_none() && !cx.has_active_drag(), |row| row.managed_discrete_tooltip_with_placement(tooltip_span.placement(), appearance.tooltip_delay, move |window, cx| super::tooltips::sidebar_tooltip(tooltip.clone(), tooltip_span, scale, window, cx))))
+                .child(div().id(format!("native-session-title-{session_id}")).flex_1().min_w_0().h_full().flex().items_center().child(title_with_rename_shake(div().min_w_0().truncate().child(session.title().to_owned()), &session_id, session.rename_failed_at.as_deref(), scale)).when(self.native_sidebar.pointer_inside && self.native_sidebar.menu.is_none() && !cx.has_active_drag(), |row| row.managed_discrete_tooltip_with_placement(tooltip_span.placement(), appearance.tooltip_delay, move |window, cx| super::tooltips::sidebar_tooltip(tooltip.clone(), tooltip_span, scale, window, cx))))
                 .when(!hovered, |row| row.children(super::threads::coordinator_badge(session, appearance)))
                 .when(!hovered, |row| row.children(super::agentbox::agentbox_badge(session, appearance, tooltip_span, self.native_sidebar.pointer_inside && self.native_sidebar.menu.is_none() && !cx.has_active_drag())))
                 .when(!hovered && !question, |row| row.children(super::status::activity_indicator(&session.activity, session.has_background_work, session.model_selection_failed, scale)))
@@ -218,4 +218,37 @@ impl GhostexGpuiApp {
                 })))
             .into_any_element()
     }
+}
+
+/// How long the title shakes after a rename the agent never confirmed.
+const RENAME_SHAKE_DURATION: std::time::Duration = std::time::Duration::from_millis(480);
+
+/// The row's title, shaken once sideways (like a rejected password field) when gxserver has just
+/// given up on the user's rename. The animation is keyed by the failure, so a later failure on the
+/// same session shakes again; `ghostex_gx_core::rename_shake_key` holds the rule.
+fn title_with_rename_shake(
+    title: gpui::Div,
+    session_id: &str,
+    rename_failed_at: Option<&str>,
+    scale: f32,
+) -> AnyElement {
+    use gpui::AnimationExt as _;
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or_default();
+    let Some(failed_at) = ghostex_gx_core::rename_shake_key(rename_failed_at, now) else {
+        return title.into_any_element();
+    };
+    title
+        .relative()
+        .with_animation(
+            gpui::ElementId::Name(format!("rename-shake-{session_id}-{failed_at}").into()),
+            gpui::Animation::new(RENAME_SHAKE_DURATION),
+            move |title, delta| {
+                let offset = (delta * std::f32::consts::PI * 6.0).sin() * 5.0 * (1.0 - delta);
+                title.left(px(offset * scale))
+            },
+        )
+        .into_any_element()
 }
