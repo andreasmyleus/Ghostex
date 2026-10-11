@@ -3,8 +3,8 @@
 //! `interAgentMessage`, on a `sentMessages` entry, or on an `agent-message` system card) that the
 //! renderers lay out as is.
 //!
-//! CDXC:SessionChat 2026-10-11 DECISION:
-//! User: the morning's "proposed" agent message cards (a 240px card with a quote box and a footer) were "too large now ... make them smaller like before. i dont like the new style". From the mockup page (docs/2026-10-11/agent-message-cards/smaller-received-cards.html) the user picked D, one line: every message between agents (received, sent, and a subagent's reply alike) is a single row with the agent's own logo (a small arrow badge: prose grey coming in, sky going out), its name ("Codex", "To Claude", "Explore subagent"), the message's first line, then the time, the status and a chevron; clicking the row opens the whole message under it. Go to session shows on hover (on the phone, inside the opened message). Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour. Kept from the first round: "please show the icons of the different agents", "instead of Open api refactor just say 'Go to session'", and no purple for incoming messages ("use color usually used for incoming chat messages").
+//! CDXC:SessionChat 2026-10-12 DECISION:
+//! User: the morning's "proposed" agent message cards (a 240px card with a quote box and a footer) were "too large now ... make them smaller like before. i dont like the new style". From the mockup page (docs/2026-10-11/agent-message-cards/smaller-received-cards.html) the user picked D, one line: every message between agents (received, sent, and a subagent's reply alike) is a single row with the agent's own logo (a small arrow badge: prose grey coming in, sky going out), its name ("Codex", "To Claude", "Explore subagent"), one line of text, then the time, the status and a chevron; clicking the row opens the whole message under it. Go to session shows on hover (on the phone, inside the opened message). Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour. Kept from the first round: "please show the icons of the different agents", "instead of Open api refactor just say 'Go to session'", and no purple for incoming messages ("use color usually used for incoming chat messages"). Supersedes the 2026-10-11 wording that showed the message's first line collapsed and "from <session>" once opened: "keep the text when the message from x agent the same when it's collapsed as the one we show when it's expanded", so `line` is the one text the row shows in both states ("from <session title>", "in <session title>" on a sent row, the first line only when the session's title is not known).
 //! SEE-ALSO: agent_message.rs and sent_message.rs read the messages; apps/desktop/src/app/native_chat/inter_agent_message.rs and apps/mobile/app/src/chat/native/transcript/AgentMessageCards.tsx draw the card.
 
 use serde_json::{json, Value};
@@ -64,15 +64,27 @@ fn first_line(body: &str) -> String {
     line.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// How a row names the other session: "from <session>" on a received card, "in <session>" on a
+/// sent one ("To Claude in <session>"). Empty when the session's title is not known.
+fn relation(preposition: &str, session: &str) -> String {
+    if session.is_empty() {
+        String::new()
+    } else {
+        format!("{preposition} {session}")
+    }
+}
+
 /// One card. `name` heads the row and `title` is the sentence an assistive reader hears; `detail`
-/// names the other session where the opened message starts.
+/// names the other session (empty when its title is not known) and `preview` is the body's first
+/// line. `line` is the one text the row shows after the name, collapsed and opened alike: `detail`,
+/// else `preview`.
 #[allow(clippy::too_many_arguments)]
 fn card(
     direction: &str,
     agent_icon: Value,
     name: String,
     title: String,
-    detail: &str,
+    detail: String,
     body: &str,
     time: &str,
     status: Value,
@@ -80,13 +92,20 @@ fn card(
     retry_prompt_id: Value,
     session: Value,
 ) -> Value {
+    let preview = first_line(body);
+    let line = if detail.is_empty() {
+        preview.clone()
+    } else {
+        detail.clone()
+    };
     json!({
         "direction": direction,
         "agentIcon": agent_icon,
         "name": name,
         "title": title,
-        "detail": if detail.is_empty() { String::new() } else { format!("from {detail}") },
-        "preview": first_line(body),
+        "detail": detail,
+        "preview": preview,
+        "line": line,
         "time": time,
         "status": status,
         "failure": failure,
@@ -108,7 +127,7 @@ pub fn subagent_card(name: &str, body: &str) -> Value {
         Value::Null,
         label.clone(),
         format!("Reply from {label}"),
-        "",
+        String::new(),
         body,
         "",
         Value::Null,
@@ -158,7 +177,7 @@ pub fn dress_received(message: &mut Value) {
         agent_icon(text(inter, "agentId"), agent),
         agent.to_string(),
         format!("Message from {agent}"),
-        text(inter, "sessionTitle"),
+        relation("from", text(inter, "sessionTitle")),
         text(inter, "body"),
         text(&message["time"], "label"),
         status,
@@ -198,7 +217,7 @@ pub fn dress_sent(sent: &mut Value, agent: &str, session: &str) {
         agent_icon(text(sent, "agentId"), agent),
         format!("To {agent}"),
         format!("Message to {agent}"),
-        session,
+        relation("in", session),
         &body,
         "",
         status,

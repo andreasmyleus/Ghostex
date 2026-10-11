@@ -1,6 +1,6 @@
 //! The cards for messages between agents: one another agent sent this session, one this session's
 //! agent sent another, and a subagent's reply. Each is one 40px row (the agent's logo, its name,
-//! the message's first line, the time, the status and a chevron) that opens to the whole message.
+//! one line of text, the time, the status and a chevron) that opens to the whole message.
 //! Which rows these are, whom a message went to, and everything a card says comes from the core's
 //! `card` object (packages/gx-chat-core/src/transcript/agent_message_card.rs, where the user's pick
 //! is the `CDXC:SessionChat 2026-10-11 DECISION`); this file only lays it out.
@@ -191,8 +191,8 @@ impl NativeChatView {
             .into_any_element()
     }
 
-    /// The logo, the name, the first line (the other session once opened), then Go to session on
-    /// hover, the time, the status and the chevron. The row opens and closes the message.
+    /// The logo, the name, the card's line (the same text collapsed and opened), then Go to session
+    /// on hover, the time, the status and the chevron. The row opens and closes the message.
     fn agent_card_row(
         &self,
         key: &str,
@@ -206,11 +206,8 @@ impl NativeChatView {
         let session = &card["session"];
         let status = &card["status"];
         let time = text(card, "time");
-        let line = if expanded {
-            text(card, "detail")
-        } else {
-            text(card, "preview")
-        };
+        // The core's `line` reads the same collapsed and opened.
+        let line = text(card, "line");
         let group = SharedString::from(format!("agent-card:{key}"));
         let row = div()
             .id(SharedString::from(format!("{key}:row")))
