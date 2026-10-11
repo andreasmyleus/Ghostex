@@ -117,6 +117,15 @@ pub(super) async fn route_chat_http(
             handle_replace_session_chat_draft_http(&state, endpoint.path, request_id, &body_json)
                 .await
         }
+        "/api/takeBackSessionChatQueuedMessage" => {
+            crate::session_chat_send::handle_take_back_session_chat_queued_message_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
+            .await
+        }
         "/api/claimSessionChatLaunchDraft" => handle_claim_session_chat_launch_draft_http(
             &state,
             endpoint.path,

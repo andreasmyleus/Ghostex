@@ -232,6 +232,7 @@ export type GxserverEndpointPath =
   | "/api/interruptSessionChat"
   | "/api/handoffSessionChatDraft"
   | "/api/replaceSessionChatDraft"
+  | "/api/takeBackSessionChatQueuedMessage"
   | "/api/claimSessionChatLaunchDraft"
   | "/api/readSessionChatQueue"
   | "/api/queueSessionChatPrompt"

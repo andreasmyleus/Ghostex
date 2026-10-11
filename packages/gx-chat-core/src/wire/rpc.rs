@@ -53,6 +53,8 @@ pub enum ChatRpcMethod {
     ReadCoordinatorThreads,
     /// Resumes a coordinator's closed thread before one of its Threads panel rows opens it.
     OpenCoordinatorThread,
+    /// Takes a message the agent CLI queued back out of its queue, for the composer.
+    TakeBackSessionChatQueuedMessage,
     /// A method this build does not know; kept verbatim.
     Other(String),
 }
@@ -92,6 +94,7 @@ impl ChatRpcMethod {
             Self::RunProjectDocsAction => "runProjectDocsAction",
             Self::ReadCoordinatorThreads => "readCoordinatorThreads",
             Self::OpenCoordinatorThread => "openCoordinatorThread",
+            Self::TakeBackSessionChatQueuedMessage => "takeBackSessionChatQueuedMessage",
             Self::Other(name) => name.as_str(),
         }
     }
@@ -130,6 +133,7 @@ impl ChatRpcMethod {
             "runProjectDocsAction" => Self::RunProjectDocsAction,
             "readCoordinatorThreads" => Self::ReadCoordinatorThreads,
             "openCoordinatorThread" => Self::OpenCoordinatorThread,
+            "takeBackSessionChatQueuedMessage" => Self::TakeBackSessionChatQueuedMessage,
             other => Self::Other(other.to_string()),
         }
     }

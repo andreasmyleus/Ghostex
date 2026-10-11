@@ -23,6 +23,8 @@ pub struct CapturedTerminalDraft {
     pub draft_version: Option<crate::session_chat_draft_versions::DraftVersion>,
     pub created: bool,
     pub prompt_id: Option<String>,
+    /// What a `PullClaudeQueue` step took out of Claude Code's own queue, oldest first.
+    pub queued_messages: Vec<String>,
 }
 
 /*
@@ -309,6 +311,7 @@ async fn run_terminal_draft_capture(
                         .get("promptId")
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_string),
+                    queued_messages: Vec::new(),
                 });
             }
         }

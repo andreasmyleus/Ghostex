@@ -572,6 +572,7 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         | "/api/acknowledgeSessionChatDraftHandoff"
         | "/api/handoffSessionChatDraft"
         | "/api/replaceSessionChatDraft"
+        | "/api/takeBackSessionChatQueuedMessage"
         | "/api/claimSessionChatLaunchDraft"
         /*
         CDXC:SessionChat 2026-08-21:

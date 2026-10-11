@@ -151,6 +151,7 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
             None,
         ),
         ActionKind::RemoveQueue => remove_queue(state, action),
+        ActionKind::TakeBackQueued => crate::composer::queue_take_back::begin(state, action),
         ActionKind::SendQueue => queue_rpc(
             state,
             ChatRpcMethod::SendSessionChatQueuedPrompt,

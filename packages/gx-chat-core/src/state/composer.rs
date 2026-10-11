@@ -95,6 +95,8 @@ pub struct ComposerState {
     pub queue_mutation: Option<(u64, Option<String>)>,
     /// Edit on a queued row, between its removal and the text landing in the composer.
     pub queue_edit: Option<crate::composer::queue_edit::QueueEdit>,
+    /// Back to composer on a message the agent queued, until its text lands in the composer.
+    pub queue_take_back: Option<crate::composer::queue_take_back::QueueTakeBack>,
     /// The boot read has answered, so the two catalog reads may go out.
     pub boot_read: bool,
     /// The returned prompt whose claim is in flight: its id and the text to restore.

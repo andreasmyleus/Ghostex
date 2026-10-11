@@ -224,6 +224,18 @@ impl NativeChatView {
         let queue_capabilities = &self.snapshot["queue"]["capabilities"];
         let editable = waiting_prompt.is_some() && queue_capabilities["canEdit"] == true;
         let removable = waiting_prompt.is_some() && queue_capabilities["canRemove"] == true;
+        // A message the agent itself queued comes back to the composer (CDXC:SessionChat 2026-10-11
+        // in packages/gx-chat-core/src/composer/queue_take_back.rs); the composer's Up key takes the
+        // newest one back (keyboard.rs).
+        let takeable = !self.in_subagent
+            && self.snapshot["queueTakeBackIds"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|queued| queued == &message["id"]));
+        let taking_back = self.snapshot["queueTakeBackBusy"] == message["id"];
+        let take_back_label = format!(
+            "Back to composer ({})",
+            text(&self.snapshot, "queueTakeBackHotkey")
+        );
         /*
         CDXC:SessionChat 2026-09-19 SEE-ALSO:
         `.ghostex-chat-message-actions` in packages/core-ui/styles/chat.css (deleted 2026-09-25)
@@ -279,6 +291,22 @@ impl NativeChatView {
                     "Edit message".into(),
                     "titlebar/pencil.svg",
                     json!({"type":"removeQueue","promptId":waiting_prompt.clone(),"edit":true}),
+                ))
+            })
+            .when(takeable, |buttons| {
+                buttons.child(button(
+                    "take-back",
+                    if taking_back {
+                        "Taking the message back…".into()
+                    } else {
+                        take_back_label.clone()
+                    },
+                    if taking_back {
+                        "titlebar/loader2.svg"
+                    } else {
+                        "titlebar/arrow-back-up.svg"
+                    },
+                    json!({"type":"takeBackQueued","messageId":id.clone()}),
                 ))
             })
             .when(removable, |buttons| {

@@ -37,6 +37,13 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
     let notice = TerminalNotice::parse(state.session.terminal_notice.as_ref());
 
     into.queue = queue(state);
+    into.queue_take_back_ids = crate::composer::queue_take_back::takeable_ids(state);
+    into.queue_take_back_busy = composer
+        .queue_take_back
+        .as_ref()
+        .map(|take_back| take_back.message_id.clone());
+    into.queue_take_back_hotkey =
+        crate::composer::queue_take_back::TAKE_BACK_HOTKEY_LABEL.to_string();
     into.draft = Draft {
         can_sync: into.queue.capabilities.can_sync_draft,
         client_id: state.identity.client_id.clone(),

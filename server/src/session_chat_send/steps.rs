@@ -75,6 +75,11 @@ pub enum SessionChatSendStep {
     },
     /// Read the text in Empryo's input box, without touching it, into the job's draft sink.
     ReadEmpryoDraft,
+    /// Bring Claude Code's queued messages back into its empty input box with Up, read them off
+    /// the transcript into the job's draft sink, and empty the box again (claude_queue_pull.rs).
+    PullClaudeQueue {
+        transcript: PathBuf,
+    },
     /// Stop the job when Empryo's input box holds text other than `replacement`.
     GuardEmpryoDraft {
         replacement: String,

@@ -110,6 +110,7 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::UseIncomingDraft
         | ActionKind::RetryQueue
         | ActionKind::RemoveQueue
+        | ActionKind::TakeBackQueued
         | ActionKind::SendQueue
         | ActionKind::ReorderQueue
         | ActionKind::MoveQueue

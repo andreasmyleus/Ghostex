@@ -1123,7 +1123,10 @@ Sending in a new chat shows your message immediately in the conversation while
 Ghostex waits for the agent to be ready. It appears once, with a spinner beside the
 bubble's bottom-left corner while it waits; you can retry or remove it if delivery fails.
 A message sent while the agent is still working shows a play button there instead:
-click it to interrupt the agent (one Escape) so it takes that message right away. Prompts you explicitly
+click it to interrupt the agent (one Escape) so it takes that message right away. For Claude Code,
+Back to composer in that message's actions (hover it; on the phone, under the bubble) takes it out of
+Claude's queue and adds its text and pictures to your chat draft instead, unsent; pressing Up in an
+empty chat box does the same for the newest queued message, like Up in Claude's own input. Prompts you explicitly
 queue stay in the list above the input. This also applies when reopening the chat
 or continuing on another device.
 Claude children stay in the Subagents card while the terminal lists them, including

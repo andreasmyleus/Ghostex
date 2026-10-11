@@ -19,6 +19,7 @@ pub mod policy;
 pub mod queries;
 pub mod queue;
 pub mod queue_edit;
+pub mod queue_take_back;
 pub mod reference_menu;
 pub mod reference_pills;
 pub mod references;

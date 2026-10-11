@@ -144,6 +144,7 @@ action_kinds! {
     // The queue.
     RetryQueue => "retryQueue",
     RemoveQueue => "removeQueue",
+    TakeBackQueued => "takeBackQueued",
     SendQueue => "sendQueue",
     ReorderQueue => "reorderQueue",
     MoveQueue => "moveQueue",
