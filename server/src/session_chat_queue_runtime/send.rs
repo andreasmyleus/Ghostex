@@ -507,6 +507,14 @@ pub(crate) async fn send_session_chat_message_with_draft(
         image_paths,
         dismiss_claude_panel,
     );
+    if terminal_agent.as_deref() == Some("claude") {
+        crate::session_chat_send::remember_claude_sent_pictures(
+            &target.project_id,
+            &target.session_id,
+            text,
+            image_paths,
+        );
+    }
     /*
     CDXC:SessionChat 2026-10-11 DECISION:
     User: "I'm having to switch to terminal to press ctrl + return in order to interrupt and send a prompt. should be able to send this from the chat view." Interrupt and send stops the agent's running turn and sends the message right away. Claude Code gets its own key for it after the message (Return queues the message while a turn runs, then `chat:sendNow` stops the turn and sends the queue). Every other agent gets chat Stop's Escape (Ctrl+C for Cursor) before the message, and only while it is mid-turn, so an idle agent just receives the message.

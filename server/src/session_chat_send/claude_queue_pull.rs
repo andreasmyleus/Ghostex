@@ -191,7 +191,102 @@ async fn pull_claude_queue_in_send_queue(
 /// chat bubble's copy text and Claude's queue row compare equal.
 fn take_back_key(text: &str) -> String {
     let (text, _) = split_image_references(text);
+    let (text, _) = strip_bare_image_markers(&text);
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// How many messages per session [`remember_claude_sent_pictures`] keeps.
+const SENT_PICTURES_PER_SESSION: usize = 32;
+
+static SENT_PICTURES: OnceLock<Mutex<HashMap<String, Vec<(String, Vec<String>)>>>> =
+    OnceLock::new();
+
+/// Remembers the pictures a chat send attached to a Claude message, for a take-back.
+///
+/// CDXC:SessionChat 2026-10-11 WHY:
+/// A picture sent as an attachment (the queue strip, a send that waited for a slow-starting agent) is pasted into Claude as a path, and Claude's queue row records only `[Image #1]` with no path, so the picture could not come back to the composer or be typed into the queue again. The composer's own `[Image #N](path)` text needs none of this. Only the last few messages per session are kept, in memory.
+pub(crate) fn remember_claude_sent_pictures(
+    project_id: &str,
+    session_id: &str,
+    text: &str,
+    image_paths: &[String],
+) {
+    if image_paths.is_empty() {
+        return;
+    }
+    let Ok(mut map) = SENT_PICTURES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    else {
+        return;
+    };
+    let sent = map.entry(format!("{project_id}|{session_id}")).or_default();
+    sent.push((take_back_key(text), image_paths.to_vec()));
+    if sent.len() > SENT_PICTURES_PER_SESSION {
+        sent.remove(0);
+    }
+}
+
+/// Gives the bare `[Image #N]` markers in a queue row the paths of the pictures that send carried.
+fn restore_sent_pictures(project_id: &str, session_id: &str, message: &str) -> String {
+    if strip_bare_image_markers(message).1 == 0 {
+        return message.to_string();
+    }
+    let key = take_back_key(message);
+    let paths = SENT_PICTURES.get().and_then(|map| {
+        let map = map.lock().ok()?;
+        map.get(&format!("{project_id}|{session_id}"))?
+            .iter()
+            .rev()
+            .find(|(sent, _)| *sent == key)
+            .map(|(_, paths)| paths.clone())
+    });
+    let Some(paths) = paths else {
+        return message.to_string();
+    };
+    let mut paths = paths.into_iter();
+    let mut restored = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some((_, end)) = next_bare_image_marker(rest) {
+        restored.push_str(&rest[..end]);
+        if let Some(path) = paths.next() {
+            restored.push_str(&format!("({path})"));
+        }
+        rest = &rest[end..];
+    }
+    restored.push_str(rest);
+    restored
+}
+
+/// The next `[Image #N]` marker not followed by `(`: its start and end.
+fn next_bare_image_marker(text: &str) -> Option<(usize, usize)> {
+    const OPEN: &str = "[Image #";
+    let mut from = 0;
+    while let Some(found) = text[from..].find(OPEN) {
+        let start = from + found;
+        let after = &text[start + OPEN.len()..];
+        let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+        let end = start + OPEN.len() + digits + 1;
+        if digits > 0 && after[digits..].starts_with(']') && !text[end..].starts_with('(') {
+            return Some((start, end));
+        }
+        from = start + OPEN.len();
+    }
+    None
+}
+
+/// `text` without its bare `[Image #N]` markers, and how many there were.
+fn strip_bare_image_markers(text: &str) -> (String, usize) {
+    let mut kept = String::with_capacity(text.len());
+    let mut count = 0;
+    let mut rest = text;
+    while let Some((start, end)) = next_bare_image_marker(rest) {
+        kept.push_str(&rest[..start]);
+        count += 1;
+        rest = &rest[end..];
+    }
+    kept.push_str(rest);
+    (kept, count)
 }
 
 /// Splits `[Image #N](path)` references (the form Claude records a pasted picture in, and the
@@ -317,7 +412,11 @@ pub(crate) async fn handle_take_back_session_chat_queued_message_http(
     let mut popped: Vec<String> = popped
         .iter()
         .map(|message| {
-            crate::session_chat_decode_claude::strip_claude_pasted_content_envelopes(message)
+            restore_sent_pictures(
+                &target.project_id,
+                &target.session_id,
+                &crate::session_chat_decode_claude::strip_claude_pasted_content_envelopes(message),
+            )
         })
         .collect();
     // Identical queued texts are interchangeable, so the newest one comes back.
@@ -328,6 +427,7 @@ pub(crate) async fn handle_take_back_session_chat_queued_message_http(
     let mut handed_back: Vec<String> = taken.iter().cloned().collect();
     for message in popped {
         let (body, images) = split_image_references(&message);
+        remember_claude_sent_pictures(&target.project_id, &target.session_id, &body, &images);
         let steps = build_session_chat_message_steps(Some("claude"), &body, &images, false);
         if execute_session_chat_send(
             &target.project_id,
