@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+## 10.20.0 - 2026-10-11
+
+**Ghostex 10.20.0 is out.** Agents ask you questions as a form right in the chat, `/resume` and Ctrl+Enter interrupt-and-send work from the chat view, file changes and finished turns get new cards, background tasks show what they're doing, Ctrl+V no longer freezes Ghostex on Windows, and Work Mode can start Claude Code in the cloud.
+
+⚠️ **Teams:** run `ghostex team deploy` once after updating, so teammates' cloud sessions show on the Work page (team functions version 5).
+
+### 💬 Chat
+- **Questions as a form in the chat:** agents ask several questions at once in one card: click to pick (nothing preselected), "Other / none of these" with a note, text answers, one Send (or Ctrl/Cmd+Enter). Your picks are kept until you send, answers wait while the agent is busy, and the answers card shows each answer under its question.
+- **Question pages for visual choices:** agents' HTML pages can ask about mockups, with a Pick button and a note box at each mockup and each question right under what it asks about; drafts are kept if you close the popup, and it closes once you send.
+- **File change cards:** a header with the files' folder, totals and a ratio bar, one row per file with an Edited / New / Deleted tag and a change bar, opening to a diff with line numbers; Review all opens the Code view's Source Control.
+- **Finished turns:** "Worked 16s" with chips for tool calls, files and failures, tool rows with icons, durations and a status mark, and a labelled Copy · Annotate · Save toolbar on hover.
+- **`/resume` from the chat:** Claude Code's and Codex's conversation picker shows as a card you drive with ↑/↓, typing, Enter or a click; other agents' pickers show live in a card that takes the keyboard until you hand it back.
+- **Interrupt & Send:** Ctrl+Enter (or right-click Send) stops the agent's turn and sends your message right away; on the phone, hold Send while the agent works.
+- **Background tasks:** each running task shows what it's doing with a timer (two or more fold into one row), the working spinner stays while a turn runs, and the finished row says how long the task ran.
+- **Marked handovers:** orchestrators and their threads mark each part of their handover with ❓ ✅ ⚠️ 🛫 🔄 🧪 🚀 🛑 (Settings > Chat > Marked handovers in every session extends it to all agents), and the chat colours those sections in the style you pick.
+
+### 🪟 Windows
+- **Ctrl+V no longer freezes Ghostex** when the app you copied from is slow to hand over its data (Office, Remote Desktop, screenshot tools), in the chat, terminals, dialogs and Kanban.
+- **Codex and Antigravity hooks run on Windows again,** so their activity and transcripts reach Ghostex.
+
+### 🤖 Agents
+- **Antigravity chat no longer stalls** while it has a background task running.
+- **An agent started inside a session can no longer take that session over.**
+- **The Claude usage card says when its numbers are old** ("Last known", "Last updated 3 days ago") instead of claiming live limits.
+
+### 🧩 Workspaces and Work Mode
+- **Start in cloud (Claude Code), Link to current session and Open in terminal** for cloud sessions on the Work page.
+- **Linear pages stay in a workspace's browser,** and a site's question is a bar on its page instead of a dialog; Settings > Workspaces > Site permissions can forget your answers.
+- **Assigned to me keeps all your tickets, Clean up works on Windows,** and work-card buttons never shrink.
+
+### 🎨 Look and setup
+- **The Spaces row sits in a full-width rounded track** without outlines, on the computer and the phone.
+- **The Commands row collapses to its icon** when the sidebar is 441 screen pixels wide or less.
+- **Your views can be deleted** from the view editor, with a confirmation.
+- **Setup's last page sets Agent approvals** (Keep default / Skip permissions).
+- **The blue attention outline's top line shows** at any display scale, and an orchestrator's thread count lines up with the time.
+
+### 📱 Phone
+- **The phone chat matches:** question forms, file change cards, the new turn look, the `/resume` card, background task rows, Interrupt & Send on a held Send, coloured handovers and the Spaces track.
+
 ## 10.19.0 - 2026-10-10
 
 **Ghostex 10.19.0 is out.** A new Skills menu shows Ghostex's skills in the chat and terminal, the Work page gets two-line rows, Group by and a one-row filter bar, each workspace window keeps to its own sessions, browser sign-ins in workspaces stay saved, and Colourfulness gets finer steps.
