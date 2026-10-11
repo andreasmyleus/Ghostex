@@ -15,7 +15,7 @@ use serde_json::Value;
 pub(super) struct PanelHeader {
     pub(super) id: &'static str,
     pub(super) icon: &'static str,
-    pub(super) title: &'static str,
+    pub(super) title: gpui::SharedString,
     pub(super) meta: String,
     pub(super) open: bool,
     /// Whether a body is drawn under the header now, which outlasts `open` while it eases away.

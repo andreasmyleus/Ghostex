@@ -21,9 +21,11 @@ impl NativeChatView {
         let status = &self.snapshot["workingStrip"];
         let reduced_motion = crate::app::helpers::gpui_macos_reduce_motion_enabled();
         let armed = self.armed_action_items(p, cx);
+        let label = status["label"].as_str();
         if status["presentation"].is_object() {
-            let activity = self.render_working_activity(p, reduced_motion);
-            if armed.is_empty() {
+            let activity = self.render_working_activity(p, reduced_motion, cx);
+            // A running turn keeps its word under a background-task card (the core sends both).
+            if label.is_none() && armed.is_empty() {
                 return Some(activity);
             }
             return Some(
@@ -33,11 +35,10 @@ impl NativeChatView {
                     .flex_col()
                     .gap(px(8.0 * p.scale))
                     .child(activity)
-                    .child(self.working_row(None, armed, p, reduced_motion))
+                    .child(self.working_row(label, armed, p, reduced_motion))
                     .into_any_element(),
             );
         }
-        let label = status["label"].as_str();
         if label.is_none() && armed.is_empty() {
             return None;
         }
@@ -158,10 +159,20 @@ impl NativeChatView {
             .collect()
     }
 
-    fn render_working_activity(&self, p: &ChatAppearance, reduced_motion: bool) -> AnyElement {
+    fn render_working_activity(
+        &self,
+        p: &ChatAppearance,
+        reduced_motion: bool,
+        cx: &gpui::Context<Self>,
+    ) -> AnyElement {
         let activity = &self.snapshot["workingStrip"]["presentation"];
         if activity["backgroundTasks"].is_object() {
-            return self.render_background_tasks(&activity["backgroundTasks"], p, reduced_motion);
+            return self.render_background_tasks(
+                &activity["backgroundTasks"],
+                p,
+                reduced_motion,
+                cx,
+            );
         }
         let s = p.scale;
         let lead = if activity["shellsRunning"] == true {

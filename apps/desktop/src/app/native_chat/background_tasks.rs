@@ -1,6 +1,7 @@
 //! The working strip's background-task card: one row per task with its own clock, and an (i) beside
 //! the clock that says the work continues in the background (`extras::background_tasks` in
-//! gx-chat-core words it).
+//! gx-chat-core words it). Two or more tasks fold under one header drawn by the Threads card's own
+//! `panel_header`, folded until clicked.
 //!
 //! CDXC:SessionChat 2026-10-11 SEE-ALSO:
 //! The phone draws the same card in apps/mobile/app/src/chat/native/cards/WorkingStrip.tsx; the
@@ -22,6 +23,7 @@ impl NativeChatView {
         tasks: &Value,
         p: &ChatAppearance,
         reduced_motion: bool,
+        cx: &gpui::Context<Self>,
     ) -> AnyElement {
         let s = p.scale;
         let info = tasks["info"].as_str().unwrap_or_default();
@@ -43,11 +45,58 @@ impl NativeChatView {
                     .child(more.to_owned()),
             );
         }
+        let card = if tasks["grouped"] == true {
+            let open = tasks["open"] == true;
+            let motion = self.disclosure_frame("background-tasks", open, cx);
+            let toggle = serde_json::json!({"type": "toggleBackgroundTasks", "open": !open});
+            let header = self.panel_header(
+                super::panel_card::PanelHeader {
+                    id: "chat-background-tasks-header",
+                    icon: "titlebar/terminal-2.svg",
+                    title: tasks["title"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned()
+                        .into(),
+                    meta: tasks["meta"].as_str().unwrap_or_default().to_owned(),
+                    open,
+                    has_body: open || motion.is_some(),
+                    toggle_label: if open {
+                        "Hide background tasks"
+                    } else {
+                        "Show background tasks"
+                    },
+                    trailing: None,
+                    command: toggle,
+                },
+                p,
+                cx,
+            );
+            let body = if open || motion.is_some() {
+                vec![rows.into_any_element()]
+            } else {
+                Vec::new()
+            };
+            self.status_card_with_header_motion(
+                super::cards::CardBodyMotion {
+                    key: "background-tasks",
+                    frame: motion,
+                    shut_body: false,
+                    shut: !open,
+                },
+                header,
+                body,
+                Vec::new(),
+                p,
+            )
+        } else {
+            self.status_card_with_header(rows.into_any_element(), Vec::new(), Vec::new(), p)
+        };
         div()
             .id("chat-working-activity")
             .role(gpui::Role::Status)
             .w_full()
-            .child(self.status_card_with_header(rows.into_any_element(), Vec::new(), Vec::new(), p))
+            .child(card)
             .into_any_element()
     }
 

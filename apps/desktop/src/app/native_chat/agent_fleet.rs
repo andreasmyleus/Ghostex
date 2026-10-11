@@ -37,7 +37,7 @@ impl NativeChatView {
                 // React's `IconUsers`, the two-person glyph, not the three-person group icon.
                 icon: "titlebar/users.svg",
                 // CDXC:SessionChat 2026-09-07 DECISION: User: the title is "Subagents", without a hyphen or all caps.
-                title: "Subagents",
+                title: "Subagents".into(),
                 meta: text(&strip, "countLabel"),
                 open,
                 has_body: open || motion.is_some(),

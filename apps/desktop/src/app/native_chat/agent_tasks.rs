@@ -48,7 +48,7 @@ impl NativeChatView {
             super::panel_card::PanelHeader {
                 id: "chat-agent-tasks-header",
                 icon: "titlebar/list-check.svg",
-                title: "Tasks",
+                title: "Tasks".into(),
                 meta: text(&panel, "meta"),
                 open,
                 has_body: open || motion.is_some(),

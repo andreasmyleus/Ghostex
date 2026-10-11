@@ -45,6 +45,10 @@ pub fn handle_with_ids(
                 collapsed,
             )]
         }
+        ActionKind::ToggleBackgroundTasks => {
+            state.extras.panels.background_tasks_open = flag(action, "open");
+            Vec::new()
+        }
         ActionKind::ToggleCoordinatorThreadsMore => {
             let panels = &mut state.extras.panels;
             panels.threads_show_all = flag(action, "expanded");

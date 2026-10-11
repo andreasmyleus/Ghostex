@@ -83,6 +83,8 @@ pub struct PanelsState {
     pub threads_all_request: Option<(u64, String)>,
     /// The `openCoordinatorThread` in flight for a clicked thread row; a newer click replaces it.
     pub threads_open_request: Option<u64>,
+    /// The grouped background-task row is unfolded to its tasks; folded by default, per chat.
+    pub background_tasks_open: bool,
 }
 
 impl Default for PanelsState {
@@ -97,6 +99,7 @@ impl Default for PanelsState {
             threads_all: None,
             threads_all_request: None,
             threads_open_request: None,
+            background_tasks_open: false,
         }
     }
 }

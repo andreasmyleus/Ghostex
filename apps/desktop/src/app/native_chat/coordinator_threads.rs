@@ -37,7 +37,7 @@ impl NativeChatView {
             super::panel_card::PanelHeader {
                 id: "chat-coordinator-threads-header",
                 icon: "titlebar/users-group.svg",
-                title: "Threads",
+                title: "Threads".into(),
                 meta: text(&panel, "meta"),
                 open,
                 has_body: open || motion.is_some(),
