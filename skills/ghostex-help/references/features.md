@@ -1472,7 +1472,9 @@ conversation on the selected account. For a Claude background session,
 switching stops that conversation and its remaining jobs before resuming its
 saved history on the selected account. A card in the middle of Session Chat,
 over a dimmed conversation, shows the current and selected accounts, their usage
-percentages (including Claude's Fable limit), and the switch progress. It stays
+percentages (including Claude's Fable limit), and the switch progress. Renamed
+accounts appear as email - name; accounts without a custom name show just their
+email. Hide emails also applies to these labels. The card stays
 until the new account is confirmed and the conversation is ready on it, then
 briefly confirms success, or shows a failure with Retry switch and a close (X)
 button in its top-right corner that dismisses it everywhere. On phones and

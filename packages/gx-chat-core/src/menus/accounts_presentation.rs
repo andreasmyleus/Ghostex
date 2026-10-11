@@ -344,6 +344,7 @@ fn switch_usage_card(label: &str, usage: Option<&UsageWindow>, now_ms: i64) -> S
     }
 }
 
+/// CDXC:AgentProviders 2026-10-11 DECISION: User: show {email} - {name} in the switch card when the account was renamed, respecting Hide emails. This replaces the earlier email-only label decision.
 fn switch_card_account(
     account: Option<&Account>,
     provider: &str,
@@ -378,15 +379,22 @@ fn switch_card_account(
             now_ms,
         ));
     }
-    let label = match account.and_then(|account| account.email.as_deref()) {
-        Some(email) if !email.is_empty() => email.to_string(),
-        _ => if target {
-            "Selected account"
-        } else {
-            "Current CLI login"
-        }
-        .to_string(),
-    };
+    let label =
+        match account.and_then(|account| account.email.as_deref().map(|email| (account, email))) {
+            Some((account, email)) if !email.is_empty() => {
+                if !account.name.is_empty() && account.name != email {
+                    format!("{email} - {}", account.name)
+                } else {
+                    email.to_string()
+                }
+            }
+            _ => if target {
+                "Selected account"
+            } else {
+                "Current CLI login"
+            }
+            .to_string(),
+        };
     SwitchCardAccount {
         role: role.to_string(),
         label,
@@ -406,9 +414,7 @@ fn switch_card_account(
 /// the large tiles were replaced by the compact-tiles design the user picked, with usage in
 /// neutral ink; see packages/core-ui/accounts/account-switch-card.css. No heading spinner, repeated status
 /// above the composer, View terminal button, draft reassurance, or bottom bar. Show plain provider
-/// logos in this card, without the account's two-character indicator inside them. Identify each
-/// account by its real email on one line, respecting Hide emails, rather than account names or the
-/// preview's former invented aliases.
+/// logos in this card, without the account's two-character indicator inside them.
 ///
 /// `ready` is the chat's confirmation that the second account is bound and usable. A `success`
 /// phase without it keeps the last step active and the "Switching" heading, so the card never
