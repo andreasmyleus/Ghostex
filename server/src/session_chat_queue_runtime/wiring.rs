@@ -16,14 +16,21 @@ pub(crate) fn session_chat_queue_sender(
     let state = state.clone();
     let project_id = project_id.to_string();
     let session_id = session_id.to_string();
-    Arc::new(move |text: String| {
+    Arc::new(move |text: String, images: Vec<String>| {
         let state = state.clone();
         let project_id = project_id.clone();
         let session_id = session_id.clone();
         Box::pin(async move {
-            send_session_chat_message_internal(&state, &project_id, &session_id, &text, &[], source)
-                .await
-                .map(|_| ())
+            send_session_chat_message_internal(
+                &state,
+                &project_id,
+                &session_id,
+                &text,
+                &images,
+                source,
+            )
+            .await
+            .map(|_| ())
         })
     })
 }

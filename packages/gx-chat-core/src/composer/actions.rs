@@ -730,6 +730,24 @@ fn remove_queue(state: &mut ChatState, action: &UserAction) -> Vec<Effect> {
         if !document.capabilities.can_edit || is_queue_row_busy(&row_state) {
             return Vec::new();
         }
+        // The composer takes the text back, but the row's pictures are the queue's own copies,
+        // which the removal deletes.
+        let carries_images = state.session.queue_prompts.as_deref().is_some_and(|queue| {
+            queue.iter().any(|row| {
+                row.get("id").and_then(Value::as_str) == Some(prompt_id)
+                    && row
+                        .get("imagePaths")
+                        .and_then(Value::as_array)
+                        .is_some_and(|paths| !paths.is_empty())
+            })
+        });
+        if carries_images {
+            state.core.fail(
+                "A message with pictures cannot be edited while it waits. Delete it and send it again.",
+                None,
+            );
+            return Vec::new();
+        }
         edit = Some(row_text);
     }
     let prompt_id = prompt_id.to_string();

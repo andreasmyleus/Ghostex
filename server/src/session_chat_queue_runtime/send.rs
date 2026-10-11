@@ -443,6 +443,7 @@ pub(crate) async fn send_session_chat_message_with_draft(
         terminal_agent.as_deref(),
         source,
         drafted_text,
+        image_paths,
     )
     .await
     {
@@ -709,7 +710,7 @@ pub(crate) async fn send_session_chat_message_with_draft(
                 id,
             );
         }
-        return hold_for_restarted_agent(state, &target, source, drafted_text);
+        return hold_for_restarted_agent(state, &target, source, drafted_text, image_paths);
     }
     if let Err(error) = sent {
         if let Some(id) = durable_id.as_deref() {

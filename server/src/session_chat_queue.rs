@@ -55,6 +55,9 @@ pub struct SessionChatQueuedPrompt {
     pub id: String,
     pub text: String,
     pub startup_send: bool,
+    /// The queue's own copies of the pictures the message carries (session_chat_queue_attachments.rs).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub image_paths: Vec<String>,
     /// `queued` | `sending` | `failed`.
     pub state: String,
     /// Set only when `state == "failed"`.
@@ -209,8 +212,12 @@ the per-session send mutex and cannot interleave with a Delayed Send or a
 message the user typed. The queue module (and the scheduler) therefore never
 learns about AppState, zmx names, or the send watchdog.
 */
+/// Takes the row's text and its pictures.
 pub type SessionChatQueueSender = Arc<
-    dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<(), DomainStateError>> + Send>>
+    dyn Fn(
+            String,
+            Vec<String>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), DomainStateError>> + Send>>
         + Send
         + Sync,
 >;
@@ -286,7 +293,14 @@ pub fn handle_session_chat_queue_endpoint(
             let transaction =
                 rusqlite::Transaction::new_unchecked(&db, rusqlite::TransactionBehavior::Immediate)
                     .map_err(sql_error)?;
-            let text = required_text(params, "text")?;
+            let images = crate::session_chat_queue_attachments::requested(params);
+            // A message of pictures alone has no text.
+            let text = if images.is_empty() {
+                required_text(params, "text")?
+            } else {
+                optional_text(params, "text").unwrap_or_default()
+            };
+            validate_text(&text)?;
             let version = crate::session_chat_draft_versions::parse(params)?;
             if let Some(version) = version.as_ref() {
                 crate::session_chat_draft_versions::require_saved(
@@ -312,6 +326,7 @@ pub fn handle_session_chat_queue_endpoint(
                     id: create_prompt_id(),
                     text: text.clone(),
                     startup_send: true,
+                    image_paths: Vec::new(),
                     state: SESSION_CHAT_QUEUE_STATE_QUEUED.to_string(),
                     error_message: None,
                     created_at: now_iso(),
@@ -328,8 +343,15 @@ pub fn handle_session_chat_queue_endpoint(
                     session_id,
                 });
             }
-            let prompt =
-                append_prompt(&transaction, &project_id, &session_id, &text, startup_send)?;
+            let prompt = append_prompt(
+                Some(paths),
+                &transaction,
+                &project_id,
+                &session_id,
+                &text,
+                startup_send,
+                &images,
+            )?;
             if let Some(version) = version.as_ref() {
                 crate::session_chat_draft_versions::consume_in(
                     &transaction,
@@ -363,6 +385,7 @@ pub fn handle_session_chat_queue_endpoint(
         "/api/removeSessionChatQueuedPrompt" => {
             let prompt_id = required_text(params, "promptId")?;
             let prompt = remove_prompt(&db, &project_id, &session_id, &prompt_id)?;
+            crate::session_chat_queue_attachments::remove(paths, &prompt_id);
             let snapshot = read_snapshot(&db, &project_id, &session_id)?;
             let mut value = snapshot_value(&snapshot);
             insert_prompt(&mut value, &prompt);
@@ -475,13 +498,13 @@ pub async fn deliver_session_chat_queued_prompt(
     send: &SessionChatQueueSender,
     hold_when_composer_missing: bool,
 ) -> Result<SessionChatQueueDelivery, DomainStateError> {
-    let text = {
+    let (text, images) = {
         let db = open_gxserver_database(paths).map_err(internal_error)?;
         require_session(&db, server_id, project_id, session_id)?;
         claim_prompt(&db, project_id, session_id, prompt_id)?
     };
     let outcome = deliver_once(
-        paths, server_id, project_id, session_id, prompt_id, text, send,
+        paths, server_id, project_id, session_id, prompt_id, text, images, send,
     )
     .await;
     let db = open_gxserver_database(paths).map_err(internal_error)?;
@@ -514,6 +537,8 @@ pub async fn deliver_session_chat_queued_prompt(
                 params![prompt_id, project_id, session_id],
             )
             .map_err(sql_error)?;
+            crate::session_chat_queue_attachments::mark_delivered(paths, prompt_id);
+            crate::session_chat_queue_attachments::sweep(paths, &db);
             None
         }
         Err(error) => {
@@ -539,6 +564,7 @@ async fn deliver_once(
     session_id: &str,
     prompt_id: &str,
     text: String,
+    images: Vec<String>,
     send: &SessionChatQueueSender,
 ) -> Result<(), DomainStateError> {
     use crate::session_chat_send_requests::{
@@ -557,7 +583,7 @@ async fn deliver_once(
     }
     match begun {
         Begin::Send(attempt) => {
-            let outcome = send(text).await;
+            let outcome = send(text, images).await;
             attempt.settle(match &outcome {
                 Ok(()) => crate::session_chat_send_requests::Outcome::Sent(json!({})),
                 Err(error) if crate::session_chat_send_requests::submitted_nothing(error.code) => {
@@ -694,6 +720,7 @@ pub fn recover_session_chat_queue_after_restart(
     .map_err(sql_error)?;
     // Model selection is idempotent: the driver reads the current footer before changing anything.
     db.execute("UPDATE session_chat_model_selections SET state = 'queued', retryAt = 0 WHERE state = 'applying'", []).map_err(sql_error)?;
+    crate::session_chat_queue_attachments::sweep(paths, &db);
     Ok(())
 }
 
@@ -709,7 +736,8 @@ fn read_snapshot(
     let mut statement = db
         .prepare(
             r#"
-            SELECT promptId, text, state, errorMessage, createdAt, updatedAt, startupSend
+            SELECT promptId, text, state, errorMessage, createdAt, updatedAt, startupSend,
+              imagePaths
             FROM session_chat_queued_prompts
             WHERE projectId = ?1 AND sessionId = ?2
             ORDER BY position, createdAt, promptId
@@ -726,6 +754,7 @@ fn read_snapshot(
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
                 startup_send: row.get(6)?,
+                image_paths: crate::session_chat_queue_attachments::decode(row.get(7)?),
             })
         })
         .map_err(sql_error)?
@@ -749,11 +778,13 @@ fn read_snapshot(
 }
 
 fn append_prompt(
+    paths: Option<&GxserverPaths>,
     db: &Connection,
     project_id: &str,
     session_id: &str,
     text: &str,
     startup_send: bool,
+    images: &[String],
 ) -> Result<SessionChatQueuedPrompt, DomainStateError> {
     let count: i64 = db
         .query_row(
@@ -778,10 +809,16 @@ fn append_prompt(
             |row| row.get(0),
         )
         .map_err(sql_error)?;
+    let id = create_prompt_id();
+    let image_paths = match paths {
+        Some(paths) => crate::session_chat_queue_attachments::store(paths, &id, images)?,
+        None => Vec::new(),
+    };
     let prompt = SessionChatQueuedPrompt {
-        id: create_prompt_id(),
+        id,
         text: text.to_string(),
         startup_send,
+        image_paths,
         state: SESSION_CHAT_QUEUE_STATE_QUEUED.to_string(),
         error_message: None,
         created_at: now_iso(),
@@ -791,9 +828,9 @@ fn append_prompt(
         r#"
         INSERT INTO session_chat_queued_prompts (
           promptId, projectId, sessionId, position, text,
-          state, errorMessage, createdAt, updatedAt, startupSend
+          state, errorMessage, createdAt, updatedAt, startupSend, imagePaths
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, 'queued', NULL, ?6, ?6, ?7)
+        VALUES (?1, ?2, ?3, ?4, ?5, 'queued', NULL, ?6, ?6, ?7, ?8)
         "#,
         params![
             prompt.id,
@@ -803,9 +840,15 @@ fn append_prompt(
             prompt.text,
             prompt.created_at,
             prompt.startup_send,
+            crate::session_chat_queue_attachments::encode(&prompt.image_paths),
         ],
     )
-    .map_err(sql_error)?;
+    .map_err(|error| {
+        if let Some(paths) = paths {
+            crate::session_chat_queue_attachments::remove(paths, &prompt.id);
+        }
+        sql_error(error)
+    })?;
     Ok(prompt)
 }
 
@@ -816,7 +859,7 @@ pub(crate) fn enqueue_session_chat_prompt(
     session_id: &str,
     text: &str,
 ) -> Result<SessionChatQueuedPrompt, DomainStateError> {
-    append_prompt(db, project_id, session_id, text, false)
+    append_prompt(None, db, project_id, session_id, text, false, &[])
 }
 
 fn update_prompt(
@@ -1160,7 +1203,7 @@ fn claim_prompt(
     project_id: &str,
     session_id: &str,
     prompt_id: &str,
-) -> Result<String, DomainStateError> {
+) -> Result<(String, Vec<String>), DomainStateError> {
     let prompt = read_prompt(db, project_id, session_id, prompt_id)?;
     if prompt.state == SESSION_CHAT_QUEUE_STATE_SENDING {
         return Err(DomainStateError::bad_request(
@@ -1184,7 +1227,7 @@ fn claim_prompt(
             "This prompt is being delivered right now.",
         ));
     }
-    Ok(prompt.text)
+    Ok((prompt.text, prompt.image_paths))
 }
 
 /// Turns the row this session is delivering into a startup send, so it waits for the input box of
@@ -1235,7 +1278,7 @@ fn read_prompt(
 ) -> Result<SessionChatQueuedPrompt, DomainStateError> {
     db.query_row(
         r#"
-        SELECT promptId, text, state, errorMessage, createdAt, updatedAt, startupSend
+        SELECT promptId, text, state, errorMessage, createdAt, updatedAt, startupSend, imagePaths
         FROM session_chat_queued_prompts
         WHERE promptId = ?1 AND projectId = ?2 AND sessionId = ?3
         "#,
@@ -1249,6 +1292,7 @@ fn read_prompt(
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
                 startup_send: row.get(6)?,
+                image_paths: crate::session_chat_queue_attachments::decode(row.get(7)?),
             })
         },
     )

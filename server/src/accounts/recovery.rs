@@ -821,7 +821,7 @@ async fn deliver(state: Arc<AppState>, plan: Plan) {
         let owned = state.clone();
         let pid = plan.project.clone();
         let sid = plan.session.clone();
-        let sender: crate::session_chat_queue::SessionChatQueueSender = Arc::new(move |text| {
+        let sender: crate::session_chat_queue::SessionChatQueueSender = Arc::new(move |text, _images| {
             let state = owned.clone();
             let pid = pid.clone();
             let sid = sid.clone();

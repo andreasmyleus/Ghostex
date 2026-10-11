@@ -1224,4 +1224,8 @@ pub const GXSERVER_STORAGE_MIGRATIONS: &[Migration] = &[
         id: "0043_session_chat_send_requests",
         sql: include_str!("migrations/0043_session_chat_send_requests.sql"),
     },
+    Migration {
+        id: "0044_session_chat_queued_images",
+        sql: include_str!("migrations/0044_session_chat_queued_images.sql"),
+    },
 ];

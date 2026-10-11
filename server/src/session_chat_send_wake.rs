@@ -18,10 +18,6 @@ pub(crate) const SESSION_CHAT_SESSION_STARTING: &str = "sessionStarting";
 /// (`wrap_restored_terminal_resume_command` in agents/helpers.rs).
 const RESTORE_BANNER: &str = "Restoring session...";
 
-/// How long a send carrying images waits for a starting agent. The queue cannot hold images, and
-/// the chat client gives the whole request 60 seconds.
-const IMAGE_SEND_START_WAIT_MS: u64 = 40_000;
-
 /// CDXC:SessionChat 2026-09-25 DECISION:
 /// User: pressing Enter in the chat must always send, even when the session "wasn't attached, or it wasn't awake". Sends that found no zmx daemon, or found the agent still printing its restore banner, came back as "input box is not accepting input" or "could not be cleared". Now the send wakes a sleeping session itself, and a session that is still starting takes the message as a startup send: the chat shows it at once and the queue types it the moment the input box appears, as a new chat already does (2026-09-09 decision).
 /// WHY: only a daemon that `zmx` reports missing is woken. A screen counts as starting when it shows the restore banner or nothing at all with no input box (`screen_shows_agent_starting`); since 2026-10-11 any other missing input box is held too (`holds_until_agent_takes_input`), because the queue types only into an input box it has seen, so a dialog cannot eat the message.
@@ -102,14 +98,10 @@ pub(crate) fn screen_shows_agent_starting(screen_tail: &[String]) -> bool {
 }
 
 /// CDXC:SessionChat 2026-10-11 DECISION:
-/// User: "due to the lag due to M drive when i just started a session and tried to send chat message there it goes in chat transcript then back to composer after few seconds. this shouldn't actually happen we should just keep it in chat and keep trying every X seconds until it does get posted. imagine the user sent it then went away. we need to self heal as i said many times before!! … doesn't matter the reason we need to have best self heal for all situations". A chat message refused because the agent's input box is not there yet (still starting, a shell still loading, a resume, a repaint, a panel) is never handed back to the composer: gxserver keeps it as a startup send in the session's queue, the chat draws it in the transcript as waiting, and the queue scheduler types it the moment the input box appears, retrying every 2 s and backing off to every 15 s for as long as the session lives (`session_chat_queue_undelivered.rs`). It survives closed clients and gxserver restarts because the queue is in SQLite. It ends up Not sent (with its reason, Retry and Remove) only when retrying cannot help: a question or dialog only the user can answer, or a refusal that is not about the input box. Images cannot wait in the queue, so a send with images keeps the old 40-second wait.
+/// User: "due to the lag due to M drive when i just started a session and tried to send chat message there it goes in chat transcript then back to composer after few seconds. this shouldn't actually happen we should just keep it in chat and keep trying every X seconds until it does get posted. imagine the user sent it then went away. we need to self heal as i said many times before!! … doesn't matter the reason we need to have best self heal for all situations". A chat message refused because the agent's input box is not there yet (still starting, a shell still loading, a resume, a repaint, a panel) is never handed back to the composer: gxserver keeps it as a startup send in the session's queue, the chat draws it in the transcript as waiting, and the queue scheduler types it the moment the input box appears, retrying every 2 s and backing off to every 15 s for as long as the session lives (`session_chat_queue_undelivered.rs`). It survives closed clients and gxserver restarts because the queue is in SQLite. It ends up Not sent (with its reason, Retry and Remove) only when retrying cannot help: a question or dialog only the user can answer, or a refusal that is not about the input box. Pictures wait with the text (session_chat_queue_attachments.rs).
 /// SEE-ALSO: packages/gx-chat-core/src/session/startup_sends.rs draws the held row in the transcript; apps/desktop/src/app/native_chat/startup_delivery.rs and message_actions.rs, and apps/mobile/app/src/chat/native/transcript/MessageActions.tsx, show its waiting state with Edit and Delete.
-pub(crate) fn holds_until_agent_takes_input(
-    error: &DomainStateError,
-    image_paths: &[String],
-) -> bool {
+pub(crate) fn holds_until_agent_takes_input(error: &DomainStateError) -> bool {
     error.code == "composerNotReady"
-        && image_paths.is_empty()
         && !error.message.ends_with("Answer it in chat before sending.")
 }
 
@@ -151,67 +143,6 @@ async fn provider_missing(state: &AppState, target: &SessionChatSendTarget) -> b
     .ok()
     .flatten()
     .unwrap_or(false)
-}
-
-/// Delivers a composer send that met a starting session: text goes into the queue as a startup
-/// send; images, which the queue cannot hold, wait here for the input box and then send.
-pub(crate) async fn deliver_when_started(
-    state: &AppState,
-    endpoint_path: String,
-    request_id: String,
-    params: &Map<String, Value>,
-    target: &SessionChatSendTarget,
-    text: &str,
-    image_paths: &[String],
-    draft_version: Option<&crate::session_chat_draft_versions::DraftVersion>,
-) -> RoutedResponse {
-    if image_paths.is_empty() {
-        return queue_startup_send(state, endpoint_path, request_id, params, target, text);
-    }
-    let wait = crate::session_chat_composer::wait_for_session_chat_composer_by_ids(
-        &state.paths,
-        state.metadata.server_id.as_str(),
-        &target.project_id,
-        &target.session_id,
-        crate::session_chat_composer::SessionChatComposerWaitPolicy {
-            settle_ms: 0,
-            timeout_ms: IMAGE_SEND_START_WAIT_MS,
-            unknown_hold_ms: IMAGE_SEND_START_WAIT_MS,
-        },
-    )
-    .await;
-    if wait != crate::session_chat_composer::SessionChatComposerWait::Ready {
-        return domain_error_response(
-            endpoint_path,
-            request_id,
-            DomainStateError {
-                code: "composerNotReady",
-                message: "The agent is still starting, so the message with images was not sent. Send it again once its input box appears.".to_string(),
-            },
-        );
-    }
-    match crate::session_chat_queue_runtime::send_session_chat_message_with_draft(
-        state,
-        &target.project_id,
-        &target.session_id,
-        text,
-        image_paths,
-        crate::session_chat_queue_runtime::SessionChatMessageSource::Composer,
-        draft_version,
-        false,
-    )
-    .await
-    {
-        Ok(text_bytes) => routed_json(
-            Some(endpoint_path),
-            StatusCode::OK,
-            rpc_success(
-                request_id,
-                json!({ "queued": true, "textBytes": text_bytes }),
-            ),
-        ),
-        Err(error) => domain_error_response(endpoint_path, request_id, error),
-    }
 }
 
 /// CDXC:SessionTitles 2026-09-27 WHY:
@@ -310,7 +241,7 @@ pub(crate) fn start_draft_agent_if_missing(state: &AppState, target: &SessionCha
 }
 
 /// A send accepted now and typed by the queue once the agent's input box appears; the chat draws
-/// it in the transcript, not in the queue strip.
+/// it in the transcript, not in the queue strip. The row keeps the send's `imagePaths` too.
 pub(crate) fn queue_startup_send(
     state: &AppState,
     endpoint_path: String,

@@ -220,7 +220,6 @@ async fn send_session_chat_message_attempt(
     // A draft whose Run on row picked a box has no agent to wait for: its first message starts the
     // box (agents/draft_run_location.rs), so it takes the direct send below.
     if crate::agents::session_is_draft(&target.session)
-        && image_paths.is_empty()
         && crate::agentbox::pending_session_agentbox(&target.session).is_none()
     {
         let queued = crate::session_chat_send_wake::queue_startup_send(
@@ -247,23 +246,13 @@ async fn send_session_chat_message_attempt(
             &target.session_id,
         )
     {
-        if image_paths.is_empty() {
-            return crate::session_chat_send_wake::queue_startup_send(
-                state,
-                endpoint_path,
-                request_id,
-                &params,
-                &target,
-                &text,
-            );
-        }
-        return domain_error_response(
+        return crate::session_chat_send_wake::queue_startup_send(
+            state,
             endpoint_path,
             request_id,
-            DomainStateError {
-                code: "invalidState",
-                message: "The model change you picked has not applied yet, so this message was not sent. It is still in the chat box.".to_string(),
-            },
+            &params,
+            &target,
+            &text,
         );
     }
     match crate::session_chat_queue_runtime::send_session_chat_message_with_draft(
@@ -289,24 +278,16 @@ async fn send_session_chat_message_attempt(
         Err(error)
             if error.code == crate::session_chat_send_wake::SESSION_CHAT_SESSION_STARTING =>
         {
-            crate::session_chat_send_wake::deliver_when_started(
+            crate::session_chat_send_wake::queue_startup_send(
                 state,
                 endpoint_path,
                 request_id,
                 &params,
                 &target,
                 &text,
-                &image_paths,
-                draft_version.as_ref(),
             )
-            .await
         }
-        Err(error)
-            if crate::session_chat_send_wake::holds_until_agent_takes_input(
-                &error,
-                &image_paths,
-            ) =>
-        {
+        Err(error) if crate::session_chat_send_wake::holds_until_agent_takes_input(&error) => {
             crate::session_chat_send_diagnostics::record_send_recovery(
                 state,
                 "sessionChatSendHeldForInputBox",

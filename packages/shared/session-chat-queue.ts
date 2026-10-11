@@ -44,6 +44,8 @@ export interface SessionChatQueuedPrompt {
   startupSend?: boolean;
   /** The exact text that will be sent, attachments already interpolated. */
   text: string;
+  /** The queue's own copies of the pictures sent with the message; absent when there are none. */
+  imagePaths?: string[];
   state: SessionChatQueuedPromptState;
   /** Set only when `state === "failed"`: why the delivery attempt failed. */
   errorMessage?: string;

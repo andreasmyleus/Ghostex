@@ -147,6 +147,7 @@ pub mod session_chat_pi_status;
 pub mod session_chat_question_liveness;
 pub mod session_chat_question_row_align;
 pub mod session_chat_queue;
+pub mod session_chat_queue_attachments;
 pub mod session_chat_queue_runtime;
 pub mod session_chat_queue_undelivered;
 pub mod session_chat_read;
