@@ -160,11 +160,8 @@ pub(super) async fn restart_exited_agent_before_send(
             crate::agents::identity::normalize_agent_id(terminal_agent).as_deref(),
             Some("claude" | "codex")
         );
-    let starting = detection
-        .composer
-        .screen_tail
-        .iter()
-        .any(|line| line.trim() == "Restoring session...");
+    let starting =
+        crate::session_chat_send_wake::screen_shows_agent_starting(&detection.composer.screen_tail);
     if !(exit_on_screen || input_box_missing) || starting {
         return None;
     }

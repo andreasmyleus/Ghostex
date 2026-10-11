@@ -122,6 +122,9 @@ struct ReadyDelivery {
     project_id: String,
     session_id: String,
     prompt_id: String,
+    /// A message the user already sent, held until the agent takes input: it is put back for as
+    /// long as the input box is missing (CDXC:SessionChat 2026-10-11 in session_chat_send_wake.rs).
+    startup_send: bool,
     model_selection: Option<crate::session_chat_model_selection::PendingModelSelection>,
 }
 
@@ -272,6 +275,7 @@ impl SessionChatQueueRuntime {
                     project_id,
                     session_id,
                     prompt_id: String::new(),
+                    startup_send: false,
                     model_selection: Some(selection.clone()),
                 });
                 continue;
@@ -302,7 +306,17 @@ impl SessionChatQueueRuntime {
                 && composer.state != crate::session_chat_composer::SessionChatComposerState::Ready
             {
                 self.reset_gate(&key);
-                (self.compacting_refresher)(&project_id, &session_id, composer_agent.as_deref());
+                // The screen is read again on the startup send's backoff (every 2 s, then less
+                // often), not every tick, so an agent that takes minutes to come up is not
+                // captured once a second the whole time.
+                let head_id = snapshot.deliverable_head().map(|head| head.id.as_str());
+                if head_id.is_none_or(|id| self.composer_holds.screen_read_due(&key, id, now)) {
+                    (self.compacting_refresher)(
+                        &project_id,
+                        &session_id,
+                        composer_agent.as_deref(),
+                    );
+                }
                 continue;
             }
             /*
@@ -389,6 +403,7 @@ impl SessionChatQueueRuntime {
                         project_id,
                         session_id,
                         prompt_id: head.id.clone(),
+                        startup_send: head.startup_send,
                         model_selection: None,
                     });
                     continue;
@@ -433,6 +448,7 @@ impl SessionChatQueueRuntime {
                 project_id,
                 session_id,
                 prompt_id: head.id.clone(),
+                startup_send: head.startup_send,
                 model_selection: None,
             });
         }
@@ -470,9 +486,9 @@ impl SessionChatQueueRuntime {
         marks it `failed` with the reason on error, so "Send now" and the
         scheduler can never both deliver the same row.
         */
-        let may_hold = self
-            .composer_holds
-            .may_hold(&key, &ready.prompt_id, Utc::now());
+        let may_hold =
+            self.composer_holds
+                .may_hold(&key, &ready.prompt_id, ready.startup_send, Utc::now());
         let delivered = deliver_session_chat_queued_prompt(
             &self.paths,
             &self.server_id,
@@ -487,7 +503,7 @@ impl SessionChatQueueRuntime {
             (self.publisher_factory)(&ready.project_id, &ready.session_id)();
             if delivery.held {
                 self.composer_holds
-                    .record(&key, &ready.prompt_id, Utc::now());
+                    .record(&key, &ready.prompt_id, ready.startup_send, Utc::now());
             } else {
                 self.composer_holds.clear(&key);
             }

@@ -706,17 +706,31 @@ fn remove_queue(state: &mut ChatState, action: &UserAction) -> Vec<Effect> {
     let document = crate::composer::document::queue(state);
     let mut edit = None;
     if action.param("edit") == Some(&Value::Bool(true)) {
-        let Some(row) = document
+        // A startup send waiting for the agent is drawn in the transcript, not in the strip, so
+        // its Edit reads the row from the daemon's whole queue (CDXC:SessionChat 2026-10-11 in
+        // server/src/session_chat_send_wake.rs).
+        let row = document
             .prompts
             .iter()
             .find(|prompt| prompt.id == prompt_id)
-        else {
+            .map(|row| (row.state.clone(), row.text.clone()))
+            .or_else(|| {
+                let row = state
+                    .session
+                    .queue_prompts
+                    .as_deref()?
+                    .iter()
+                    .find(|row| row.get("id").and_then(Value::as_str) == Some(prompt_id))?;
+                let field = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or_default();
+                Some((field("state").to_string(), field("text").to_string()))
+            });
+        let Some((row_state, row_text)) = row else {
             return Vec::new();
         };
-        if !document.capabilities.can_edit || is_queue_row_busy(&row.state) {
+        if !document.capabilities.can_edit || is_queue_row_busy(&row_state) {
             return Vec::new();
         }
-        edit = Some(row.text.clone());
+        edit = Some(row_text);
     }
     let prompt_id = prompt_id.to_string();
     let effects = queue_rpc(

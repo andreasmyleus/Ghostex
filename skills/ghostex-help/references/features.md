@@ -939,7 +939,9 @@ terminal). Commands: `ghostex send-session-chat-message`,
 `ghostex answer-session-chat-prompt`.
 Sending a message to a sleeping session wakes it. While the agent is still
 starting, the message shows in the chat right away and is typed in as soon as
-the agent's input box appears. If Claude Code has its settings, a plugin
+the agent's input box appears. It keeps waiting for as long as the session is
+open, even if you close Ghostex, and until it goes out you can edit or delete it
+from the buttons under the message. If Claude Code has its settings, a plugin
 recommendation, or its background-agents list over the input box, sending closes
 it first (a recommendation is declined for now). A question or approval the
 agent is waiting on still has to be answered in its card.

@@ -301,6 +301,29 @@ async fn send_session_chat_message_attempt(
             )
             .await
         }
+        Err(error)
+            if crate::session_chat_send_wake::holds_until_agent_takes_input(
+                &error,
+                &image_paths,
+            ) =>
+        {
+            crate::session_chat_send_diagnostics::record_send_recovery(
+                state,
+                "sessionChatSendHeldForInputBox",
+                &target.project_id,
+                &target.session_id,
+                &error.message,
+                &[],
+            );
+            crate::session_chat_send_wake::queue_startup_send(
+                state,
+                endpoint_path,
+                request_id,
+                &params,
+                &target,
+                &text,
+            )
+        }
         Err(error) => domain_error_response(endpoint_path, request_id, error),
     }
 }

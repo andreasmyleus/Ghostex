@@ -217,6 +217,13 @@ impl NativeChatView {
         // React passed `onSavePrompt` only when the host had a stash bridge, the same capability
         // behind the composer's Stash control, so a host without one offers Copy alone.
         let savable = self.snapshot["composerActions"]["stash"] == true;
+        // A message gxserver still holds for the agent can be taken back the way a queued row can
+        // (CDXC:SessionChat 2026-10-11 in server/src/session_chat_send_wake.rs).
+        let waiting = &message["startupDelivery"];
+        let waiting_prompt = (waiting["state"] == "queued").then(|| waiting["promptId"].clone());
+        let queue_capabilities = &self.snapshot["queue"]["capabilities"];
+        let editable = waiting_prompt.is_some() && queue_capabilities["canEdit"] == true;
+        let removable = waiting_prompt.is_some() && queue_capabilities["canRemove"] == true;
         /*
         CDXC:SessionChat 2026-09-19 SEE-ALSO:
         `.ghostex-chat-message-actions` in packages/core-ui/styles/chat.css (deleted 2026-09-25)
@@ -266,6 +273,22 @@ impl NativeChatView {
             .flex()
             .items_center()
             .gap(px(2.0 * p.scale))
+            .when(editable, |buttons| {
+                buttons.child(button(
+                    "edit-waiting",
+                    "Edit message".into(),
+                    "titlebar/pencil.svg",
+                    json!({"type":"removeQueue","promptId":waiting_prompt.clone(),"edit":true}),
+                ))
+            })
+            .when(removable, |buttons| {
+                buttons.child(button(
+                    "delete-waiting",
+                    "Delete message".into(),
+                    "titlebar/trash.svg",
+                    json!({"type":"removeQueue","promptId":waiting_prompt.clone()}),
+                ))
+            })
             .when(rewindable, |buttons| {
                 buttons.child(button(
                     "rewind",
