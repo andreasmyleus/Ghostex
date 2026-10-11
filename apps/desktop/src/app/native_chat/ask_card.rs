@@ -5,7 +5,7 @@
 //! answers come back as green chips.
 //!
 //! CDXC:SessionChat 2026-10-11 DECISION:
-//! User picked "Clear ask, clear answer" for the agent's question card, then "please same style for the html modal also and the inline questions": all three places a question appears share this look. Amber marks a question waiting for the reader (its tile and the picked option), green an answered one, muted one that got no answer.
+//! User picked "Clear ask, clear answer" for the agent's question card, then "please same style for the html modal also and the inline questions": all three places a question appears share this look. Amber marks a question waiting for the reader (its tile, progress bars and the picked option), green an answered one, muted one that got no answer. The amber is a light tint, not a strong one ("please make the yellow more subtle" on the page cards, then "yellow + dark all" for the chat): the tile fills 9% with a 14% ring and an 80% icon, a picked option takes a 32% border over a 4% wash with an 85% mark.
 //!
 //! CDXC:SessionChat 2026-10-11 SEE-ALSO:
 //! The phone's copy is apps/mobile/app/src/chat/native/cards/askCard.tsx; the HTML question pages draw it in server/src/visual_pages/kit.rs. Change them together.
@@ -49,17 +49,28 @@ pub(super) fn tone_color(tone: AskTone, p: &ChatAppearance) -> Hsla {
 pub(super) fn ask_tile(icon: &'static str, tone: AskTone, p: &ChatAppearance) -> AnyElement {
     let s = p.scale;
     let hue = tone_color(tone, p);
+    // A waiting question's amber is a light tint; the answered and quiet tiles keep their strength.
+    let (ring, fill, ink) = if tone == AskTone::Ask {
+        (0.14, 0.09, 0.8)
+    } else {
+        (0.22, 0.15, 1.0)
+    };
     div()
         .flex_shrink_0()
         .size(px(28.0 * s))
         .rounded(px(8.0 * s))
         .border_1()
-        .border_color(hue.opacity(0.22))
-        .bg(hue.opacity(0.15))
+        .border_color(hue.opacity(ring))
+        .bg(hue.opacity(fill))
         .flex()
         .items_center()
         .justify_center()
-        .child(svg().path(icon).size(px(15.0 * s)).text_color(hue))
+        .child(
+            svg()
+                .path(icon)
+                .size(px(15.0 * s))
+                .text_color(hue.opacity(ink)),
+        )
         .into_any_element()
 }
 
@@ -156,7 +167,7 @@ pub(super) fn chevron(open: bool, p: &ChatAppearance) -> AnyElement {
 /// One short bar per question, the asked ones lit: the progress through a multi-question ask.
 pub(super) fn progress_dots(index: usize, count: usize, p: &ChatAppearance) -> AnyElement {
     let s = p.scale;
-    let hue = ask_color(p);
+    let hue = ask_color(p).opacity(0.8);
     div()
         .flex_shrink_0()
         .flex()
@@ -311,11 +322,13 @@ impl NativeChatView {
         cx: &Context<Self>,
     ) -> AnyElement {
         let s = p.scale;
-        let hue = if option.answered {
-            p.success()
+        // A pick waiting to be sent is a light amber tint; once sent it reads green at full strength.
+        let (hue, edge, wash, ink) = if option.answered {
+            (p.success(), 0.55, 0.08, 1.0)
         } else {
-            ask_color(p)
+            (ask_color(p), 0.32, 0.04, 0.85)
         };
+        let mark_hue = hue.opacity(ink);
         let AskOption {
             id,
             label,
@@ -337,7 +350,11 @@ impl NativeChatView {
             .items_center()
             .justify_center()
             .border(px(1.5 * s))
-            .border_color(if picked { hue } else { p.muted.opacity(0.7) })
+            .border_color(if picked {
+                mark_hue
+            } else {
+                p.muted.opacity(0.7)
+            })
             .map(|mark| {
                 if multiple {
                     mark.rounded(px(4.0 * s))
@@ -346,7 +363,7 @@ impl NativeChatView {
                 }
             })
             .when(picked && multiple, |mark| {
-                mark.bg(hue).child(
+                mark.bg(mark_hue).child(
                     svg()
                         .path("titlebar/check.svg")
                         .size(px(11.0 * s))
@@ -354,7 +371,7 @@ impl NativeChatView {
                 )
             })
             .when(picked && !multiple, |mark| {
-                mark.child(div().size(px(8.0 * s)).rounded_full().bg(hue))
+                mark.child(div().size(px(8.0 * s)).rounded_full().bg(mark_hue))
             });
         div()
             .id(id)
@@ -375,16 +392,16 @@ impl NativeChatView {
             .rounded(px(10.0 * s))
             .border_1()
             .border_color(if picked {
-                hue.opacity(0.55)
+                hue.opacity(edge)
             } else {
                 p.control_border
             })
             .bg(if picked {
-                hue.opacity(0.08)
+                hue.opacity(wash)
             } else if p.light {
                 p.background
             } else {
-                p.input
+                p.card_row
             })
             .when(!enabled && !picked, |row| row.opacity(0.55))
             .when(enabled, |row| {

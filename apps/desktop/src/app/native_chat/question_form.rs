@@ -433,7 +433,7 @@ impl NativeChatView {
                         .rounded(px(9.0 * s))
                         .border_1()
                         .border_color(p.input_border)
-                        .bg(if p.light { p.background } else { p.input })
+                        .bg(if p.light { p.background } else { p.card_row })
                         .child(
                             Textarea::new(input)
                                 .aria_label("Note")

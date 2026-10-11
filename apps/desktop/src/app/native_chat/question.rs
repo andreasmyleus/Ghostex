@@ -99,7 +99,7 @@ impl NativeChatView {
                         .px(px(10.0 * s))
                         .py(px(8.0 * s))
                         .rounded(px(8.0 * s))
-                        .bg(p.input)
+                        .bg(p.card_row)
                         .font_family(super::fonts::CHAT_MONO)
                         .text_size(px(12.6 * s))
                         .line_height(px(18.0 * s))
@@ -180,7 +180,7 @@ impl NativeChatView {
                     .rounded(px(9.0 * s))
                     .border_1()
                     .border_color(p.input_border)
-                    .bg(if p.light { p.background } else { p.input })
+                    .bg(if p.light { p.background } else { p.card_row })
                     .child(
                         gpui::svg()
                             .path("titlebar/pencil.svg")

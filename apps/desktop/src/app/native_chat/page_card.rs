@@ -218,7 +218,7 @@ impl NativeChatView {
             });
         };
         let open_card = open.clone();
-        let window_bg = p.input;
+        let window_bg = p.card_row;
         let bar = div()
             .flex()
             .items_center()
