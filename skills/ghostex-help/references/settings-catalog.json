@@ -1042,7 +1042,7 @@
     {
       "key": "markedHandoversStyle",
       "title": "Marked sections style",
-      "subtitle": "How the chat colours the sections an agent marks: coloured labels, a thin left rule, or a coloured badge in place of the emoji. Every style also shows a summary of what needs you at the top of the message. Shown while Marked handovers is on.",
+      "subtitle": "How the chat colours the sections an agent marks: coloured labels, a thin left rule, or a coloured badge in place of the emoji. Shown while Marked handovers is on.",
       "tab": "settings",
       "tabTitle": "General",
       "group": "chat",

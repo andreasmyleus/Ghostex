@@ -80,8 +80,6 @@ pub(super) enum Segment {
         meta: super::marked_sections::SectionMeta,
         lines: Vec<String>,
     },
-    /// The chips that count a reply's marked sections.
-    Summary(Vec<super::marked_sections::SummaryChip>),
     Alert {
         kind: String,
         children: Vec<Segment>,
@@ -188,14 +186,6 @@ pub(super) fn parse(lines: &[&str]) -> Vec<Segment> {
                 children: parse(&lines[index + 1..end.min(lines.len())]),
             });
             index = end + 1;
-            continue;
-        }
-        if let Some(chips) = line.strip_prefix(super::marked_sections::SUMMARY_OPEN) {
-            flush(&mut prose, &mut segments);
-            segments.push(Segment::Summary(
-                serde_json::from_str(chips).unwrap_or_default(),
-            ));
-            index += 1;
             continue;
         }
         if let Some(meta) = line.strip_prefix(super::marked_sections::SECTION_OPEN) {
@@ -588,15 +578,6 @@ impl NativeChatView {
                     }
                 }))
                 .into_any_element(),
-            Segment::Summary(chips) => {
-                let chat = cx.weak_entity();
-                let message = id.to_string();
-                super::marked_sections::summary_strip(id, chips, &super::marked_sections::look(p), move |section, _, cx| {
-                    let _ = chat.update(cx, |chat, cx| {
-                        chat.jump_to_marked_section(&message, section, cx)
-                    });
-                })
-            }
             Segment::Section { meta, lines } => {
                 let key = format!("{id}:{index}");
                 let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
@@ -616,7 +597,6 @@ impl NativeChatView {
                             meta,
                             None,
                             draw(&lines),
-                            vec![super::marked_sections::top_recorder(id, meta.index)],
                             &super::marked_sections::look(p),
                         )
                     }
@@ -630,7 +610,6 @@ impl NativeChatView {
                             meta,
                             lead,
                             draw(rest),
-                            vec![super::marked_sections::top_recorder(id, meta.index)],
                             &super::marked_sections::look(p),
                         )
                     }

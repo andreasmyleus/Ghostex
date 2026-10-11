@@ -1,4 +1,4 @@
-//! How a marked section and the summary strip look: the palette, the three styles, and the sample
+//! How a marked section looks: the palette, the three styles, and the sample
 //! reply the Settings preview draws in each.
 //!
 //! The file depends only on gpui and the chat core, so Settings includes it as its own module
@@ -6,7 +6,7 @@
 //! the standalone modal demo, which has no chat renderer to call into.
 //!
 //! CDXC:MarkedHandovers 2026-10-11 DECISION:
-//! User picked three styles from the mockups (docs/2026-10-11/chat-section-markers/index.html): A, a thin left rule in the kind's colour with the emoji kept; C, a coloured badge naming the kind in place of the emoji, dropping a bold label that only repeats it; D, the emoji kept and the label coloured, the default. Every style shows the summary strip. The chat colours marked sections whenever a reply has them: orchestrators and their threads mark their handovers even while Marked handovers is off (that switch extends marking to every other session).
+//! User picked three styles from the mockups (docs/2026-10-11/chat-section-markers/index.html): A, a thin left rule in the kind's colour with the emoji kept; C, a coloured badge naming the kind in place of the emoji, dropping a bold label that only repeats it; D, the emoji kept and the label coloured, the default. The chat colours marked sections whenever a reply has them: orchestrators and their threads mark their handovers even while Marked handovers is off (that switch extends marking to every other session). Supersedes the same day's summary strip at the top of the message (user: "let's actually just remove the summary at the top i don't think it's useful at all").
 //! SEE-ALSO: apps/desktop/src/app/native_chat/marked_sections.rs (the transcript's use of it), apps/mobile/app/src/chat/native/transcript/markdown/MarkedSections.tsx (the phone draws the same, with the same palette).
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -17,7 +17,6 @@ use serde::Deserialize;
 
 pub(crate) const SECTION_OPEN: &str = "\u{E000}section:";
 pub(crate) const SECTION_CLOSE: &str = "\u{E000}/section";
-pub(crate) const SUMMARY_OPEN: &str = "\u{E000}summary:";
 
 /// The "In progress" colour (user pick 2026-10-11: #00A6ED). It reads 2.7:1 on a white chat, too
 /// faint for a label, so the light chat takes the same hue darkened to #0077B6 (4.9:1).
@@ -66,23 +65,11 @@ impl MarkerStyle {
 #[serde(rename_all = "camelCase", default)]
 pub(crate) struct SectionMeta {
     pub(crate) kind: String,
-    pub(crate) index: usize,
     pub(crate) emoji: String,
     pub(crate) name: String,
     pub(crate) label: String,
     pub(crate) label_repeats: bool,
     pub(crate) lead: String,
-}
-
-/// One chip of the summary strip.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
-pub(crate) struct SummaryChip {
-    pub(crate) kind: String,
-    pub(crate) emoji: String,
-    pub(crate) count: usize,
-    pub(crate) text: String,
-    pub(crate) section: usize,
 }
 
 /// The chat tones a section is drawn against.
@@ -211,13 +198,12 @@ fn first_line_opening(
 
 /// One section in `style`. `lead` is the rest of the first line drawn as Markdown (styles C and D);
 /// `body` is the section's lines drawn as Markdown: all of them for A, the ones after the first
-/// for C and D. `layers` go behind the section (the transcript's position recorder).
+/// for C and D.
 pub(crate) fn section(
     style: MarkerStyle,
     meta: &SectionMeta,
     lead: Option<AnyElement>,
     body: Vec<AnyElement>,
-    layers: Vec<AnyElement>,
     look: &MarkedLook,
 ) -> AnyElement {
     let s = look.scale;
@@ -227,8 +213,7 @@ pub(crate) fn section(
         .flex_col()
         .w_full()
         .min_w_0()
-        .gap(px(look.block_gap))
-        .children(layers);
+        .gap(px(look.block_gap));
     if !style.draws_first_line() {
         return column
             .border_l(px(3.0 * s))
@@ -252,67 +237,13 @@ pub(crate) fn section(
     column.child(header).children(body).into_any_element()
 }
 
-/// The summary strip: one chip per counted kind; a press runs `jump` with the chip's section.
-pub(crate) fn summary_strip(
-    id: &str,
-    chips: &[SummaryChip],
-    look: &MarkedLook,
-    jump: impl Fn(usize, &mut Window, &mut App) + Clone + 'static,
-) -> AnyElement {
-    let s = look.scale;
-    let (fill, edge) = tint(look);
-    div()
-        .flex()
-        .flex_wrap()
-        .w_full()
-        .gap(px(6.0 * s))
-        .pb(px(12.0 * s))
-        .border_b_1()
-        .border_dashed()
-        .border_color(look.border)
-        .children(chips.iter().enumerate().map(|(index, chip)| {
-            let color = kind_color(&chip.kind, look.light);
-            let section = chip.section;
-            let jump = jump.clone();
-            div()
-                .id(SharedString::from(format!("{id}:marked-summary:{index}")))
-                .flex()
-                .items_center()
-                .gap(px(4.0 * s))
-                .px(px(9.0 * s))
-                .py(px(5.0 * s))
-                .rounded_full()
-                .border_1()
-                .border_color(color.opacity(edge))
-                .bg(color.opacity(fill))
-                .hover(move |style| style.bg(color.opacity(fill + 0.08)))
-                .text_color(color)
-                .text_size(px(12.0 * s))
-                .line_height(px(14.0 * s))
-                .child(chip.emoji.clone())
-                .child(
-                    div()
-                        .font_weight(FontWeight::BOLD)
-                        .child(chip.count.to_string()),
-                )
-                .child(chip.text.clone())
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    jump(section, window, cx)
-                })
-                .into_any_element()
-        }))
-        .into_any_element()
-}
-
 /// The reply the Settings preview draws in every style: the mockup's orchestrator handover.
 const PREVIEW_REPLY: &str = "Here's where the three threads stand after this round.\n\n✅ **Done:**\n- The questions form draws on desktop and the web build; picks survive a reload.\n- Settings > Skills: the trash button comes first.\n\n🛫 **Kicked off:** a thread for the Windows installer.\n\n🔄 **In progress:**\n- Phone chat: the note box still loses focus when the keyboard opens.\n- Windows installer: started this turn.\n\n⚠️ **Read this:** a questions block with more than 20 questions is now refused with an error.\n\n❓ **Needs you:**\n- **Q1** Should a sent form collapse to one line? (a) collapse (b) stay open\n- **Q2** OK to ship the phone part first? (a) yes (b) wait\n\n🧪 Untested: answering from the floating page on Windows.";
 
-/// The preview reply's marked text split at its marks: prose, sections and the summary.
+/// The preview reply's marked text split at its marks: prose and sections.
 enum PreviewPart {
     Prose(String),
     Section(SectionMeta, Vec<String>),
-    Summary(Vec<SummaryChip>),
 }
 
 fn preview_parts(lines: &[&str]) -> Vec<PreviewPart> {
@@ -327,12 +258,7 @@ fn preview_parts(lines: &[&str]) -> Vec<PreviewPart> {
     let mut index = 0;
     while index < lines.len() {
         let line = lines[index];
-        if let Some(chips) = line.strip_prefix(SUMMARY_OPEN) {
-            flush(&mut prose, &mut parts);
-            parts.push(PreviewPart::Summary(
-                serde_json::from_str(chips).unwrap_or_default(),
-            ));
-        } else if let Some(meta) = line.strip_prefix(SECTION_OPEN) {
+        if let Some(meta) = line.strip_prefix(SECTION_OPEN) {
             flush(&mut prose, &mut parts);
             let end = lines[index + 1..]
                 .iter()
@@ -372,7 +298,6 @@ pub(crate) fn preview_reply(
         .map(|(index, part)| {
             let key = format!("{id}:{index}");
             match part {
-                PreviewPart::Summary(chips) => summary_strip(&key, &chips, look, |_, _, _| {}),
                 PreviewPart::Prose(content) => text(key, content),
                 PreviewPart::Section(meta, lines) => {
                     let (lead, body) = if style.draws_first_line() {
@@ -386,7 +311,7 @@ pub(crate) fn preview_reply(
                         .then(|| text(format!("{key}:body"), body))
                         .into_iter()
                         .collect();
-                    section(style, &meta, lead, body, Vec::new(), look)
+                    section(style, &meta, lead, body, look)
                 }
             }
         })

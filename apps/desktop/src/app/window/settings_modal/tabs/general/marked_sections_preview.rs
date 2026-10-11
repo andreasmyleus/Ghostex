@@ -44,7 +44,7 @@ impl GeneralTab {
             .spec(
                 KEY,
                 "Marked sections style",
-                "How the chat colours the sections an agent marks. Every style also shows a summary of what needs you at the top of the message.",
+                "How the chat colours the sections an agent marks.",
             )
             .dependent();
         let select = settings_select(
@@ -185,7 +185,7 @@ impl GeneralTab {
             "Marked sections styles",
             Some(
                 div()
-                    .child("The same reply in each style. Every style shows the summary of what needs you at the top.")
+                    .child("The same reply in each style.")
                     .into_any_element(),
             ),
             1180.0,

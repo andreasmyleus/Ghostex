@@ -1,92 +1,75 @@
 //! Marked sections: the parts of an agent's reply that start with a Marked handovers marker
 //! (❓ Needs you, ✅ Done, ⚠️ Read this, 🛫 Kicked off, 🔄 In progress, 🧪 Untested, 🚀 Shipped, 🛑 Blocked),
-//! tagged with their kind so every chat draws them in that kind's colour, and the summary of the
-//! ones that ask something of the reader.
+//! tagged with their kind so every chat draws them in that kind's colour.
 //!
 //! The pass runs over the native Markdown (`native_markdown.rs`) and wraps each section in marks,
-//! the way an alert or a table is wrapped:
-//!
-//!   * `\u{e000}summary:[…]` first, when anything is counted: one chip per counted kind, with the
-//!     kind, its emoji, the count, the words after it and the index of the first section it jumps to;
-//!   * `\u{e000}section:{…}` before a section's lines and `\u{e000}/section` after them. The JSON names
-//!     the kind, the section's index, the emoji, the kind's own name, the bold or `Label:` text the
-//!     line started with (`label`, empty when there is none), whether that label only repeats the
-//!     kind's name (`labelRepeats`), and the rest of the first line (`lead`). The lines in between
-//!     are the section exactly as the agent wrote it, so a renderer that keeps the emoji draws them
-//!     as they are and one that replaces it draws its own first line from the JSON and the lines
-//!     after the first.
+//! the way an alert or a table is wrapped: `\u{e000}section:{…}` before a section's lines and
+//! `\u{e000}/section` after them. The JSON names the kind, the emoji, the kind's own name, the bold
+//! or `Label:` text the line started with (`label`, empty when there is none), whether that label
+//! only repeats the kind's name (`labelRepeats`), and the rest of the first line (`lead`). The lines
+//! in between are the section exactly as the agent wrote it, so a renderer that keeps the emoji
+//! draws them as they are and one that replaces it draws its own first line from the JSON and the
+//! lines after the first.
 //!
 //! CDXC:MarkedHandovers 2026-10-11 DECISION:
-//! User: the chat colours the sections an agent marks, in one of three styles picked in Settings > Chat under Marked handovers ("Marked sections style": a thin left rule, a coloured badge in place of the emoji, or coloured labels, the default), and every style shows a summary strip at the top of the message with chips counting the marked items ("❓ 2 need you · ⚠️ 1 to read · 🧪 1 untested"; a chip jumps to its section; no strip when nothing is counted). A bold label line and the bullets under it are one section. Colours are the mockup's palette (docs/2026-10-11/chat-section-markers/index.html), In progress #00A6ED; 🛫 Kicked off (user: "let's call it 'Kicked off'", work started this turn) is pink and is not counted, since it asks nothing of the reader. It applies to every agent's replies that carry markers (orchestrators and their threads always mark their handovers; Marked handovers extends that to every session); copying a message still gives the agent's own text (`copyText` is the unmarked body).
+//! User: the chat colours the sections an agent marks, in one of three styles picked in Settings > Chat under Marked handovers ("Marked sections style": a thin left rule, a coloured badge in place of the emoji, or coloured labels, the default). A bold label line and the bullets under it are one section. Colours are the mockup's palette (docs/2026-10-11/chat-section-markers/index.html), In progress #00A6ED; 🛫 Kicked off (user: "let's call it 'Kicked off'", work started this turn) is pink. It applies to every agent's replies that carry markers (orchestrators and their threads always mark their handovers; Marked handovers extends that to every session); copying a message still gives the agent's own text (`copyText` is the unmarked body). Supersedes the same day's summary strip of chips at the top of the message counting what needs the reader (user: "let's actually just remove the summary at the top i don't think it's useful at all").
 //! SEE-ALSO: apps/desktop/src/app/native_chat/marked_sections.rs (GPUI drawing and the palette), apps/mobile/app/src/chat/native/transcript/markdown/MarkedSections.tsx (phone drawing), server/src/agents/marked_handovers.rs (the note that asks agents for these markers; the emoji and names must match it).
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::transcript::jsstr::{js_trim, js_trim_end, js_trim_start, split_lf};
 use crate::transcript::native_markdown::{fence_close, fence_open, NATIVE_MARK};
 
 pub const NATIVE_SECTION_OPEN: &str = "\u{e000}section:";
 pub const NATIVE_SECTION_CLOSE: &str = "\u{e000}/section";
-pub const NATIVE_SUMMARY_OPEN: &str = "\u{e000}summary:";
 
 /// One marker: the kind id the renderers colour by, the emoji agents write, and the kind's name.
 struct Marker {
     kind: &'static str,
     emoji: &'static str,
     name: &'static str,
-    /// What a summary chip says after the count (one, more than one); `None` is not counted.
-    counted: Option<(&'static str, &'static str)>,
 }
 
-/// In the order the summary lists the counted kinds.
 const MARKERS: [Marker; 8] = [
     Marker {
         kind: "need",
         emoji: "\u{2753}",
         name: "Needs you",
-        counted: Some(("needs you", "need you")),
     },
     Marker {
         kind: "read",
         emoji: "\u{26a0}\u{fe0f}",
         name: "Read this",
-        counted: Some(("to read", "to read")),
     },
     Marker {
         kind: "blocked",
         emoji: "\u{1f6d1}",
         name: "Blocked",
-        counted: Some(("blocked", "blocked")),
     },
     Marker {
         kind: "untested",
         emoji: "\u{1f9ea}",
         name: "Untested",
-        counted: Some(("untested", "untested")),
     },
     Marker {
         kind: "done",
         emoji: "\u{2705}",
         name: "Done",
-        counted: None,
     },
     Marker {
         kind: "kicked",
         emoji: "\u{1f6eb}",
         name: "Kicked off",
-        counted: None,
     },
     Marker {
         kind: "progress",
         emoji: "\u{1f504}",
         name: "In progress",
-        counted: None,
     },
     Marker {
         kind: "shipped",
         emoji: "\u{1f680}",
         name: "Shipped",
-        counted: None,
     },
 ];
 
@@ -295,28 +278,14 @@ fn section_end(lines: &[&str], start: usize) -> usize {
     lines.len()
 }
 
-/// How many items a section holds: its top-level bullets, or one when it has none.
-fn item_count(lines: &[&str]) -> usize {
-    let indents: Vec<usize> = lines[1..]
-        .iter()
-        .filter_map(|line| list_item_indent(line))
-        .collect();
-    match indents.iter().min() {
-        Some(top) => indents.iter().filter(|indent| *indent == top).count(),
-        None => 1,
-    }
-}
-
-/// The reply with its marked sections wrapped and its summary first. A reply without a marker is
-/// returned as it is.
+/// The reply with its marked sections wrapped. A reply without a marker is returned as it is.
 pub fn mark_sections(markdown: String) -> String {
     if !has_any_marker(&markdown) {
         return markdown;
     }
     let lines = split_lf(&markdown);
     let mut out: Vec<String> = Vec::with_capacity(lines.len() + 8);
-    let mut counts: Vec<(&'static Marker, usize, usize)> = Vec::new();
-    let mut section = 0usize;
+    let mut marked = false;
     let mut index = 0;
     while index < lines.len() {
         if let Some(end) = skip_block(&lines, index) {
@@ -331,16 +300,6 @@ pub fn mark_sections(markdown: String) -> String {
         };
         let end = section_end(&lines, index);
         let body = &lines[index..end];
-        if let Some(counted) = opening.marker.counted.map(|_| opening.marker) {
-            let items = item_count(body);
-            match counts
-                .iter_mut()
-                .find(|(marker, _, _)| marker.kind == counted.kind)
-            {
-                Some((_, count, _)) => *count += items,
-                None => counts.push((counted, items, section)),
-            }
-        }
         // The line before ends its paragraph here, so its hard break would show as a backslash.
         if let Some(last) = out.last_mut() {
             *last = without_hard_break(last).to_string();
@@ -350,7 +309,6 @@ pub fn mark_sections(markdown: String) -> String {
             "{NATIVE_SECTION_OPEN}{}",
             json!({
                 "kind": opening.marker.kind,
-                "index": section,
                 "emoji": opening.marker.emoji,
                 "name": opening.marker.name,
                 "label": opening.label,
@@ -367,47 +325,23 @@ pub fn mark_sections(markdown: String) -> String {
         }
         out.extend(body);
         out.push(NATIVE_SECTION_CLOSE.to_string());
-        section += 1;
+        marked = true;
         index = end;
     }
-    if section == 0 {
+    if !marked {
         return markdown;
-    }
-    let mut chips: Vec<Value> = Vec::new();
-    for marker in MARKERS.iter() {
-        let Some((_, count, first)) = counts
-            .iter()
-            .find(|(counted, _, _)| counted.kind == marker.kind)
-        else {
-            continue;
-        };
-        let (one, many) = marker.counted.unwrap_or(("", ""));
-        chips.push(json!({
-            "kind": marker.kind,
-            "emoji": marker.emoji,
-            "count": count,
-            "text": if *count == 1 { one } else { many },
-            "section": first,
-        }));
-    }
-    if !chips.is_empty() {
-        out.insert(0, format!("{NATIVE_SUMMARY_OPEN}{}", Value::Array(chips)));
     }
     out.join("\n")
 }
 
-/// The reply's text without the section and summary marks, for search: what a reader sees.
+/// The reply's text without the section marks, for search: what a reader sees.
 pub fn without_section_marks(text: &str) -> String {
-    if !text.contains(NATIVE_SECTION_OPEN) && !text.contains(NATIVE_SUMMARY_OPEN) {
+    if !text.contains(NATIVE_SECTION_OPEN) {
         return text.to_string();
     }
     split_lf(text)
         .into_iter()
-        .filter(|line| {
-            !line.starts_with(NATIVE_SECTION_OPEN)
-                && !line.starts_with(NATIVE_SUMMARY_OPEN)
-                && *line != NATIVE_SECTION_CLOSE
-        })
+        .filter(|line| !line.starts_with(NATIVE_SECTION_OPEN) && *line != NATIVE_SECTION_CLOSE)
         .collect::<Vec<_>>()
         .join("\n")
 }

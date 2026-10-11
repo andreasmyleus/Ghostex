@@ -1257,9 +1257,7 @@ instructions it started with until it is resumed. The chat colours each marked s
 its kind, in the style picked under Marked sections style right below the
 switch (shown while it is on): coloured labels (the default), a thin left rule, or a coloured
 badge in place of the emoji; the eye button next to it previews all three side
-by side. Every style also puts a summary at the top of the message counting
-what needs you (for example "❓ 2 need you · ⚠️ 1 to read"); tap a chip to jump
-to that section. Copying a message still gives the agent's own text. The phone
+by side. Copying a message still gives the agent's own text. The phone
 app picks its style in its own Settings > Chat > Marked sections, which also
 offers Plain text. Settings: `markedHandovers`, `markedHandoversStyle`
 (`labels`, `rule`, `badge`).

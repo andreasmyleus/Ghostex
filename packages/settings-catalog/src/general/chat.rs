@@ -18,7 +18,7 @@ pub(crate) fn chat() -> Section {
             row("sessionChatConfirmEscapeInterrupt", "Press Escape twice to interrupt", "While the agent is working, the first Escape asks you to press Escape again within 2 seconds before it interrupts. Turn off to interrupt on the first Escape."),
             row("sessionChatSimpleMode", "Simple mode", "Simplify all chats: hide tool command previews and group file edits behind an expandable file count."),
             row("markedHandovers", "Marked handovers in every session", "Orchestrators and their threads always start each part of the message they hand back with a marker such as ❓ Needs you, ✅ Done, ⚠️ Read this, 🧪 Untested or 🛑 Blocked, so a quick skim shows what needs you. Turn this on to have every other agent session do the same. Applies to sessions started or resumed after you change it."),
-            row("markedHandoversStyle", "Marked sections style", "How the chat colours the sections an agent marks: coloured labels, a thin left rule, or a coloured badge in place of the emoji. Every style also shows a summary of what needs you at the top of the message. Shown while Marked handovers is on.").options(MARKED_HANDOVERS_STYLE_OPTIONS),
+            row("markedHandoversStyle", "Marked sections style", "How the chat colours the sections an agent marks: coloured labels, a thin left rule, or a coloured badge in place of the emoji. Shown while Marked handovers is on.").options(MARKED_HANDOVERS_STYLE_OPTIONS),
             row("sessionChatVerboseMode", "Verbose mode", "Expand thinking blocks to show their tool calls by default. Each chat can override it from its composer."),
         ],
     )
