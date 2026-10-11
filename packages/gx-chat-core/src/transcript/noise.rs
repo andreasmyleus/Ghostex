@@ -566,16 +566,17 @@ pub struct StatusRow {
     pub label: String,
     /// `ok`, `error` or `neutral`.
     pub tone: &'static str,
-    /// Short trailing fact ("exit code 0") rendered as its own non-wrapping chip.
+    /// Short trailing fact ("exit code 1") rendered as its own non-wrapping chip.
     pub detail: Option<String>,
-    /// The call that started the task (`<tool-use-id>`), which the row's duration counts from.
-    pub tool_use_id: Option<String>,
 }
 
 /// CDXC:SessionChat 2026-09-04 WHY:
 /// The harness summary ends in "(exit code N)", and on a wrapped row that parenthetical splits so a
 /// lone "0)" lands on the second line. Peeling it off into a chip keeps the number with its words
 /// and lets the sentence wrap on its own.
+///
+/// CDXC:SessionChat 2026-10-11 DECISION:
+/// User: "remove exit code 0 and "after 39s" here ... useless info". A task that ended with exit code 0 shows no chip, since "completed" already says it worked; any other exit code keeps its chip, and a failed or stopped task keeps the words that say so. This supersedes the same day's pick "F2", which added how long the task ran to this row.
 fn split_status_summary(summary: &str) -> (String, Option<String>) {
     let trimmed = js_trim_end(summary);
     let Some(close) = trimmed.strip_suffix(')') else {
@@ -593,7 +594,11 @@ fn split_status_summary(summary: &str) -> (String, Option<String>) {
     if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
         return (summary.to_string(), None);
     }
-    (js_trim(&close[..open]).to_string(), Some(inner.to_string()))
+    let success = digits.bytes().all(|byte| byte == b'0') && !lower.contains('-');
+    (
+        js_trim(&close[..open]).to_string(),
+        (!success).then(|| inner.to_string()),
+    )
 }
 
 fn js_trim_end(value: &str) -> &str {
@@ -655,15 +660,10 @@ pub fn parse_task_notifications(text: &str) -> Vec<StatusRow> {
             summary.clone()
         };
         let (label, detail) = split_status_summary(&source);
-        let tool_use_id = tagged_bodies(block, "tool-use-id")
-            .first()
-            .map(|id| js_trim(id).to_string())
-            .filter(|id| !id.is_empty());
         rows.push(StatusRow {
             label,
             tone: task_notification_tone(&status),
             detail,
-            tool_use_id,
         });
     }
     rows
@@ -944,36 +944,7 @@ fn status_row_value(row: &StatusRow) -> Value {
 ///
 /// `kind` is `collapsed`, `inline` (a short collapsed turn shown as prose instead of a chevron) or
 /// `status`.
-/// When the call `tool_use_id` was made: the timestamp of the message carrying it.
-fn tool_call_timestamp(messages: &[ChatMessage], tool_use_id: &str) -> Option<i64> {
-    messages.iter().rev().find_map(|message| {
-        message
-            .blocks
-            .iter()
-            .any(|block| {
-                matches!(block, ChatBlock::ToolCall { call_id: Some(id), .. } if id == tool_use_id)
-            })
-            .then_some(message.timestamp)
-            .flatten()
-    })
-}
-
-/// How long a background task ran, from its launch to the notification that it ended ("after 3m
-/// 12s"), or `None` when either end is unknown (the launch is outside the loaded transcript).
-///
-/// CDXC:SessionChat 2026-10-11 SEE-ALSO: the finished row keeps its look and only gains this (the
-/// user's pick "F2"); the decision is in `extras::background_tasks`.
-pub fn task_duration_label(started_at: Option<i64>, ended_at: Option<i64>) -> Option<String> {
-    let seconds = (ended_at? - started_at?) / 1_000;
-    (seconds >= 1).then(|| {
-        format!(
-            "after {}",
-            crate::extras::activity::format_activity_elapsed(seconds as f64)
-        )
-    })
-}
-
-pub fn suppressed_turn_presentation(message: &ChatMessage, messages: &[ChatMessage]) -> Value {
+pub fn suppressed_turn_presentation(message: &ChatMessage) -> Value {
     let suppressed = classify_suppressed_turn(message);
     let (kind, label, tone) = match &suppressed {
         Some(SuppressedTurn::Collapsed { label }) => ("collapsed", label.clone(), None),
@@ -995,24 +966,7 @@ pub fn suppressed_turn_presentation(message: &ChatMessage, messages: &[ChatMessa
             }
             out.insert(
                 "statuses".to_string(),
-                Value::Array(
-                    statuses
-                        .iter()
-                        .map(|row| {
-                            let mut entry = status_row_value(row);
-                            let duration = row.tool_use_id.as_deref().and_then(|id| {
-                                task_duration_label(
-                                    tool_call_timestamp(messages, id),
-                                    message.timestamp,
-                                )
-                            });
-                            if let (Some(duration), Value::Object(entry)) = (duration, &mut entry) {
-                                entry.insert("duration".to_string(), duration.into());
-                            }
-                            entry
-                        })
-                        .collect(),
-                ),
+                Value::Array(statuses.iter().map(status_row_value).collect()),
             );
             return Value::Object(out);
         }
@@ -1048,7 +1002,6 @@ pub fn suppressed_turn_presentation(message: &ChatMessage, messages: &[ChatMessa
                         "ok"
                     },
                     detail: None,
-                    tool_use_id: None,
                 }),
                 json!({ "label": note, "tone": "neutral" }),
             ];

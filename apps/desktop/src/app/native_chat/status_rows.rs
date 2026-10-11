@@ -91,7 +91,6 @@ impl NativeChatView {
                 self.status_row(
                     text(status, "label"),
                     text(status, "detail"),
-                    text(status, "duration"),
                     &text(status, "tone"),
                     p,
                 )
@@ -103,7 +102,6 @@ impl NativeChatView {
         &self,
         label: String,
         detail: String,
-        duration: String,
         tone_name: &str,
         p: &ChatAppearance,
     ) -> AnyElement {
@@ -173,16 +171,6 @@ impl NativeChatView {
                                 .font_weight(FontWeight::NORMAL)
                                 .text_size(px(11.0 * s))
                                 .child(detail),
-                        )
-                    })
-                    // How long a background task ran ("after 3m 12s"), as quiet trailing words.
-                    .when(!duration.is_empty(), |row| {
-                        row.child(
-                            div()
-                                .flex_shrink_0()
-                                .font_weight(FontWeight::NORMAL)
-                                .text_color(p.muted.opacity(0.8))
-                                .child(duration),
                         )
                     }),
             )

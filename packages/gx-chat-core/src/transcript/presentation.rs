@@ -160,7 +160,7 @@ pub fn project_message(
         .then(|| collapsed_prompt(&displayed_body))
         .flatten()
         .map(|preview| without_question_forms(native_markdown(&user_line_breaks(&preview), true)));
-    let suppressed = suppressed_turn_presentation(message, messages);
+    let suppressed = suppressed_turn_presentation(message);
     let rows = tool_rows(&tool_pairs, agent_path, working_directory, durations);
     let system_card = classify_system_card(message, &displayed_body);
     let reasoning = split_reasoning_headline(&body);
