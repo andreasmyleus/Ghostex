@@ -85,6 +85,16 @@ notarization, and the user's profile are untouched):
 Chrome updates can restore the attribute. Never work around the refusal with a
 hand-rolled `--remote-debugging-port` Chrome.
 
+### Windows: "launch token was granted delete on …"
+
+`browser_prepare` refuses an isolated launch with `browser_route_unavailable`
+when a standard user could delete or replace the browser's install folder or
+one of its parents. Usually that is a folder such as `C:\Program Files`, made
+deletable by changed permissions on the drive root. Report the refusal and the
+folder it names to the user and stop. It is a machine permission problem for
+them to fix. Do not change permissions, pass a running browser's `pid`, or
+launch another browser to get around it.
+
 Use CLI calls in the form `cua-driver <tool> '<JSON>'`.
 
 ## Windows and WSL
