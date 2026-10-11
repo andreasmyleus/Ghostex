@@ -73,6 +73,13 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
                 _ => crate::questions::forms::send(state, context, &id),
             });
         }
+        ActionKind::FormToggle => {
+            let id = action
+                .param("form")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            crate::questions::forms::toggle(state, id);
+        }
         ActionKind::Answer => {
             if let Some(answer) = action.param("answer") {
                 let answer = answer.clone();

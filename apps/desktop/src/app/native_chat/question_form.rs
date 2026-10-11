@@ -8,13 +8,15 @@
 
 use std::collections::HashSet;
 
-use super::ask_card::{AskOption, AskTone, ask_head, send_keys};
+use super::ask_card::{
+    AskBodyMotion, AskOption, AskTone, ask_head, chevron, press_head, send_keys,
+};
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, AppContext as _, Context, Entity, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, KeyDownEvent, ParentElement as _, SharedString, Styled as _, Subscription, Window,
-    div, px, rgb,
+    IntoElement, KeyDownEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Subscription, Window, div, px, rgb,
 };
 use gpui_component::input::{InputEvent, Textarea, TextareaState};
 use serde_json::{Value, json};
@@ -192,6 +194,28 @@ impl NativeChatView {
             return self.ask_card(head, Some(body), Vec::new(), None, p);
         }
         let questions = form["questions"].as_array().cloned().unwrap_or_default();
+        let other_label = text(form, "otherLabel");
+        let body = div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .min_w_0()
+            .children(questions.iter().enumerate().map(|(index, question)| {
+                self.form_question(
+                    id,
+                    index,
+                    question,
+                    &form["drafts"][index],
+                    &other_label,
+                    enabled,
+                    p,
+                    cx,
+                )
+            }))
+            .into_any_element();
+        if phase == "answered" {
+            return self.answered_form(id, title, body, form["collapsed"] != true, p, cx);
+        }
         let (icon, tone, detail) = match phase.as_str() {
             "answered" => (
                 "titlebar/check.svg",
@@ -220,25 +244,6 @@ impl NativeChatView {
             ),
         };
         let head = ask_head(icon, tone, title, detail, Vec::new(), p).into_any_element();
-        let other_label = text(form, "otherLabel");
-        let body = div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .min_w_0()
-            .children(questions.iter().enumerate().map(|(index, question)| {
-                self.form_question(
-                    id,
-                    index,
-                    question,
-                    &form["drafts"][index],
-                    &other_label,
-                    enabled,
-                    p,
-                    cx,
-                )
-            }))
-            .into_any_element();
         let send_error = text(form, "sendError");
         let can_send = form["canSend"] == true;
         let status = match phase.as_str() {
@@ -289,6 +294,61 @@ impl NativeChatView {
             }))
             .child(self.ask_card(head, Some(body), footer, None, p))
             .into_any_element()
+    }
+
+    /// An answered form: one line (its check, title, "Answered" and a chevron) that opens the
+    /// read-only form below it and closes it again. Whether it is open is the core's (`collapsed`,
+    /// see the SessionChat 2026-10-12 DECISION in packages/gx-chat-core/src/questions/forms.rs).
+    fn answered_form(
+        &self,
+        id: &str,
+        title: String,
+        body: AnyElement,
+        open: bool,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let fold_key = format!("question-form:{id}");
+        let motion = self.disclosure_frame(&fold_key, open, cx);
+        let answered = div()
+            .flex_shrink_0()
+            .text_size(px(12.0 * p.scale))
+            .text_color(p.muted)
+            .child("Answered")
+            .into_any_element();
+        let form_id = id.to_string();
+        let head = press_head(
+            ask_head(
+                "titlebar/check.svg",
+                AskTone::Answered,
+                title,
+                String::new(),
+                vec![answered, chevron(open, p)],
+                p,
+            ),
+            SharedString::from(format!("question-form-head:{id}")),
+            if open {
+                "Hide the questions"
+            } else {
+                "Show the questions"
+            },
+            open || motion.is_some(),
+            p,
+        )
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.invoke(json!({"type":"formToggle","form":form_id}), cx);
+        }))
+        .into_any_element();
+        self.ask_card(
+            head,
+            (open || motion.is_some()).then_some(body),
+            Vec::new(),
+            Some(AskBodyMotion {
+                key: &fold_key,
+                frame: motion,
+            }),
+            p,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]

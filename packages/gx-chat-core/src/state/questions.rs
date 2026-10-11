@@ -104,6 +104,8 @@ pub struct FormState {
     pub sent: Option<serde_json::Value>,
     /// Why the last send was refused.
     pub error: Option<String>,
+    /// The reader opened the answered form again (`formToggle`); answered forms start collapsed.
+    pub expanded: bool,
 }
 
 /// A question form's answers on their way into the session's chat queue.

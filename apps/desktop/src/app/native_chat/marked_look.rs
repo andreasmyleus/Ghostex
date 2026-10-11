@@ -132,7 +132,7 @@ impl MarkedLook {
 /// A kind's colour in the chat's light or dark appearance (the mockup's palette).
 pub(crate) fn kind_color(kind: &str, light: bool) -> Hsla {
     let (dark, light_color) = match kind {
-        "need" => (0x60a5fa, 0x2563eb),
+        "need" => (0xfb923c, 0xc2410c),
         "done" => (0x4ade80, 0x15803d),
         "read" => (0xfbbf24, 0xb45309),
         "kicked" => (0xf472b6, 0xbe185d),
