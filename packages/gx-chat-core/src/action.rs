@@ -111,6 +111,7 @@ action_kinds! {
     RecallHistory => "recallHistory",
     OpenComposerReference => "openComposerReference",
     OpenMarkdownLink => "openMarkdownLink",
+    ReviewFileChanges => "reviewFileChanges",
     RefreshComposerChrome => "refreshComposerChrome",
     Stash => "stash",
     RestoreReturned => "restoreReturned",

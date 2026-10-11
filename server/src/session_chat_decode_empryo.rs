@@ -114,6 +114,7 @@ pub fn decode_empryo_transcript_line(line: &str, fallback_id: &str) -> Option<Se
                 output: tool_result_output(record.get("output")),
                 is_error: (record.get("isError") == Some(&Value::Bool(true))).then_some(true),
                 call_id: extract_string(record.get("callId")),
+                patch: None,
             }],
         )),
         _ => None,

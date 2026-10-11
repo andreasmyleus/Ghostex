@@ -193,6 +193,7 @@ fn decode_pi_record(record: &Map<String, Value>, fallback_id: &str) -> Option<Se
                 output,
                 is_error: if is_error { Some(true) } else { None },
                 call_id: extract_string(message.get("toolCallId")),
+                patch: None,
             }];
             tool_blocks.extend(
                 blocks
@@ -220,6 +221,7 @@ fn decode_pi_record(record: &Map<String, Value>, fallback_id: &str) -> Option<Se
                     output: text,
                     is_error: None,
                     call_id: None,
+                    patch: None,
                 }],
                 timestamp,
             ))

@@ -14,6 +14,7 @@ use std::os::windows::fs::{FileExt, MetadataExt};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+pub use crate::session_chat_file_patch::{SessionChatPatchHunk, SessionChatToolPatch};
 
 /*
 CDXC:SessionChat 2026-07-31:
@@ -160,6 +161,9 @@ pub enum SessionChatBlock {
         /// The id of the call this answers, when the agent records one.
         #[serde(rename = "callId", skip_serializing_if = "Option::is_none", default)]
         call_id: Option<String>,
+        /// The file edit this result made, as the agent recorded it (`session_chat_file_patch.rs`).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        patch: Option<SessionChatToolPatch>,
     },
     #[serde(rename = "image-ref")]
     ImageRef {

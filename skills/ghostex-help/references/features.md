@@ -1199,13 +1199,17 @@ section directly below it. Older history loads with completed turns already
 collapsed, so you can scroll through prompts and answers without passing through
 their tool logs first. Expanding older work or its files loads those details on
 demand; the original history remains available. The count includes each file once, even if it was
-edited repeatedly. Expand the section to see the files along an activity rail,
-with added lines in green and removed lines in red. Each file defaults to one
-collapsed row with its path and green/red change counts. Enable Show file edit
-previews in Settings > Chat to show the first seven code lines by default.
-Long paths truncate from the start, keeping the filename visible. Click anywhere
-on the path or filename to open it in Editor or Files, just like a file reference
-pill. Local folder links in desktop chat open your system file explorer; remote
+edited repeatedly. File changes show as one card per message (or per turn in
+that section): its header says how many files changed, the folder they share,
+and the total added and removed lines with a green/red ratio bar, and on the
+desktop Review all opens the project's Code view to review the changes. Each
+file is a row with its name, its folder, an Edited, New or Deleted tag, its
+green/red counts and a five-block change bar. Click a row to open its diff,
+with the file's own line numbers and the function each change sits in (for
+Claude sessions); under the first seven lines, Show all N changed lines shows
+the rest and Open file opens it in Editor or Files, just like a file reference
+pill. Enable Show file edit previews in Settings > Chat to open every row to its
+first seven lines by default. Local folder links in desktop chat open your system file explorer; remote
 folder links open in this computer's Code view so you can browse the remote files.
 File reference pills in the composer also open with one click using the same
 Code/Files preferences as transcript links. Double-click a composer pill to edit

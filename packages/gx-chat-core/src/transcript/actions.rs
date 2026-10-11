@@ -242,6 +242,13 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
                 LinkTarget::Inert => Vec::new(),
             }
         }
+        // A file change card's Review all: the app shows the changes where it reviews Git work.
+        ActionKind::ReviewFileChanges => vec![Effect::HostAction {
+            action: "reviewChanges".to_string(),
+            params: Box::new(json!({
+                "paths": param(action, "paths").cloned().unwrap_or_else(|| json!([])),
+            })),
+        }],
         ActionKind::LoadImage => {
             /*
             The picture behind an "[Image #N](path)" reference lives on the session's machine, so the

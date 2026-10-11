@@ -82,8 +82,8 @@ impl NativeChatView {
             .into_any_element()
     }
 
-    /// CDXC:SessionChat 2026-09-19 SEE-ALSO:
-    /// React's `CopyFooter` and `.ghostex-chat-message-actions` in packages/core-ui/styles/chat.css (both deleted 2026-09-25) carried the user decision this mirrors: a final reply's actions sit in a row below it, Copy, Reply by Annotating, Save to md, then the time it arrived, starting at the prose column.
+    /// CDXC:SessionChat 2026-10-11 SEE-ALSO:
+    /// A final reply's actions sit below it, starting at the prose column, as one small labelled toolbar (Copy · Annotate · Save) followed by the time it arrived, shown on hover or focus. This supersedes the 2026-09-19 row of three bare icons; the user's pick is recorded in gx-chat-core `transcript/work_summary.rs`, and the phone's `MessageActions.tsx` draws the same toolbar.
     pub(super) fn reply_actions(
         &self,
         message: &Value,
@@ -93,13 +93,11 @@ impl NativeChatView {
     ) -> AnyElement {
         let id = text(message, "id");
         let markdown = text(message, "copyText");
-        let icon_color = if p.light { p.muted } else { p.primary };
-        let hover_background = if p.light {
-            gpui::rgb(0xfafafa).into()
-        } else {
-            gpui::Hsla::from(gpui::rgb(0xffffff)).opacity(5.0 / 255.0)
-        };
-        let button = |action: ReplyAction, label: &'static str, icon: &'static str| {
+        let s = p.scale;
+        let button = |action: ReplyAction,
+                      label: &'static str,
+                      short: &'static str,
+                      icon: &'static str| {
             let click_markdown = markdown.clone();
             div()
                 .id(format!("reply-action:{id}:{label}"))
@@ -107,13 +105,16 @@ impl NativeChatView {
                 .role(gpui::Role::Button)
                 .aria_label(label)
                 .tab_index(0)
-                .size(px(24.0 * p.scale))
+                .h(px(24.0 * s))
+                .px(px(8.0 * s))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
-                .justify_center()
-                .rounded(px(8.0 * p.scale))
-                .border(px(p.scale))
+                .gap(px(5.0 * s))
+                .rounded(px(7.0 * s))
+                .text_size(px(12.0 * s))
+                .text_color(p.muted)
+                .border(px(s))
                 .border_color(gpui::transparent_black())
                 .chat_cursor_pointer()
                 .focus_visible(|mut style| {
@@ -127,22 +128,30 @@ impl NativeChatView {
                     }]);
                     style
                 })
-                .hover(|style| style.bg(hover_background))
+                .hover(|style| style.bg(p.foreground.opacity(0.06)).text_color(p.foreground))
                 .tooltip(move |window, cx| {
                     gpui_component::tooltip::Tooltip::new(label).build(window, cx)
                 })
                 .child(
                     svg()
                         .path(icon)
-                        .size(px(12.0 * p.scale))
-                        .text_color(icon_color)
+                        .size(px(12.0 * s))
+                        .text_color(p.muted)
                         .group_hover("native-chat-reply-action", |style| {
                             style.text_color(p.foreground)
                         }),
                 )
+                .child(short)
                 .on_click(cx.listener(move |chat, _, _, cx| {
                     chat.perform_reply_action(action, &click_markdown, cx)
                 }))
+        };
+        let separator = || {
+            div()
+                .w(px(1.0))
+                .h(px(14.0 * s))
+                .flex_shrink_0()
+                .bg(p.foreground.opacity(0.1))
         };
         let can_annotate =
             self.config.app.is_some() && message["actionContent"]["canAnnotate"] == true;
@@ -150,23 +159,32 @@ impl NativeChatView {
         let buttons = div()
             .flex()
             .items_center()
-            .gap(px(2.0 * p.scale))
+            .flex_shrink_0()
+            .gap(px(2.0 * s))
+            .p(px(2.0 * s))
+            .rounded(px(9.0 * s))
+            .border(px(s))
+            .border_color(p.foreground.opacity(0.07))
+            .bg(p.input.opacity(0.75))
             .child(button(
                 ReplyAction::Copy,
                 "Copy message",
+                "Copy",
                 "chat-actions/copy",
             ))
             .when(can_annotate, |actions| {
-                actions.child(button(
+                actions.child(separator()).child(button(
                     ReplyAction::Annotate,
                     "Reply by Annotating",
+                    "Annotate",
                     "chat-actions/annotate",
                 ))
             })
             .when(can_save, |actions| {
-                actions.child(button(
+                actions.child(separator()).child(button(
                     ReplyAction::SaveMarkdown,
                     "Save message to Markdown",
+                    "Save",
                     "chat-actions/save",
                 ))
             });

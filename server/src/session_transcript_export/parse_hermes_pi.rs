@@ -63,6 +63,7 @@ pub(super) fn parse_empryo_record(builder: &mut TranscriptBuilder, line: &str) {
                 output,
                 is_error,
                 call_id,
+                ..
             } => builder.push_output(call_id, output, is_error.unwrap_or(false)),
             other => rest.blocks.push(other),
         }

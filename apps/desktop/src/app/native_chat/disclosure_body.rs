@@ -31,6 +31,9 @@ pub(super) enum DisclosureRail {
     /// One tool row's own detail, indented past the tool rows around it.
     /// React's `.ghostex-chat-work-detail`.
     ToolDetail,
+    /// A finished turn's work log under its "Worked" summary: a hairline instead of the
+    /// two-pixel line, with the rows hung further off it (gx-chat-core `work_summary.rs`).
+    Work,
 }
 
 impl DisclosureRail {
@@ -42,6 +45,15 @@ impl DisclosureRail {
         match self {
             Self::Marker => 17.0,
             Self::ToolDetail => 29.5,
+            Self::Work => 23.0,
+        }
+    }
+
+    /// The line's width and its resting colour.
+    fn line(self, p: &ChatAppearance) -> (f32, gpui::Hsla) {
+        match self {
+            Self::Work => (1.0, p.foreground.opacity(0.1)),
+            Self::Marker | Self::ToolDetail => (2.0, p.muted.opacity(0.42)),
         }
     }
 }
@@ -77,6 +89,7 @@ pub(super) fn disclosure_body(
     cx: &Context<NativeChatView>,
 ) -> AnyElement {
     let s = p.scale;
+    let (line_width, line_color) = rail.line(p);
     div()
         .flex()
         .min_w_0()
@@ -95,9 +108,9 @@ pub(super) fn disclosure_body(
                 .chat_cursor_pointer()
                 .child(
                     div()
-                        .w(px(2.0 * s))
-                        .rounded(px(1.0 * s))
-                        .bg(p.muted.opacity(0.42))
+                        .w(px(line_width * s))
+                        .rounded(px(line_width / 2.0 * s))
+                        .bg(line_color)
                         .group_hover(RAIL_GROUP, |style| style.bg(p.foreground)),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {

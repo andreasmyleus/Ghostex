@@ -445,6 +445,21 @@ impl GhostexGpuiApp {
             );
             return;
         }
+        // A file change card's Review all. Ghostex has no Git view, so the changes are reviewed in
+        // the project's Code view, whose Source Control lists them.
+        if action == "reviewChanges" {
+            if self.set_active_mode(TitlebarMode::Source, window, cx) {
+                cx.notify();
+            } else {
+                self.dispatch_gpui_app_modal_toast(
+                    "info",
+                    "This project has no Code view to review the changes in",
+                    "",
+                    cx,
+                );
+            }
+            return;
+        }
         if action == "locateFile" {
             let Some(path) = message.get("path").and_then(serde_json::Value::as_str) else {
                 return;

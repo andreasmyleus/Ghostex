@@ -47,6 +47,7 @@ use crate::transcript::transcript::{
 };
 use crate::transcript::transcript_rows::{file_rows, open_tool_detail, tool_fold, tool_rows};
 use crate::transcript::turns::{partition_completed_work, worked_duration_label, RenderItem};
+use crate::transcript::work_summary::{tool_durations, work_stats};
 
 /// A message's file changes and tool calls, in the order their rows are numbered.
 pub fn message_tool_rows(message: &ChatMessage) -> (Vec<FileChange<'_>>, Vec<ToolPair<'_>>) {
@@ -107,6 +108,7 @@ pub fn project_message(
     working_directory: Option<&str>,
     line_breaks: AgentLineBreaks,
     context: &ChatContext,
+    durations: &std::collections::HashMap<String, i64>,
 ) -> Value {
     let (prose, tools) = split_blocks(&message.blocks);
     let images = image_blocks(&prose);
@@ -159,7 +161,7 @@ pub fn project_message(
         .flatten()
         .map(|preview| without_question_forms(native_markdown(&user_line_breaks(&preview), true)));
     let suppressed = suppressed_turn_presentation(message, messages);
-    let rows = tool_rows(&tool_pairs, agent_path, working_directory);
+    let rows = tool_rows(&tool_pairs, agent_path, working_directory, durations);
     let system_card = classify_system_card(message, &displayed_body);
     let reasoning = split_reasoning_headline(&body);
     let questions: Vec<Value> = {
@@ -290,10 +292,12 @@ pub fn project_message(
             other => other,
         },
     );
+    let files = file_rows(&changes, &message.id, working_directory);
     projected.insert(
-        "files".to_string(),
-        Value::Array(file_rows(&changes, &message.id, working_directory)),
+        "fileCard".to_string(),
+        crate::transcript::file_change_rows::file_change_card(&files),
     );
+    projected.insert("files".to_string(), Value::Array(files));
     projected.insert(
         "simpleFileLabel".to_string(),
         simple_edit_label(changed_paths.len()).into(),
@@ -451,6 +455,11 @@ pub fn project_cached(
             return entry.model.clone();
         }
     }
+    // How long each call ran comes from the rows as they arrived, before the fold merged them.
+    let durations = tool_durations(
+        message,
+        std::iter::once(scope.messages).chain(scope.deferred.values().map(Vec::as_slice)),
+    );
     let model = project_message(
         message,
         scope.messages,
@@ -458,6 +467,7 @@ pub fn project_cached(
         scope.working_directory,
         scope.line_breaks,
         context,
+        &durations,
     );
     cache.insert(
         message.id.clone(),
@@ -668,6 +678,14 @@ pub fn build_scope(
                     }
                 }
                 let changed_files = changed.len();
+                let stats = if turn.user.deferred_work.is_some() && work.is_empty() {
+                    // The rows are still on the server: only the files are known until it opens.
+                    work_stats(&[], changed_files)
+                } else {
+                    let rows: Vec<&ChatMessage> =
+                        work.iter().chain(turn.final_message.iter()).collect();
+                    work_stats(&rows, changed_files)
+                };
                 let deferred_value = turn
                     .user
                     .deferred_work
@@ -689,6 +707,8 @@ pub fn build_scope(
                             // An interrupted turn has no final reply; it ran until its last row.
                             .or_else(|| turn.work.iter().rev().find_map(|row| row.timestamp)),
                     ),
+                    stats,
+                    files_card: crate::transcript::file_change_rows::file_change_card(&files),
                     files,
                     files_label: format!(
                         "{changed_files} {} changed",
@@ -805,7 +825,11 @@ pub fn row_detail_scope(
     let (files, tools) = message_tool_rows(source);
     if kind == "file" {
         let change = files.get(index)?;
-        return Some(serde_json::json!({ "lines": change.lines }));
+        return Some(serde_json::json!({
+            "lines": change.lines,
+            // How many of `lines` a row shows until "Show all" is pressed.
+            "preview": crate::transcript::file_change_rows::file_change_preview_end(&change.lines),
+        }));
     }
     tools.get(index).map(open_tool_detail)
 }

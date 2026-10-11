@@ -180,6 +180,7 @@ pub fn shell_command_message(
             output: output.merged(),
             is_error: output.failed().then_some(true),
             call_id,
+            patch: None,
         });
     }
     let mut message = template.clone();

@@ -115,6 +115,7 @@ pub mod session_chat_empryo_mirror;
 pub(crate) mod session_chat_empryo_notes;
 pub mod session_chat_empryo_question;
 pub mod session_chat_empryo_tabs;
+pub mod session_chat_file_patch;
 pub mod session_chat_files;
 pub(crate) mod session_chat_fleet_process;
 pub(crate) mod session_chat_fleet_progress;

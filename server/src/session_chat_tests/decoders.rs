@@ -16,6 +16,7 @@ fn message_serialization_matches_shared_ts_shape() {
                 output: "ok".to_string(),
                 is_error: Some(true),
                 call_id: None,
+                patch: None,
             },
             SessionChatBlock::ImageRef {
                 path: Some("/tmp/a.png".to_string()),
@@ -370,7 +371,8 @@ fn codex_decodes_custom_tool_and_hosted_tool_lanes() {
         vec![SessionChatBlock::ToolResult {
             output: "Script completed\ntotal 4".to_string(),
             is_error: None,
-            call_id: Some("call_Nx1m".to_string())
+            call_id: Some("call_Nx1m".to_string()),
+            patch: None,
         }]
     );
 
@@ -385,7 +387,8 @@ fn codex_decodes_custom_tool_and_hosted_tool_lanes() {
         vec![SessionChatBlock::ToolResult {
             output: "Exit code: 0".to_string(),
             is_error: None,
-            call_id: Some("call_x".to_string())
+            call_id: Some("call_x".to_string()),
+            patch: None,
         }]
     );
 
@@ -422,7 +425,8 @@ fn codex_decodes_custom_tool_and_hosted_tool_lanes() {
         vec![SessionChatBlock::ToolResult {
             output: "mcp__codex_apps__github".to_string(),
             is_error: None,
-            call_id: None
+            call_id: None,
+            patch: None,
         }]
     );
 
@@ -661,7 +665,8 @@ fn grok_decoder_reads_the_session_update_log() {
         vec![SessionChatBlock::ToolResult {
             output: "file body".to_string(),
             is_error: None,
-            call_id: None
+            call_id: None,
+            patch: None,
         }],
     );
     let failed = decode_grok_transcript_line(
@@ -674,7 +679,8 @@ fn grok_decoder_reads_the_session_update_log() {
         vec![SessionChatBlock::ToolResult {
             output: "fetch failed".to_string(),
             is_error: Some(true),
-            call_id: None
+            call_id: None,
+            patch: None,
         }],
     );
 }
@@ -740,7 +746,8 @@ fn pi_decoder_maps_shared_chat_blocks() {
         vec![SessionChatBlock::ToolResult {
             output: "contents".to_string(),
             is_error: None,
-            call_id: Some("call-1".to_string())
+            call_id: Some("call-1".to_string()),
+            patch: None,
         }]
     );
 }

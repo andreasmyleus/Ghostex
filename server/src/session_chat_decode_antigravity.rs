@@ -221,6 +221,7 @@ pub fn decode_antigravity_transcript_line(
                     output: text.unwrap_or_default(),
                     is_error,
                     call_id: None,
+                    patch: None,
                 }],
             ))
         }

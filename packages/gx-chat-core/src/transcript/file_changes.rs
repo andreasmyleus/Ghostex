@@ -2,7 +2,7 @@
 //!
 //! Ported from `packages/core-ui/chat/session-chat-file-changes.ts`.
 
-use ghostex_gx_protocol::ChatBlock;
+use ghostex_gx_protocol::{ChatBlock, ToolPatch};
 use serde_json::Value;
 
 use crate::transcript::diff::{DiffKind, DiffLine};
@@ -16,6 +16,8 @@ pub struct FileChange<'a> {
     pub path: String,
     /// `Write`, `Edit` or `Delete`.
     pub action: &'static str,
+    /// What happened to the file: `edited`, `new` or `deleted`.
+    pub status: &'static str,
     pub lines: Vec<DiffLine>,
     pub result: Option<&'a ChatBlock>,
 }
@@ -61,15 +63,16 @@ fn patch_changes<'a>(patch: &str) -> Vec<FileChange<'a>> {
         if let Some(rest) = line.strip_prefix("*** ") {
             if let Some((verb, path)) = rest.split_once(" File: ") {
                 let action = match verb {
-                    "Add" => Some("Write"),
-                    "Delete" => Some("Delete"),
-                    "Update" => Some("Edit"),
+                    "Add" => Some(("Write", "new")),
+                    "Delete" => Some(("Delete", "deleted")),
+                    "Update" => Some(("Edit", "edited")),
                     _ => None,
                 };
-                if let Some(action) = action {
+                if let Some((action, status)) = action {
                     changes.push(FileChange {
                         path: path.to_string(),
                         action,
+                        status,
                         lines: Vec::new(),
                         result: None,
                     });
@@ -270,9 +273,100 @@ fn file_changes<'a>(name: &str, input: &Value) -> Vec<FileChange<'a>> {
     vec![FileChange {
         path,
         action: if kind == "write" { "Write" } else { "Edit" },
+        // A write is a new file until its result says it replaced one (`with_result`).
+        status: if kind == "write" { "new" } else { "edited" },
         lines,
         result: None,
     }]
+}
+
+/// The diff lines of a recorded patch: each hunk's `@@` line with its heading, then its lines with
+/// their numbers in the old and new file.
+fn patch_lines(patch: &ToolPatch) -> Vec<DiffLine> {
+    let mut lines = Vec::new();
+    for hunk in &patch.hunks {
+        let count = |sign: char| {
+            hunk.lines
+                .iter()
+                .filter(|line| line.starts_with(sign) || line.starts_with(' '))
+                .count()
+        };
+        let mut header = format!(
+            "@@ -{},{} +{},{} @@",
+            hunk.old_start,
+            count('-'),
+            hunk.new_start,
+            count('+')
+        );
+        if let Some(heading) = hunk.heading.as_deref().filter(|heading| !heading.is_empty()) {
+            header.push(' ');
+            header.push_str(heading);
+        }
+        lines.push(DiffLine::new(DiffKind::Meta, header));
+        let (mut old, mut new) = (hunk.old_start, hunk.new_start);
+        for line in &hunk.lines {
+            let (kind, text) = match line.chars().next() {
+                Some('+') => (DiffKind::Add, &line[1..]),
+                Some('-') => (DiffKind::Del, &line[1..]),
+                Some(' ') => (DiffKind::Context, &line[1..]),
+                // `\ No newline at end of file`.
+                _ => {
+                    lines.push(DiffLine::new(DiffKind::Meta, line.as_str()));
+                    continue;
+                }
+            };
+            let numbers = match kind {
+                DiffKind::Add => (None, Some(new)),
+                DiffKind::Del => (Some(old), None),
+                _ => (Some(old), Some(new)),
+            };
+            if kind != DiffKind::Add {
+                old += 1;
+            }
+            if kind != DiffKind::Del {
+                new += 1;
+            }
+            lines.push(DiffLine::new(kind, text).numbered(numbers.0, numbers.1));
+        }
+    }
+    lines
+}
+
+impl<'a> FileChange<'a> {
+    /// The change with its result: the patch the agent recorded replaces the lines read from the
+    /// call (it has the file's line numbers and the lines around the edit), and says whether a
+    /// write made the file or replaced it.
+    fn with_result(mut self, result: Option<&'a ChatBlock>, single: bool) -> Self {
+        self.result = result;
+        let patch = match result {
+            Some(ChatBlock::ToolResult {
+                patch: Some(patch), ..
+            }) if single && self.action != "Delete" => Some(patch),
+            _ => None,
+        };
+        if let Some(patch) = patch {
+            if patch.created {
+                self.status = "new";
+            } else if !patch.hunks.is_empty() {
+                self.status = "edited";
+                self.lines = patch_lines(patch);
+            }
+        } else if self.action == "Write" && self.result_output().contains("has been updated") {
+            // Claude's own words for a write that replaced a file, for a result without a patch.
+            self.status = "edited";
+        }
+        if self.status == "new" {
+            // A new file's lines are the whole file, so their numbers are known.
+            let mut number = 0;
+            for line in &mut self.lines {
+                if line.kind == DiffKind::Add {
+                    number += 1;
+                    line.new = Some(number);
+                }
+            }
+        }
+        self
+    }
 }
 
 /// The file changes and the remaining tool blocks of one message.
@@ -298,10 +392,13 @@ pub fn split_file_changes<'a>(
             .call_name()
             .and_then(|name| name.split('.').next_back())
             == Some("exec");
-        changes.extend(files.iter().cloned().map(|file| FileChange {
-            result: pair.result,
-            ..file
-        }));
+        let single = files.len() == 1;
+        changes.extend(
+            files
+                .iter()
+                .cloned()
+                .map(|file| file.with_result(pair.result, single)),
+        );
         // An exec wrapper can also run unrelated commands, so retain its raw activity.
         if files.is_empty() || is_exec {
             if let Some(call) = pair.call {

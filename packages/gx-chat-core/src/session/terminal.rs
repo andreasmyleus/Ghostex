@@ -120,6 +120,7 @@ pub fn terminal_tool_message(activity: &Value, context: &ChatContext) -> Option<
                 output: detail.to_string(),
                 is_error: None,
                 call_id: None,
+                patch: None,
             },
         ]
     };

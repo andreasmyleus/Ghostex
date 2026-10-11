@@ -51,6 +51,7 @@ pub fn decode_freebuff_transcript_line(
                     is_error: (record.get("isError").and_then(Value::as_bool) == Some(true))
                         .then_some(true),
                     call_id,
+                    patch: None,
                 });
             }
             (SessionChatRole::Tool, blocks)

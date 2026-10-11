@@ -49,6 +49,7 @@ pub mod tool_summary;
 pub mod transcript;
 pub mod transcript_rows;
 pub mod turns;
+pub mod work_summary;
 
 pub mod settle;
 

@@ -91,6 +91,11 @@ impl ChatAppearance {
         rgb(if self.light { 0xc53030 } else { 0xef9999 }).into()
     }
 
+    /// A finished tool call's check (the 2026-10-11 work look, gx-chat-core `work_summary.rs`).
+    pub(crate) fn success(&self) -> Hsla {
+        rgb(if self.light { 0x059669 } else { 0x34d399 }).into()
+    }
+
     /// The zoom this pane returns to, `sessionChatZoomPercent`. `zoom.rs` layers the keyboard's
     /// temporary override over it.
     pub(crate) fn default_zoom_percent() -> f32 {

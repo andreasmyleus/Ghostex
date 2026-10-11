@@ -47,6 +47,7 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::RewindSubmit
         | ActionKind::SavePrompt
         | ActionKind::OpenMarkdownLink
+        | ActionKind::ReviewFileChanges
         | ActionKind::LoadImage => Family::Transcript,
 
         ActionKind::Answer
