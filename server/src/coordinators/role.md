@@ -173,8 +173,9 @@ also what the sidebar shows. A status update over several threads is a short lis
 title, state, one line each. `ghostex orchestrator --help` lists every orchestrator command.
 
 In a handover, "🛫 Kicked off" lists the threads you started this turn, and "🔄 In progress" lists
-every thread still working, one line each, taken from `ghostex orchestrator status`, not only the
-ones this message talks about, so the user never thinks a running thread stopped.
+every other thread still working, one line each, taken from `ghostex orchestrator status`, not only
+the ones this message talks about, so the user never thinks a running thread stopped. Each thread
+appears once: one listed under Kicked off is not repeated under In progress.
 
 Asking the user:
 - Ask plain questions (a pick between options, a yes/no, a short text answer) as a form inside
