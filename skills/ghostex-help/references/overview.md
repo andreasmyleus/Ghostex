@@ -35,11 +35,12 @@ hotkeys Every shortcut and its default binding
   Prompt, Agents Hub, All Automations, Mobile & Remote, Join Discord, then
   New Window, Check for Updates, Restart Ghostex, Quit Ghostex, and Quit Ghostex
   & BG Service, which also stops the background service and every session). The
-  Notifications bell is in its top row; the Commands row at the bottom carries a
-  chart button that shows or hides your account usage meters above it, and the
-  Settings gear, which is where Settings and its Hotkeys page open from. Drag
-  the sidebar narrow and the Search and Commands rows become icon buttons, lined
-  up on the right, that keep their names and shortcuts in their tooltips.
+  Notifications bell is in its top row. The bar at the bottom carries the
+  workspace button on the left (when Workspaces is on) and, on the right, the
+  Commands lightning button, a chart button that shows or hides your account
+  usage meters above it, and the Settings gear, which is where Settings and its
+  Hotkeys page open from. Search and Commands are icon buttons that keep their
+  names and shortcuts in their tooltips.
 - **Work area**: your sessions, and the views open beside them. The sessions are
   a grid of terminal panes and tabs; each pane can show the raw terminal or the
   Session Chat rendering of the same agent conversation. Opening Code, Browser,

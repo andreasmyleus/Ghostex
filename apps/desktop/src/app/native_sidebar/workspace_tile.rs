@@ -1,14 +1,13 @@
-//! The workspace tile at the left end of the Spaces row: a split button. The left part is the
+//! The workspace tile at the left end of the sidebar's bottom bar: a split button. The left part is the
 //! window's workspace as its letter on the workspace's color, and a click switches to the other
 //! workspace (gx-core `workspace_switch_target`); the slim chevron on the right opens the
 //! workspace menu.
 //!
-//! CDXC:Workspaces 2026-10-09 DECISION:
-//! User: one tile to the left of the Spaces row (not a rail), then that workspace's Spaces. The menu
-//! comes from gx-core (`sidebar_menu/workspace.rs`).
+//! CDXC:Workspaces 2026-10-11 DECISION:
+//! User: move the workspace picker out of the Spaces row to the bottom left of the app, in the sidebar's bottom bar. It shows whenever this computer's section is shown and the Workspaces feature is on, with or without Spaces. This supersedes the 2026-10-09 tile to the left of the Spaces row. The menu comes from gx-core (`sidebar_menu/workspace.rs`).
 //!
 //! CDXC:Workspaces 2026-10-10 DECISION:
-//! User picked option A of the one-click switch mockup (the switch rule is gx-core `workspace_switch_target`) and asked to "make the look of the profile switcher match the size etc of the space buttons and don't add a | there between them". So the split button has the Space buttons' height, radius, fill and hover, its letter block is sized like a Space icon, and the hairline that followed the tile is gone (this supersedes the 2026-10-09 hairline). Like the Space buttons it has no outline since 2026-10-11 (`space_track_fill` in selectors.rs); the hairline between its two parts stays.
+//! User picked option A of the one-click switch mockup (the switch rule is gx-core `workspace_switch_target`) and asked to "make the look of the profile switcher match the size etc of the space buttons and don't add a | there between them". So the split button has the Space buttons' height, radius, hairline border and hover, its letter block is sized like a Space icon, and the hairline that followed the tile is gone (this supersedes the 2026-10-09 hairline).
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -21,30 +20,27 @@ use super::appearance::SidebarAppearance;
 use crate::GhostexGpuiApp;
 use crate::app::helpers::*;
 
-/// The letter part's width: a Space button's 28px face.
-const LETTER_PART_WIDTH: f32 = 28.0;
-/// The chevron part's width, the hairline between the two parts included.
+/// The letter part's width: a Space button's 28px face less the split button's left border.
+const LETTER_PART_WIDTH: f32 = 27.0;
+/// The chevron part's width, its right border included.
 const CHEVRON_PART_WIDTH: f32 = 15.0;
 
-/// The split button and the row gap after it: what the Space row gives up for it.
-pub(super) const WORKSPACE_TILE_ROOM: f32 = LETTER_PART_WIDTH + CHEVRON_PART_WIDTH + 4.0;
-
 impl GhostexGpuiApp {
-    /// Whether the window draws the workspace tile: this computer's section is shown and its
-    /// daemon has workspaces. With Spaces off the row is drawn for the tile alone only once there
-    /// is more than one workspace, so an install that never made one looks as it did.
-    pub(super) fn native_sidebar_shows_workspace_tile(
+    /// The tile in the bottom bar, while this computer's section is shown and its daemon has
+    /// workspaces (gxserver publishes none while the Workspaces feature is off).
+    pub(super) fn render_native_sidebar_footer_workspace_tile(
         &self,
-        selected_machine_id: &str,
-        spaces_enabled: bool,
-    ) -> bool {
-        selected_machine_id == ghostex_gx_core::LOCAL_MACHINE_ID
-            && self
-                .gx_store_workspaces_state()
-                .is_some_and(|state| spaces_enabled || state.workspaces.len() > 1)
+        appearance: &SidebarAppearance,
+        cx: &mut gpui::Context<Self>,
+    ) -> Option<AnyElement> {
+        let snapshot = self.native_sidebar.snapshot.as_ref()?;
+        if snapshot.selected_machine_id != ghostex_gx_core::LOCAL_MACHINE_ID {
+            return None;
+        }
+        self.render_native_sidebar_workspace_tile(appearance, cx)
     }
 
-    pub(super) fn render_native_sidebar_workspace_tile(
+    fn render_native_sidebar_workspace_tile(
         &self,
         appearance: &SidebarAppearance,
         cx: &mut gpui::Context<Self>,
@@ -172,7 +168,8 @@ impl GhostexGpuiApp {
                 .flex_shrink_0()
                 .h(px(28.0 * scale))
                 .rounded(px(6.0 * scale))
-                .bg(super::selectors::space_tile_fill(appearance))
+                .border_1()
+                .border_color(border)
                 .child(letter)
                 .child(chevron)
                 .into_any_element(),

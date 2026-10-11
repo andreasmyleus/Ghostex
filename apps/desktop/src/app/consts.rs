@@ -73,20 +73,6 @@ pub(crate) const SIDEBAR_MAX_WIDTH: f32 = 520.0;
 
 pub(crate) const SIDEBAR_RESET_WIDTH: f32 = 235.0;
 
-/// CDXC:Sidebar 2026-09-28 DECISION:
-/// User: the Commands row collapses to an icon-only button below a 260px sidebar, with its label
-/// and shortcut moved into a tooltip and its buttons aligned right. The Search button is always
-/// icon-only, which supersedes the 2026-09-21 340px Search threshold.
-/// CDXC:Sidebar 2026-10-11 DECISION:
-/// User: at a sidebar width of 441px or less the Commands area is just the lightning icon button
-/// (tooltip "Commands (Ctrl+Shift+P)"), because the word was cut off ("Comm"); above 441px it
-/// shows as before. "exactly at 441px as i see it don't do weird scaling calculations please",
-/// then "no fam i said 441px you did ~663": 441 means real screen pixels as the user sees them
-/// (a ~150% display makes 441 real px about 294 logical), so the sidebar's logical width times the
-/// window's display scale factor is compared with this number, with no UI zoom applied on top.
-/// This supersedes the 260px threshold above.
-pub(crate) const SIDEBAR_COMPACT_COMMANDS_WIDTH: f32 = 441.0;
-
 /*
 CDXC:Sidebar 2026-09-20 DECISION:
 User: the session list fades out at its bottom end only, into the usage strip and the Commands row.

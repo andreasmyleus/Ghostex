@@ -11,6 +11,7 @@ pub(crate) struct SpaceDragPreview {
     pub(crate) icon: String,
     pub(crate) color: Hsla,
     pub(crate) background: Hsla,
+    pub(crate) outline: Hsla,
     pub(crate) pointer_y: Pixels,
 }
 
@@ -24,6 +25,8 @@ impl SpaceDragPreview {
             .items_center()
             .justify_center()
             .rounded(px(6.0 * scale))
+            .border_1()
+            .border_color(self.outline)
             .bg(self.background)
             .child(
                 gpui::svg()

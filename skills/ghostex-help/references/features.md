@@ -409,8 +409,8 @@ Each workspace has its own projects, Spaces,
 Linear API key, Claude account and Browser sign-ins (cookies), and a window
 shows one workspace at a time. Every install starts with one workspace,
 Personal, holding all your projects and Spaces. The workspace button sits at
-the left end of the Space row (with Spaces off, it shows in that row once you
-have a second workspace): the workspace's letter with a small arrow beside it.
+the bottom left of the sidebar, in its bottom bar: the workspace's letter with
+a small arrow beside it.
 Click the letter to switch this window to your other workspace in one click
 (with more than two, it goes back to the one this window showed last; hover it
 to see where it goes). If another window already shows that workspace, that
@@ -788,9 +788,9 @@ when you open it.
   Cmd+K, the Actions button at the bottom right, or a right-click lists
   everything else the row can do (star, tag, copy, edit, delete, remove, New
   Prompt) with each action's hotkey. Cmd+Shift+P opens Commands directly to
-  search app commands, pane actions, and project actions. The Commands row at
-  the bottom of the sidebar opens the same thing, and the gear beside it opens
-  Settings in one click.
+  search app commands, pane actions, and project actions. The lightning button
+  at the bottom right of the sidebar opens the same thing, and the gear beside
+  it opens Settings in one click.
   Previous Sessions in More Options lists past conversations from every agent
   CLI with resume and fork. The History icon immediately to the
   right of Add Worktree on a project header opens Quick Access > Sessions with
@@ -2548,10 +2548,10 @@ backend: `ghostex team deploy|join|invite|identity|status|ping|leave`. Slack:
   accounts to show their usage at the bottom of the desktop sidebar, or unstar
   them to hide it. These are the same per-account stars available in
   Settings > Accounts. The meters are hidden until you ask for them: hover the
-  chart button in the sidebar's Commands row, just left of the Settings gear,
+  chart button in the sidebar's bottom bar, just left of the Settings gear,
   and every starred account floats over the bottom of the list, four per row,
   without moving the list. The button turns into a pin while you hover it:
-  click it to keep the meters there above the Commands row, and click it again
+  click it to keep the meters there above the bottom bar, and click it again
   (the pin shows filled while they are pinned) to unpin them. Ghostex remembers
   whether they are pinned. The button itself is only there once you have
   starred an account.

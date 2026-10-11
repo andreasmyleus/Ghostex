@@ -132,7 +132,7 @@ impl GhostexGpuiApp {
             .text_size(px(15.55 * appearance.scale))
             .font_family(crate::ui_fonts::UI_FONT)
             .font_weight(FontWeight::LIGHT)
-            .child(self.render_native_sidebar_navigation(&appearance, false, window, cx))
+            .child(self.render_native_sidebar_navigation(&appearance, false, cx))
             .child(self.render_native_sidebar_selectors(&snapshot, &appearance, cx))
             /*
             The list and its bottom fade ramp are one child on purpose: the
@@ -313,7 +313,7 @@ impl GhostexGpuiApp {
                     .w_full()
                     .flex_shrink_0()
                     .children(self.render_native_sidebar_usage(&appearance, window, cx))
-                    .child(self.render_native_sidebar_navigation(&appearance, true, window, cx)),
+                    .child(self.render_native_sidebar_navigation(&appearance, true, cx)),
             )
             .child(
                 gpui::canvas(
