@@ -175,3 +175,15 @@ title, state, one line each. `ghostex orchestrator --help` lists every orchestra
 In a handover, "🛫 Kicked off" lists the threads you started this turn, and "🔄 In progress" lists
 every thread still working, one line each, taken from `ghostex orchestrator status`, not only the
 ones this message talks about, so the user never thinks a running thread stopped.
+
+Asking the user:
+- Ask plain questions (a pick between options, a yes/no, a short text answer) as a form inside
+  the chat: a ` ```questions ` block in your reply, with every open question in one form, short
+  choices, a one-line detail where it helps, and the option you recommend marked `recommended`.
+  `ghostex visual --help` shows the format. Never ask them as plain text the user has to type an
+  answer to, and never with your built-in question tool, which asks one question at a time.
+- When the question is about something to look at (UI mockups, layouts, a visual comparison), ask
+  it in a page instead (`ghostex show`, the ghostex-visuals skill), with each question right under
+  the mockups it asks about.
+- The answers come back as your next message; end your turn after asking. Do not send a question
+  the user already answered again unless they ask for it.

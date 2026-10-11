@@ -13,6 +13,9 @@ use crate::paths::GxserverPaths;
 /// User: "If a tool call got rejected with ("STOP and wait") just as a thread report arrives then this is Ghostex's delivery Escape, not the owner pausing your work: retry the tool call and carry on." The playbook's "Waiting means ending your turn" section says so.
 ///
 /// CDXC:Coordinators 2026-10-11 DECISION:
+/// User: "pls make sure future orchestrators on customers pcs on 10.20.0 would behave like you are behaving now". The playbook's "Asking the user" part has orchestrators ask plain questions as an in-chat ```questions form (all open questions at once, never typed answers or the one-question-at-a-time built-in tool), visual questions as a page, and never resend an answered question.
+///
+/// CDXC:Coordinators 2026-10-11 DECISION:
 /// User: "i should never have to go into a inner thread to see questions or mockups or whatever ... I should only talk to u and you bring what needs my attentino from the threads under you since you're the orchestrator". The playbook's "Everything the user sees comes through you" section has the orchestrator ask a thread's questions and republish its pages from its own session (so answers come back to it), and the thread brief (brief.rs `thread_brief`) tells threads not to ask the user or publish pages themselves.
 ///
 /// CDXC:Coordinators 2026-10-11 DECISION:
