@@ -35,7 +35,7 @@
 //! reopening the page brings them back.
 //!
 //! CDXC:SessionChat 2026-10-11 DECISION:
-//! User: "please same style for the html modal also and the inline questions": each question is a "Clear ask, clear answer" card like the chat's (apps/desktop/src/app/native_chat/ask_card.rs): an amber tile beside the tag chip and title that turns into a green check once the page is answered (muted for a question left blank), picks that turn green with it, options that light up amber when picked (the mockup Pick button too), and a footer bar with the status and a filled send button showing its key. It takes the chat card's own colours too ("The colors are too light for the bg of the question cards please make it darker"): the chat's darker card and option rows, its light-grey Recommended badge and send button, and its bright labels and titles at medium weight. Only the tile stays beside the tag chip and title, since a page spreads its questions between mockups.
+//! User: "please same style for the html modal also and the inline questions": each question is a "Clear ask, clear answer" card like the chat's (apps/desktop/src/app/native_chat/ask_card.rs): an amber tile beside the tag chip and title that turns into a green check once the page is answered (muted for a question left blank), picks that turn green with it, options that light up amber when picked (the mockup Pick button too), and a footer bar with the status and a filled send button showing its key. It takes the chat card's own colours too: its light-grey Recommended badge and send button and its bright labels and titles at medium weight. The card is darker still than the chat's ("The colors are too light for the bg of the question cards please make it darker", then "background for the whole question component still too light"), and its amber is quieter ("please make the yellow more subtle"): a picked option, the tile, the mockup ring and the Picked button take a light amber tint instead of a strong one or a solid fill. Only the tile stays beside the tag chip and title, since a page spreads its questions between mockups.
 //! User picked from the looks page: a question's tag is a filled chip above its title ("make it show like eyebrow"), and a choice keeps its radio or checkbox with the letter as a muted keycap on the right; the in-chat form (apps/desktop/src/app/native_chat/question_form.rs, the phone's QuestionForm.tsx) matches.
 //! User: Ctrl+Enter (Cmd+Enter on macOS) presses the page's send button from anywhere on it, a note box included; the in-chat form does the same.
 //! User: a reader picks an option right at its mockup (a Pick button by the mockup's title that picks that choice in its question, shown picked on both and cleared from either), and writes a note under each mockup that arrives with the answers keyed to that question and choice, is kept as a draft, and shows in the answers card.
@@ -50,9 +50,9 @@
 /// have no specificity (`:where`), so a page's own CSS always wins.
 ///
 /// CDXC:SessionChat 2026-10-11 SEE-ALSO:
-/// The `--gx-*` tokens at its top are the chat card's palette (apps/desktop/src/app/native_chat/appearance.rs: `foreground`, `card_muted`, `control_primary`, `card_panel`, `card_footer`, `input`, `input_border`, `control_border`), worked out from the page's `--background` the way the chat works them out from its own, with `light-dark()` choosing the theme. Change them together.
+/// The `--gx-*` tokens at its top are the chat card's palette (apps/desktop/src/app/native_chat/appearance.rs: `foreground`, `card_muted`, `control_primary`, `card_panel`, `card_footer`, `input`, `input_border`, `control_border`), worked out from the page's `--background` the way the chat works them out from its own, with `light-dark()` choosing the theme. In dark mode the card, option rows and send bar lift less than the chat's (3.5%, 1.5% and 2.5% toward white instead of 7%, 3% and 3.3%), so a page's cards sit darker on its darker page. Change them together.
 pub(super) const KIT_STYLE: &str = r#"<style id="ghostex-kit">
-:root{--gx-fg:light-dark(#27272a,#fcfcfc);--gx-card-muted:light-dark(#71717b,#b4b8bf);--gx-control:light-dark(#18181b,#e5e5e5);--gx-card:light-dark(color-mix(in srgb,#fff 60%,var(--background)),color-mix(in srgb,#fff 7%,var(--background)));--gx-footer:light-dark(color-mix(in srgb,#fff 10%,var(--background)),color-mix(in srgb,#fff 3.3%,var(--background)));--gx-option:light-dark(var(--background),color-mix(in srgb,#fff 3%,var(--background)));--gx-card-border:light-dark(color-mix(in srgb,#000 9.5%,var(--background)),rgba(255,255,255,.08));--gx-option-border:light-dark(color-mix(in srgb,#000 9.5%,var(--background)),rgba(255,255,255,.06))}
+:root{--gx-fg:light-dark(#27272a,#fcfcfc);--gx-card-muted:light-dark(#71717b,#b4b8bf);--gx-control:light-dark(#18181b,#e5e5e5);--gx-card:light-dark(color-mix(in srgb,#fff 60%,var(--background)),color-mix(in srgb,#fff 3.5%,var(--background)));--gx-footer:light-dark(color-mix(in srgb,#fff 10%,var(--background)),color-mix(in srgb,#fff 2.5%,var(--background)));--gx-option:light-dark(var(--background),color-mix(in srgb,#fff 1.5%,var(--background)));--gx-card-border:light-dark(color-mix(in srgb,#000 9.5%,var(--background)),rgba(255,255,255,.08));--gx-option-border:light-dark(color-mix(in srgb,#000 9.5%,var(--background)),rgba(255,255,255,.06))}
 gx-questions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,var(--gx-column,720px)) minmax(0,1fr);row-gap:12px;align-content:start;padding:12px 0 24px}
 gx-questions>*{grid-column:2;min-width:0}
 gx-questions>gx-wide{grid-column:1/-1}
@@ -65,7 +65,7 @@ gx-wide,gx-choice{display:block;min-width:0}
 gx-question{display:block;border:1px solid var(--gx-card-border);background:var(--gx-card);color:var(--gx-card-muted);border-radius:14px;padding:12px 14px 14px}
 gx-questions gx-question{width:100%;box-sizing:border-box;min-width:0}
 .gx-q-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.gx-q-tile{flex:none;display:grid;place-items:center;width:28px;height:28px;box-sizing:border-box;border-radius:8px;color:var(--warning);background:color-mix(in srgb,var(--warning) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warning) 22%,transparent)}
+.gx-q-tile{flex:none;display:grid;place-items:center;width:28px;height:28px;box-sizing:border-box;border-radius:8px;color:color-mix(in srgb,var(--warning) 80%,transparent);background:color-mix(in srgb,var(--warning) 9%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warning) 14%,transparent)}
 .gx-q-tile svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 gx-question.gx-unanswered .gx-q-tile{color:var(--muted-foreground);background:color-mix(in srgb,var(--muted-foreground) 12%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--muted-foreground) 20%,transparent)}
 gx-question.gx-answered .gx-q-tile{color:var(--success);background:color-mix(in srgb,var(--success) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--success) 22%,transparent)}
@@ -78,12 +78,12 @@ gx-question.gx-answered .gx-q-tile{color:var(--success);background:color-mix(in 
 .gx-choice{display:flex;gap:12px;align-items:flex-start;width:100%;box-sizing:border-box;margin:0;text-align:left;padding:10px 12px;border:1px solid var(--gx-option-border);border-radius:10px;background:var(--gx-option);color:var(--gx-fg);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
 .gx-choice:hover:not(:disabled):not([aria-checked=true]){border-color:color-mix(in srgb,var(--gx-fg) 14%,transparent);background:color-mix(in srgb,var(--gx-fg) 3%,var(--gx-option))}
 .gx-choice:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 20%,transparent)}
-.gx-choice[aria-checked=true]{border-color:color-mix(in srgb,var(--warning) 55%,transparent);background:color-mix(in srgb,var(--warning) 8%,var(--gx-card))}
+.gx-choice[aria-checked=true]{border-color:color-mix(in srgb,var(--warning) 32%,transparent);background:color-mix(in srgb,var(--warning) 4%,var(--gx-card))}
 .gx-choice:disabled{cursor:default}
 .gx-choice:disabled:not([aria-checked=true]){opacity:.55}
 .gx-mark{flex-shrink:0;width:16px;height:16px;margin-top:2px;box-sizing:border-box;border:1.5px solid color-mix(in srgb,var(--muted-foreground) 70%,transparent);border-radius:50%}
 .gx-choice[role=checkbox] .gx-mark{border-radius:4px}
-.gx-choice[aria-checked=true] .gx-mark{border-color:var(--warning);background:var(--warning);box-shadow:inset 0 0 0 3px var(--gx-card)}
+.gx-choice[aria-checked=true] .gx-mark{border-color:color-mix(in srgb,var(--warning) 85%,transparent);background:color-mix(in srgb,var(--warning) 85%,transparent);box-shadow:inset 0 0 0 3px var(--gx-card)}
 .gx-choice[role=checkbox][aria-checked=true] .gx-mark{box-shadow:inset 0 0 0 2px var(--gx-card)}
 gx-question.gx-answered .gx-choice[aria-checked=true]{border-color:color-mix(in srgb,var(--success) 55%,transparent);background:color-mix(in srgb,var(--success) 8%,var(--gx-card))}
 gx-question.gx-answered .gx-choice[aria-checked=true] .gx-mark{border-color:var(--success);background:var(--success)}
@@ -103,15 +103,15 @@ gx-question.gx-answered .gx-choice[aria-checked=true] .gx-mark{border-color:var(
 .gx-has-pick{display:flex;align-items:center;gap:8px}
 .gx-pick{display:inline-flex;flex:none;align-items:center;gap:4px;margin-left:auto;padding:2px 10px;vertical-align:middle;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--foreground);font:500 12px/1.5 var(--font-sans);cursor:pointer}
 .gx-pick:hover:not(:disabled):not([aria-pressed=true]){background:var(--accent);color:var(--accent-foreground)}
-.gx-pick[aria-pressed=true]{background:var(--warning);border-color:var(--warning);color:var(--background)}
-.gx-pick[aria-pressed=true]:hover:not(:disabled),.gx-pick[aria-pressed=true]:active:not(:disabled){background:color-mix(in srgb,var(--warning) 85%,var(--foreground));border-color:color-mix(in srgb,var(--warning) 85%,var(--foreground));color:var(--background)}
+.gx-pick[aria-pressed=true]{background:color-mix(in srgb,var(--warning) 12%,transparent);border-color:color-mix(in srgb,var(--warning) 40%,transparent);color:var(--warning)}
+.gx-pick[aria-pressed=true]:hover:not(:disabled),.gx-pick[aria-pressed=true]:active:not(:disabled){background:color-mix(in srgb,var(--warning) 20%,transparent);border-color:color-mix(in srgb,var(--warning) 55%,transparent);color:var(--warning)}
 .gx-pick:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 35%,transparent)}
 .gx-pick:disabled{cursor:default}
 .gx-pick:disabled:not([aria-pressed=true]){opacity:.5}
 .gx-option-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-weight:600}
 [data-question][data-choice]:not(h1,h2,h3,h4,h5,h6){box-sizing:content-box;padding:14px;border:2px solid transparent;border-radius:16px}
 :where([data-question][data-choice]:not(h1,h2,h3,h4,h5,h6)){max-width:calc(100% - 32px)}
-[data-question][data-choice].gx-picked:not(h1,h2,h3,h4,h5,h6){border-color:color-mix(in srgb,var(--warning) 70%,transparent)}
+[data-question][data-choice].gx-picked:not(h1,h2,h3,h4,h5,h6){border-color:color-mix(in srgb,var(--warning) 40%,transparent)}
 .gx-option-note{display:block;width:100%;box-sizing:border-box;margin:8px 0 0;min-height:34px;resize:vertical;field-sizing:content;font:inherit;font-size:12.5px;color:var(--foreground);background:transparent;border:1px solid var(--border);border-radius:var(--radius);padding:7px 9px}
 .gx-option-note:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 20%,transparent)}
 .gx-option-note::placeholder{color:var(--muted-foreground)}

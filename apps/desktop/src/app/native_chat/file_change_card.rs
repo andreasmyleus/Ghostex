@@ -1,9 +1,9 @@
 //! The file change card under a message: a header that sums up the edit (pencil tile, "Edited N
 //! files", the folder the files share, total +/-, a ratio bar and Review all), then a row per file
-//! (chevron, file icon, name, folder, Edited/New/Deleted tag, counts and a five-block change bar)
+//! (chevron, file icon, name, folder, counts and a five-block change bar)
 //! that opens to its diff with old and new line numbers, "Show all N changed lines" and Open file.
 //!
-//! What the card says (the title, folder, totals, tags, bars, labels and the preview's length)
+//! What the card says (the title, folder, totals, bars, labels and the preview's length)
 //! comes from `packages/gx-chat-core/src/transcript/file_change_rows.rs` (the user's pick is the
 //! `CDXC:SessionChat 2026-10-11 DECISION` on `file_change_card` there); this file only lays it out.
 //! The phone draws the same card in `apps/mobile/app/src/chat/native/transcript/FileChanges.tsx`.
@@ -416,18 +416,6 @@ impl NativeChatView {
                     .child(text(file, "filename")),
             )
             .child(folder_label(text(file, "parent"), p.muted, 12.5 * s))
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .px(px(6.0 * s))
-                    .py(px(1.0 * s))
-                    .rounded(px(5.0 * s))
-                    .text_size(px(10.5 * s))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(hue)
-                    .bg(hue.opacity(0.13))
-                    .child(text(file, "statusLabel")),
-            )
             .when(failed, |this| {
                 this.child(
                     div()

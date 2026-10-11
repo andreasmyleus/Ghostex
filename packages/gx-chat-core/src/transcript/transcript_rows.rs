@@ -13,7 +13,7 @@ use serde_json::{json, Map, Value};
 
 use crate::transcript::file_change_rows::{
     file_change_bars, file_change_counts, file_change_expandable, file_change_path_parts,
-    file_change_show_all_label, file_change_status_label,
+    file_change_show_all_label,
 };
 use crate::transcript::file_changes::FileChange;
 use crate::transcript::question_exchange::answered_question_exchange;
@@ -220,7 +220,6 @@ pub fn file_rows(
                 "failed": failed,
                 "error": if failed { change.result_output() } else { "" },
                 "status": change.status,
-                "statusLabel": file_change_status_label(change.status),
                 "bars": file_change_bars(counts.added, counts.removed),
                 // The preview already shows everything a short change has; otherwise the row
                 // offers this under it.

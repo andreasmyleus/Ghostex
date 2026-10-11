@@ -242,15 +242,6 @@ pub fn file_change_bars(added: usize, removed: usize) -> Vec<&'static str> {
         .collect()
 }
 
-/// The tag a file row shows for what happened to the file.
-pub fn file_change_status_label(status: &str) -> &'static str {
-    match status {
-        "new" => "New",
-        "deleted" => "Deleted",
-        _ => "Edited",
-    }
-}
-
 /// How many of a diff's lines its preview shows: up to and including its seventh code line, with
 /// the `@@` lines between them.
 pub fn file_change_preview_end(lines: &[DiffLine]) -> usize {
@@ -304,11 +295,12 @@ fn common_folder(files: &[Value]) -> String {
 /// User picked the proposed file change card from the chat-cards question page
 /// (docs/2026-10-10/chat-cards-questions/04-file-changes.html): one card per message with a header
 /// that sums up the edit (how many files, the folder they share, total +/-, a ratio bar and Review
-/// all), then a row per file with an icon and an Edited/New/Deleted tag, the filename before its
-/// folder, the counts and a five-block change bar. A row opens to a diff with the file's own line
-/// numbers and each hunk's heading, with "Show all N changed lines" and Open file under the
-/// preview. Simple mode keeps its "Edited N files" fold, which opens to this card. It replaces the
-/// activity-rail stack of one card per file.
+/// all), then a row per file with an icon, the filename before its folder, the counts and a
+/// five-block change bar. A row opens to a diff with the file's own line numbers and each hunk's
+/// heading, with "Show all N changed lines" and Open file under the preview. Simple mode keeps its
+/// "Edited N files" fold, which opens to this card. It replaces the activity-rail stack of one card
+/// per file. The rows had an Edited/New/Deleted tag until the user said "remove Edit/New etc next
+/// to the file names please, no need"; the file icon's colour still tells them apart.
 /// SEE-ALSO: apps/desktop/src/app/native_chat/file_change_card.rs,
 /// apps/mobile/app/src/chat/native/transcript/FileChanges.tsx, server/src/session_chat_file_patch.rs.
 pub fn file_change_card(files: &[Value]) -> Value {
