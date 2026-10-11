@@ -101,6 +101,11 @@ pub struct TranscriptViewState {
     pub deferred_cache: DeferredWorkCache,
     /// The `readSessionChatImage` reads in flight, by request id, with the path asked for.
     pub image_requests: BTreeMap<u64, String>,
+    /// The `readVisualPageThumbnail` reads in flight, by request id, with the page asked for
+    /// ([`crate::transcript::page_thumbnails`]).
+    pub page_thumbnail_requests: BTreeMap<u64, String>,
+    /// How many times in a row each page's picture was asked for and not there yet.
+    pub page_thumbnail_attempts: BTreeMap<String, u32>,
     /// The summary mode the write in flight will adopt once it lands.
     pub pending_summary_mode: Option<bool>,
     /// The verbose override the write in flight will adopt once it lands.
@@ -183,6 +188,8 @@ impl Default for TranscriptViewState {
             deferred_requests: BTreeMap::new(),
             deferred_cache: DeferredWorkCache::default(),
             image_requests: BTreeMap::new(),
+            page_thumbnail_requests: BTreeMap::new(),
+            page_thumbnail_attempts: BTreeMap::new(),
             pending_summary_mode: None,
             pending_verbose_override: None,
             projection_inputs: None,

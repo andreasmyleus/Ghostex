@@ -17,7 +17,7 @@ use gpui::{
     svg,
 };
 use gpui_component::input::{Input, InputState};
-use gpui_component::{Sizable as _, Size as ComponentSize, h_flex, v_flex};
+use gpui_component::{ElementExt as _, Sizable as _, Size as ComponentSize, h_flex, v_flex};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -417,6 +417,9 @@ pub(crate) fn quick_access_footer<V: 'static>(
         }))
         .child(
             footer_action("quick-access-open-actions", actions_open)
+                .on_prepaint(|bounds, _, _| {
+                    ACTIONS_BUTTON_BOUNDS.with(|cell| cell.set(Some(bounds)))
+                })
                 .text_color(hsla(p.item))
                 .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                     on_actions(this, window, cx);
@@ -438,6 +441,12 @@ pub(crate) fn quick_access_footer<V: 'static>(
                 ),
         )
         .into_any_element()
+}
+
+thread_local! {
+    /// Where the footer's Actions button was last painted: a press on it is left to its click,
+    /// which toggles the Actions panel shut (actions_menu.rs).
+    pub(crate) static ACTIONS_BUTTON_BOUNDS: Cell<Option<Bounds<Pixels>>> = const { Cell::new(None) };
 }
 
 /// The open state of one Quick Access picker. The window owns one per shelf control.

@@ -8,13 +8,13 @@
 
 use std::collections::HashSet;
 
+use super::ask_card::{AskOption, AskTone, ask_head, send_keys};
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
-use crate::app::native_chat::cursor::ChatCursor as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, AppContext as _, Context, Entity, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, KeyDownEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, div, px, rgb, svg,
+    IntoElement, KeyDownEvent, ParentElement as _, SharedString, Styled as _, Subscription, Window,
+    div, px, rgb,
 };
 use gpui_component::input::{InputEvent, Textarea, TextareaState};
 use serde_json::{Value, json};
@@ -139,6 +139,8 @@ impl NativeChatView {
 
     /// The form `id` names, or its source as code when the document does not carry it (a form in
     /// a subagent's transcript).
+    ///
+    /// CDXC:SessionChat 2026-10-11 DECISION: User: the form takes the "Clear ask, clear answer" card (ask_card.rs) like the agent's own question card: an amber tile while it waits, a green check once it is answered (that tile replaces the old Answered chip), the agent's title over a one-line detail, and a filled send button.
     pub(super) fn question_form(
         &self,
         id: &str,
@@ -159,76 +161,72 @@ impl NativeChatView {
         let s = p.scale;
         let phase = text(form, "state");
         let enabled = phase == "open";
-        let title = text(form, "title");
+        let mut title = text(form, "title");
+        if title.is_empty() {
+            title = "Questions".to_string();
+        }
         let error = text(form, "error");
-        let good = super::page_answers::answered_color(p);
-        let header = div()
-            .flex()
-            .items_start()
-            .gap(px(8.0 * s))
-            .child(
-                svg()
-                    .path("titlebar/help-circle.svg")
-                    .size(px(14.0 * s))
-                    .mt(px(4.0 * s))
-                    .text_color(p.muted)
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_color(p.foreground)
-                    .child(title),
-            )
-            .when(phase == "answered", |header| {
-                header.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0 * s))
-                        .flex_shrink_0()
-                        .mt(px(1.0 * s))
-                        .px(px(8.0 * s))
-                        .py(px(2.0 * s))
-                        .rounded_full()
-                        .bg(good.opacity(0.14))
-                        .text_size(px(11.0 * s))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(good)
-                        .child(
-                            svg()
-                                .path("titlebar/check.svg")
-                                .size(px(11.0 * s))
-                                .text_color(good),
-                        )
-                        .child("Answered"),
-                )
-            })
-            .into_any_element();
         if !error.is_empty() {
-            let body = vec![
-                div()
-                    .text_color(error_color(p))
-                    .child(format!("These questions could not be shown: {error}"))
-                    .into_any_element(),
-                self.text_view(
+            let head = ask_head(
+                "titlebar/alert-circle.svg",
+                AskTone::Quiet,
+                title,
+                "These questions could not be shown".to_string(),
+                Vec::new(),
+                p,
+            )
+            .into_any_element();
+            let body = div()
+                .flex()
+                .flex_col()
+                .gap(px(12.0 * s))
+                .child(div().text_color(error_color(p)).child(error))
+                .child(self.text_view(
                     format!("question-form-source:{id}"),
                     fence.to_string(),
                     &Value::Null,
                     p,
                     cx,
-                ),
-            ];
-            return self.status_card_with_header(header, body, Vec::new(), p);
+                ))
+                .into_any_element();
+            return self.ask_card(head, Some(body), Vec::new(), None, p);
         }
+        let questions = form["questions"].as_array().cloned().unwrap_or_default();
+        let (icon, tone, detail) = match phase.as_str() {
+            "answered" => (
+                "titlebar/check.svg",
+                AskTone::Answered,
+                "Sent to the agent".to_string(),
+            ),
+            "sending" => (
+                "titlebar/help-circle.svg",
+                AskTone::Ask,
+                "Sending…".to_string(),
+            ),
+            "queued" => (
+                "titlebar/help-circle.svg",
+                AskTone::Ask,
+                "Queued".to_string(),
+            ),
+            _ if questions.len() == 1 => (
+                "titlebar/help-circle.svg",
+                AskTone::Ask,
+                "1 question".to_string(),
+            ),
+            _ => (
+                "titlebar/help-circle.svg",
+                AskTone::Ask,
+                format!("{} questions", questions.len()),
+            ),
+        };
+        let head = ask_head(icon, tone, title, detail, Vec::new(), p).into_any_element();
         let other_label = text(form, "otherLabel");
-        let body: Vec<AnyElement> = form["questions"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .enumerate()
-            .map(|(index, question)| {
+        let body = div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .min_w_0()
+            .children(questions.iter().enumerate().map(|(index, question)| {
                 self.form_question(
                     id,
                     index,
@@ -239,63 +237,45 @@ impl NativeChatView {
                     p,
                     cx,
                 )
-            })
-            .collect();
+            }))
+            .into_any_element();
         let send_error = text(form, "sendError");
         let can_send = form["canSend"] == true;
         let status = match phase.as_str() {
             "answered" => "Sent to the agent.".to_string(),
             "queued" => "Queued: it goes to the agent once it's ready.".to_string(),
             "sending" => "Sending…".to_string(),
-            _ if !send_error.is_empty() => send_error,
+            _ if !send_error.is_empty() => send_error.clone(),
             _ => "Questions you leave blank are sent as unanswered.".to_string(),
         };
-        let status_color = if enabled && !text(form, "sendError").is_empty() {
+        let status_color = if enabled && !send_error.is_empty() {
             error_color(p)
         } else {
             p.muted
         };
-        let send_id = SharedString::from(format!("question-form-send:{id}"));
         let send_label = match phase.as_str() {
             "answered" => "Sent".to_string(),
             "queued" => "Queued".to_string(),
             _ => text(form, "submit"),
         };
-        let form_id = id.to_string();
-        let actions = vec![
+        let footer = vec![
             div()
                 .flex_1()
                 .min_w_0()
                 .text_size(px(12.5 * s))
+                .line_height(px(18.0 * s))
                 .text_color(status_color)
                 .child(status)
                 .into_any_element(),
-            div()
-                .id(send_id)
-                .role(gpui::Role::Button)
-                .aria_label(send_label.clone())
-                .h(px(28.0 * s))
-                .px(px(12.0 * s))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(8.0 * s))
-                .border_1()
-                .border_color(p.control_border)
-                .text_color(p.foreground)
-                .when(p.light, |button| button.bg(p.background))
-                .when(!can_send, |button| button.opacity(0.5))
-                .when(can_send, |button| {
-                    button
-                        .chat_cursor_pointer()
-                        .hover(|style| style.bg(p.input))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.invoke(json!({"type":"formSend","form":form_id}), cx)
-                        }))
-                })
-                .child(send_label)
-                .into_any_element(),
+            self.ask_primary_button(
+                SharedString::from(format!("question-form-send:{id}")),
+                send_label,
+                enabled.then(send_keys),
+                json!({"type":"formSend","form":id}),
+                !can_send,
+                p,
+                cx,
+            ),
         ];
         // CDXC:SessionChat 2026-10-11 DECISION: User: Ctrl+Enter (Cmd+Enter on macOS) presses the form's send button from anywhere in it, a note box included; the page kit (server/src/visual_pages/kit.rs) does the same.
         let send_form = id.to_string();
@@ -307,7 +287,7 @@ impl NativeChatView {
                     cx.stop_propagation();
                 }
             }))
-            .child(self.status_card_with_header(header, body, actions, p))
+            .child(self.ask_card(head, Some(body), footer, None, p))
             .into_any_element()
     }
 
@@ -324,6 +304,7 @@ impl NativeChatView {
         cx: &Context<Self>,
     ) -> AnyElement {
         let s = p.scale;
+        let answered = self.snapshot["questionForms"][id]["state"] == "answered";
         let tag = text(question, "tag");
         let detail = text(question, "detail");
         let multiple = question["multiple"] == true;
@@ -336,9 +317,16 @@ impl NativeChatView {
         let mut column = div()
             .flex()
             .flex_col()
-            .gap(px(6.0 * s))
+            .gap(px(8.0 * s))
             .w_full()
             .min_w_0()
+            .when(index > 0, |column| {
+                column
+                    .mt(px(16.0 * s))
+                    .pt(px(16.0 * s))
+                    .border_t_1()
+                    .border_color(p.foreground.opacity(0.06))
+            })
             .child(
                 // CDXC:SessionChat 2026-10-11 DECISION: User picked from the looks page: a question's tag is a filled chip (no border) placed above its title, "b, but pls make it show like eyebrow (in terms of position)"; and choices keep the radio or checkbox with the letter as a muted keycap on the right (look A). The phone (QuestionForm.tsx) and the page kit (server/src/visual_pages/kit.rs) match.
                 div()
@@ -364,6 +352,8 @@ impl NativeChatView {
                         div()
                             .w_full()
                             .min_w_0()
+                            .text_size(px(15.0 * s))
+                            .line_height(px(22.0 * s))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.foreground)
                             .child(text(question, "title")),
@@ -373,7 +363,7 @@ impl NativeChatView {
                 column.child(
                     div()
                         .text_size(px(13.0 * s))
-                        .line_height(px(18.5 * s))
+                        .line_height(px(19.0 * s))
                         .text_color(p.card_muted)
                         .child(detail),
                 )
@@ -388,35 +378,48 @@ impl NativeChatView {
                 );
             }
             let choices = question["choices"].as_array().cloned().unwrap_or_default();
+            let row = |number: usize,
+                       label: String,
+                       detail: String,
+                       recommended: bool,
+                       picked: bool,
+                       other: bool| {
+                self.ask_option(
+                    AskOption {
+                        id: format!("question-form-choice:{id}:{index}:{number}").into(),
+                        label,
+                        detail,
+                        picked,
+                        multiple,
+                        // The letter the reader can refer to ("do b"), as a muted keycap at the row's end.
+                        key: Some(choice_letter(number)),
+                        recommended,
+                        other,
+                        enabled,
+                        answered,
+                        action: json!({"type":"formChoice","form":id,"question":index,"choice":number}),
+                    },
+                    p,
+                    cx,
+                )
+            };
             for (choice_index, choice) in choices.iter().enumerate() {
-                column = column.child(self.form_choice_row(
-                    format!("question-form-choice:{id}:{index}:{choice_index}"),
+                column = column.child(row(
                     choice_index,
                     text(choice, "label"),
                     text(choice, "detail"),
                     choice["recommended"] == true,
                     picked.contains(&(choice_index as u64)),
-                    multiple,
                     false,
-                    enabled,
-                    json!({"type":"formChoice","form":id,"question":index,"choice":choice_index}),
-                    p,
-                    cx,
                 ));
             }
-            column = column.child(self.form_choice_row(
-                format!("question-form-choice:{id}:{index}:other"),
+            column = column.child(row(
                 choices.len(),
                 other_label.to_string(),
                 String::new(),
                 false,
                 draft["otherPicked"] == true,
-                multiple,
                 true,
-                enabled,
-                json!({"type":"formChoice","form":id,"question":index,"choice":choices.len()}),
-                p,
-                cx,
             ));
         }
         let written = text(draft, "other");
@@ -427,14 +430,14 @@ impl NativeChatView {
                         .w_full()
                         .px(px(10.0 * s))
                         .py(px(6.0 * s))
-                        .rounded(px(8.0 * s))
+                        .rounded(px(9.0 * s))
                         .border_1()
-                        .border_color(p.control_border)
-                        .when(p.light, |field| field.bg(p.background))
+                        .border_color(p.input_border)
+                        .bg(if p.light { p.background } else { p.input })
                         .child(
                             Textarea::new(input)
                                 .aria_label("Note")
-                                .placeholder_color(p.muted.opacity(0.6))
+                                .placeholder_color(p.muted.opacity(0.75))
                                 .caret_color(p.foreground)
                                 .appearance(false)
                                 .bordered(false)
@@ -472,160 +475,13 @@ impl NativeChatView {
         }
         column.into_any_element()
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    fn form_choice_row(
-        &self,
-        id: String,
-        number: usize,
-        label: String,
-        detail: String,
-        recommended: bool,
-        picked: bool,
-        multiple: bool,
-        other: bool,
-        enabled: bool,
-        action: Value,
-        p: &ChatAppearance,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let s = p.scale;
-        let letter = if number < 26 {
-            ((b'a' + number as u8) as char).to_string()
-        } else {
-            (number + 1).to_string()
-        };
-        let mark = div()
-            .flex_shrink_0()
-            .mt(px(3.0 * s))
-            .size(px(14.0 * s))
-            .flex()
-            .items_center()
-            .justify_center()
-            .border(px(1.5 * s))
-            .border_color(if picked { p.control_primary } else { p.muted })
-            .when(multiple, |mark| mark.rounded(px(4.0 * s)))
-            .when(!multiple, |mark| mark.rounded_full())
-            .when(picked && multiple, |mark| {
-                mark.bg(p.control_primary).child(
-                    svg()
-                        .path("titlebar/check.svg")
-                        .size(px(10.0 * s))
-                        .text_color(p.background),
-                )
-            })
-            .when(picked && !multiple, |mark| {
-                mark.child(div().size(px(6.0 * s)).rounded_full().bg(p.control_primary))
-            });
-        div()
-            .id(SharedString::from(id))
-            .when(enabled, |row| row.tab_index(0))
-            .role(if multiple {
-                gpui::Role::CheckBox
-            } else {
-                gpui::Role::RadioButton
-            })
-            .aria_label(label.clone())
-            .flex()
-            .items_start()
-            .gap(px(10.0 * s))
-            .w_full()
-            .px(px(12.0 * s))
-            .py(px(8.0 * s))
-            .rounded(px(8.0 * s))
-            .border_1()
-            .border_color(if picked {
-                p.control_primary.opacity(0.3)
-            } else {
-                p.control_border
-            })
-            .text_color(p.foreground)
-            .when(p.light, |row| row.bg(p.background))
-            .when(picked, |row| row.bg(p.control_primary.opacity(0.1)))
-            .when(!enabled && !picked, |row| row.opacity(0.5))
-            .when(enabled, |row| {
-                row.chat_cursor_pointer().when(!picked, |row| {
-                    row.hover(|style| {
-                        style.bg(if p.light {
-                            p.input
-                        } else {
-                            p.input_border.opacity(0.3)
-                        })
-                    })
-                })
-            })
-            .child(mark)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0 * s))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap(px(6.0 * s))
-                            .text_size(px(14.0 * s))
-                            .line_height(px(19.25 * s))
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .when(other && !picked, |label| label.text_color(p.card_muted))
-                                    .child(label.clone()),
-                            )
-                            .when(recommended, |line| {
-                                line.child(
-                                    div()
-                                        .flex_shrink_0()
-                                        .px(px(6.0 * s))
-                                        .rounded_full()
-                                        .border_1()
-                                        .border_color(p.control_primary.opacity(0.6))
-                                        .text_size(px(10.5 * s))
-                                        .line_height(px(16.0 * s))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(p.control_primary)
-                                        .child("Recommended"),
-                                )
-                            }),
-                    )
-                    .when(!detail.is_empty(), |column| {
-                        column.child(
-                            div()
-                                .text_size(px(13.0 * s))
-                                .line_height(px(18.0 * s))
-                                .text_color(p.card_muted)
-                                .child(detail),
-                        )
-                    }),
-            )
-            // The letter the reader can refer to ("do b"), as a muted keycap at the row's end.
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .h(px(18.0 * s))
-                    .min_w(px(18.0 * s))
-                    .px(px(4.0 * s))
-                    .mt(px(0.5 * s))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(4.0 * s))
-                    .border_1()
-                    .border_color(p.control_border.opacity(0.6))
-                    .bg(p.background.opacity(0.4))
-                    .font_family(super::fonts::CHAT_MONO)
-                    .text_size(px(11.0 * s))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(if picked { p.foreground } else { p.muted })
-                    .child(letter),
-            )
-            .when(enabled, |row| {
-                row.on_click(cx.listener(move |this, _, _, cx| this.invoke(action.clone(), cx)))
-            })
-            .into_any_element()
+/// A choice's letter: a, b, c… and numbers past z.
+fn choice_letter(number: usize) -> String {
+    if number < 26 {
+        ((b'a' + number as u8) as char).to_string()
+    } else {
+        (number + 1).to_string()
     }
 }

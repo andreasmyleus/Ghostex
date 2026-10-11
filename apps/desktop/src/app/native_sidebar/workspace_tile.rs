@@ -14,6 +14,7 @@ use gpui::{
     AnyElement, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
     div, px, rgb,
 };
+use gpui_component::ElementExt as _;
 use gpui_component::tooltip::ManagedTooltipExt as _;
 
 use super::appearance::SidebarAppearance;
@@ -62,6 +63,8 @@ impl GhostexGpuiApp {
             None => (None, tile.name.clone()),
         };
         let menu_tooltip = tile.name.clone();
+        let owner = super::menus::MenuOwner::default();
+        let menu_owner = owner.clone();
         let open_menu = move |app: &mut Self,
                               event: &gpui::ClickEvent,
                               window: &mut gpui::Window,
@@ -69,8 +72,22 @@ impl GhostexGpuiApp {
             let Some(menu) = app.gx_store_workspace_menu(cx) else {
                 return;
             };
-            Self::show_native_sidebar_menu(&menu, event.position(), scale, window, cx);
+            // Hung from the whole split button (above it in the bottom bar), and either part
+            // toggles it.
+            Self::show_native_sidebar_menu_hung(
+                &menu,
+                menu_owner.get(),
+                Some((
+                    "workspace-tile".to_owned(),
+                    super::menus::press_position(event),
+                )),
+                event.position(),
+                scale,
+                window,
+                cx,
+            );
         };
+        let open_letter_menu = open_menu.clone();
         let letter = div()
             .id("native-sidebar-workspace-switch")
             .role(gpui::Role::Button)
@@ -117,7 +134,7 @@ impl GhostexGpuiApp {
                     match switch_to.clone() {
                         Some(workspace_id) => app.gx_store_select_workspace(workspace_id, cx),
                         // A single workspace has nowhere to switch to: the letter opens the menu.
-                        None => open_menu(app, event, window, cx),
+                        None => open_letter_menu(app, event, window, cx),
                     }
                 }),
             );
@@ -164,6 +181,7 @@ impl GhostexGpuiApp {
         Some(
             div()
                 .id("native-sidebar-workspace-tile")
+                .on_prepaint(super::menus::record_menu_owner(&owner))
                 .flex()
                 .flex_shrink_0()
                 .h(px(28.0 * scale))

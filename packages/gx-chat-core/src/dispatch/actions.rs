@@ -48,7 +48,9 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::SavePrompt
         | ActionKind::OpenMarkdownLink
         | ActionKind::ReviewFileChanges
-        | ActionKind::LoadImage => Family::Transcript,
+        | ActionKind::OpenAgentSession
+        | ActionKind::LoadImage
+        | ActionKind::LoadPageThumbnail => Family::Transcript,
 
         ActionKind::Answer
         | ActionKind::QuestionText

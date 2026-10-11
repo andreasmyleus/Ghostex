@@ -590,29 +590,16 @@ impl NativeChatView {
                         })
                         .collect()
                 };
-                match p.marked_sections {
-                    style @ super::marked_sections::MarkerStyle::Rule => {
-                        super::marked_sections::section(
-                            style,
-                            meta,
-                            None,
-                            draw(&lines),
-                            &super::marked_sections::look(p),
-                        )
-                    }
-                    style => {
-                        let lead = (!meta.lead.is_empty()).then(|| {
-                            self.text_view(format!("{key}:lead"), meta.lead.clone(), references, p, cx)
-                        });
-                        let rest = lines.get(1..).unwrap_or_default();
-                        super::marked_sections::section(
-                            style,
-                            meta,
-                            lead,
-                            draw(rest),
-                            &super::marked_sections::look(p),
-                        )
-                    }
+                let style = p.marked_sections;
+                let look = super::marked_sections::look(p);
+                if style.draws_first_line(look.emoji) {
+                    let first = style.first_line_text(meta);
+                    let lead = (!first.is_empty())
+                        .then(|| self.text_view(format!("{key}:lead"), first, references, p, cx));
+                    let rest = lines.get(1..).unwrap_or_default();
+                    super::marked_sections::section(style, meta, lead, draw(rest), &look)
+                } else {
+                    super::marked_sections::section(style, meta, None, draw(&lines), &look)
                 }
             }
             Segment::Alert { kind, children } => {

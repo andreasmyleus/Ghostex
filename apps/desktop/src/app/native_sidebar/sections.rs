@@ -12,7 +12,7 @@ use gpui::{
     AnyElement, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
-use gpui_component::h_flex;
+use gpui_component::{ElementExt as _, h_flex};
 use serde_json::json;
 
 impl GhostexGpuiApp {
@@ -74,8 +74,11 @@ impl GhostexGpuiApp {
         // CDXC:Sidebar 2026-09-18 DECISION:
         // User: a section heading is exactly as wide as a session card (the same 3px insets) with the card's 5px/6px side padding, and it has bottom padding too so the label sits centred in its rounded hover fill.
         // This supersedes the 2026-09-16 rule of letting the heading run through the sidebar's right edge for the native sidebar.
+        let owner = super::menus::MenuOwner::default();
+        let menu_owner = owner.clone();
         h_flex()
             .id(format!("native-sidebar-section-{key}"))
+            .on_prepaint(super::menus::record_menu_owner(&owner))
             .role(gpui::Role::Button)
             .aria_label(format!("{} section", section.id))
             .aria_expanded(!section.collapsed)
@@ -141,7 +144,15 @@ impl GhostexGpuiApp {
                     MouseButton::Right,
                     cx.listener(move |_, event: &gpui::MouseDownEvent, window, cx| {
                         cx.stop_propagation();
-                        Self::show_native_sidebar_menu(&menu, event.position, scale, window, cx);
+                        Self::show_native_sidebar_menu_hung(
+                            &menu,
+                            menu_owner.get(),
+                            None,
+                            event.position,
+                            scale,
+                            window,
+                            cx,
+                        );
                     }),
                 )
             })

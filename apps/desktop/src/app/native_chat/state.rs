@@ -920,6 +920,8 @@ impl NativeChatView {
                         });
                     }
                 }
+                // The page card's picture (`page_card.rs`), which the view keeps for itself.
+                Some("host") if request["method"] == "pageThumbnail" => self.receive_page_thumbnail(&request["params"], cx),
                 Some("host") => self.host(request["method"].as_str().unwrap_or_default(), request["params"].clone(), cx),
                 Some("chatImage") => {
                     if self.host_composer {

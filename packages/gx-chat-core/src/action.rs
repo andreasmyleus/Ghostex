@@ -112,6 +112,7 @@ action_kinds! {
     OpenComposerReference => "openComposerReference",
     OpenMarkdownLink => "openMarkdownLink",
     ReviewFileChanges => "reviewFileChanges",
+    OpenAgentSession => "openAgentSession",
     RefreshComposerChrome => "refreshComposerChrome",
     Stash => "stash",
     RestoreReturned => "restoreReturned",
@@ -127,6 +128,7 @@ action_kinds! {
     ToggleSideChat => "toggleSideChat",
     InsertSkill => "insertSkill",
     LoadImage => "loadImage",
+    LoadPageThumbnail => "loadPageThumbnail",
 
     // Sending.
     Send => "send",

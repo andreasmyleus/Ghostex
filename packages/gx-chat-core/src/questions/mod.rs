@@ -19,6 +19,7 @@ pub mod interactive;
 pub mod model;
 pub mod notice_choices;
 pub mod notice_state;
+pub mod notice_tone;
 pub mod sync;
 pub mod terminal_dialog_copy;
 pub mod terminal_picker;

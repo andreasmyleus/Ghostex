@@ -11,11 +11,12 @@ use ghostex_gx_protocol::{ChatBlock, ChatMessage};
 use serde_json::{json, Value};
 
 use crate::document::TranscriptItem;
+use crate::transcript::agent_message_card::{dress_received, dress_sent};
 use crate::transcript::jsstr::{ascii_lower, js_trim, last_path_segment};
 use crate::transcript::line_breaks::{agent_line_breaks, AgentLineBreaks};
 use crate::transcript::markdown_links::markdown_references;
 use crate::transcript::native_markdown::native_markdown;
-use crate::transcript::sent_message_script::{Resolved, Script, SCRIPTED_BODY};
+use crate::transcript::sent_message_script::{send_error_line, Resolved, Script, SCRIPTED_BODY};
 use crate::transcript::shell_script::ShellCommand;
 use crate::transcript::tool_fold::ToolPair;
 use crate::transcript::tool_rows::is_command_tool;
@@ -30,10 +31,17 @@ pub struct SentAgentMessage {
     /// The recipient session's global reference, when the send's result named it.
     pub global_ref: String,
     pub agent_name: String,
+    /// The recipient's agent id (`claude`, `codex`), which names its logo.
+    pub agent_id: String,
     pub session_title: String,
     pub body: String,
     /// The send reported that it did not go out.
     pub failed: bool,
+    /// Where the send left the message (`delivered`, `queued`, `pending`, `accepted`), as the
+    /// result printed it; empty when no result was read back.
+    pub status: String,
+    /// Why the send did not go out, when its result said.
+    pub failure: String,
 }
 
 /// Every message one tool call sent, in the order it sent them. `written` is the files the same
@@ -84,11 +92,22 @@ pub fn sent_agent_messages(pair: &ToolPair<'_>, written: &[(&str, &str)]) -> Vec
                 };
                 message.global_ref = field("globalRef");
                 message.agent_name = field("agentName");
+                message.agent_id = field("agentId");
                 let title = field("title");
                 if !title.is_empty() {
                     message.session_title = title;
                 }
                 message.failed = result.get("ok") == Some(&Value::Bool(false));
+                let said = |key: &str| {
+                    result
+                        .get(key)
+                        .and_then(Value::as_str)
+                        .map(js_trim)
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                message.status = said("status");
+                message.failure = said("error");
                 // What the CLI echoes is what went out, whatever the script built it from.
                 let echoed = result
                     .get("message")
@@ -103,7 +122,10 @@ pub fn sent_agent_messages(pair: &ToolPair<'_>, written: &[(&str, &str)]) -> Vec
             // No result read back (the agent filtered it, or the call is still running).
             None => {
                 message.failed =
-                    results.is_empty() && script.send_failed(output, pair.result_is_error(), *at)
+                    results.is_empty() && script.send_failed(output, pair.result_is_error(), *at);
+                if message.failed {
+                    message.failure = send_error_line(output).unwrap_or_default().to_string();
+                }
             }
         }
     }
@@ -120,8 +142,18 @@ fn claude_send_message(input: &Value, pair: &ToolPair<'_>) -> Option<SentAgentMe
             .result_output()
             .and_then(|output| serde_json::from_str::<Value>(js_trim(output)).ok())
             .is_some_and(|result| result.get("success") == Some(&Value::Bool(false)));
+    // Claude's teammates are Claude sessions; a result read back means the message reached them.
+    let answered = pair
+        .result_output()
+        .is_some_and(|output| !js_trim(output).is_empty());
     Some(SentAgentMessage {
         target: js_trim(target).to_string(),
+        agent_id: "claude".to_string(),
+        status: if answered && !failed {
+            "delivered".to_string()
+        } else {
+            String::new()
+        },
         session_title: input
             .get("summary")
             .and_then(Value::as_str)
@@ -263,18 +295,29 @@ pub fn project_sent_messages(
         .map(|(index, (tool, sent))| {
             let body = agent_line_breaks(&sent.body, line_breaks);
             let markdown = native_markdown(&body, false);
-            json!({
+            let name = if sent.agent_name.is_empty() {
+                sent.target.clone()
+            } else {
+                sent.agent_name.clone()
+            };
+            let mut card = json!({
                 "key": format!("{}:{index}", message.id),
                 "tool": tool,
                 "target": sent.target,
                 "globalRef": sent.global_ref,
                 "agentName": sent.agent_name,
+                "agentId": sent.agent_id,
                 "sessionTitle": sent.session_title,
                 "body": body,
                 "markdownReferences": markdown_references(&markdown),
                 "markdown": markdown,
                 "failed": sent.failed,
-            })
+                "status": sent.status,
+                "failure": sent.failure,
+            });
+            // Named again once the whole transcript is read (`resolve_recipients`).
+            dress_sent(&mut card, &name, &sent.session_title);
+            card
         })
         .collect()
 }
@@ -352,10 +395,11 @@ fn complete_received(directory: &Directory, message: &mut Value) {
     if let Some((agent, title)) = directory.get(&directory_key(text(inter, "replyTo"))) {
         inter["agentName"] = agent.clone().into();
         inter["sessionTitle"] = title.clone().into();
+        dress_received(message);
     }
 }
 
-/// Fills in each card's recipient from the directory and writes its `title` and `detail`.
+/// Fills in each card's recipient from the directory and writes its `card`.
 fn complete(directory: &Directory, cards: &mut [Value]) {
     for sent in cards.iter_mut() {
         let known = directory.get(&directory_key(text(sent, "target")));
@@ -374,13 +418,12 @@ fn complete(directory: &Directory, cards: &mut [Value]) {
         } else {
             agent
         };
-        sent["title"] = format!("Message to {name}").into();
-        sent["detail"] = if session == name {
+        let session = if session == name {
             String::new()
         } else {
             session
-        }
-        .into();
+        };
+        dress_sent(sent, &name, &session);
     }
 }
 

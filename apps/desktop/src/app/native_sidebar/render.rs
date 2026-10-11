@@ -92,7 +92,7 @@ impl GhostexGpuiApp {
                     {
                         return;
                     }
-                    app.close_native_sidebar_menu(window, cx);
+                    app.dismiss_native_sidebar_menu_by_press(event.position, window, cx);
                 }),
             )
             .on_click(cx.listener(|app, event: &gpui::ClickEvent, _, cx| {

@@ -7,11 +7,13 @@
 //!
 //! CDXC:MarkedHandovers 2026-10-11 DECISION:
 //! User picked three styles from the mockups (docs/2026-10-11/chat-section-markers/index.html): A, a thin left rule in the kind's colour with the emoji kept; C, a coloured badge naming the kind in place of the emoji, dropping a bold label that only repeats it; D, the emoji kept and the label coloured, the default. The chat colours marked sections whenever a reply has them: orchestrators and their threads mark their handovers even while Marked handovers is off (that switch extends marking to every other session). Supersedes the same day's summary strip at the top of the message (user: "let's actually just remove the summary at the top i don't think it's useful at all").
+//!
+//! CDXC:MarkedHandovers 2026-10-11 DECISION:
+//! User: "add a toggle for emojis in the colorful handover please. and set it to off by default. and if enabled add emojis to all 3." With Show marker emojis (`markedHandoversEmoji`) off, no style shows the marker emoji and the colour and label carry the kind (a section with no label of its own shows the kind's name as its coloured label); on, all three show it, the badge style before its badge. Copying still gives the agent's own text.
 //! SEE-ALSO: apps/desktop/src/app/native_chat/marked_sections.rs (the transcript's use of it), apps/mobile/app/src/chat/native/transcript/markdown/MarkedSections.tsx (the phone draws the same, with the same palette).
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, FontWeight, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb,
+    AnyElement, FontWeight, Hsla, IntoElement, ParentElement as _, Styled as _, div, px, rgb,
 };
 use serde::Deserialize;
 
@@ -53,11 +55,29 @@ impl MarkerStyle {
         }
     }
 
-    /// Whether the style draws the section's first line itself (from the core's label and lead)
-    /// instead of the line as written.
-    pub(crate) fn draws_first_line(self) -> bool {
-        !matches!(self, Self::Rule)
+    /// Whether the style draws the section's first line itself instead of the line as written:
+    /// the rule keeps the agent's line unless the emoji has to come out of it.
+    pub(crate) fn draws_first_line(self, emoji: bool) -> bool {
+        !(self == Self::Rule && emoji)
     }
+
+    /// What a style that draws its own first line puts after its opening, as Markdown: the rule
+    /// draws the agent's line without the emoji, the others the rest after the label.
+    pub(crate) fn first_line_text(self, meta: &SectionMeta) -> String {
+        if self == Self::Rule {
+            meta.plain.clone()
+        } else {
+            meta.lead.clone()
+        }
+    }
+}
+
+/// Whether marked sections show the marker emoji (`markedHandoversEmoji`, off by default).
+pub(crate) fn emoji_from_settings(settings: &serde_json::Map<String, serde_json::Value>) -> bool {
+    settings
+        .get("markedHandoversEmoji")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
 }
 
 /// A section as the core described it (`packages/gx-chat-core/src/transcript/marked_sections.rs`).
@@ -70,6 +90,8 @@ pub(crate) struct SectionMeta {
     pub(crate) label: String,
     pub(crate) label_repeats: bool,
     pub(crate) lead: String,
+    /// The whole first line without its emoji.
+    pub(crate) plain: String,
 }
 
 /// The chat tones a section is drawn against.
@@ -80,6 +102,8 @@ pub(crate) struct MarkedLook {
     pub(crate) foreground: Hsla,
     pub(crate) prose: Hsla,
     pub(crate) border: Hsla,
+    /// Show the marker emoji (`markedHandoversEmoji`).
+    pub(crate) emoji: bool,
     /// The transcript's prose line height, unscaled.
     pub(crate) line_height: f32,
     /// The gap between Markdown blocks, scaled.
@@ -88,7 +112,7 @@ pub(crate) struct MarkedLook {
 
 impl MarkedLook {
     /// The chat's default tones, for a preview drawn outside a chat.
-    pub(crate) fn chat_default(light: bool) -> Self {
+    pub(crate) fn chat_default(light: bool, emoji: bool) -> Self {
         let color = |dark: u32, light_color: u32| -> Hsla {
             rgb(if light { light_color } else { dark }).into()
         };
@@ -98,6 +122,7 @@ impl MarkedLook {
             foreground: color(0xfcfcfc, 0x27272a),
             prose: color(0xb4b8c0, 0x4d4d50),
             border: color(0x1c1c1c, 0xe4e4e7),
+            emoji,
             line_height: 22.75,
             block_gap: 12.0,
         }
@@ -129,8 +154,9 @@ fn tint(look: &MarkedLook) -> (f32, f32) {
     }
 }
 
-/// What the first line opens with in styles C and D: the badge (C) or the emoji (D), then the
-/// label (coloured in D, plain bold in C unless it only repeats the badge).
+/// What the first line opens with in styles C and D: the emoji when shown, the badge (C), then the
+/// label (coloured in D, plain bold in C unless it only repeats the badge). Without the emoji and
+/// without a label of its own, D shows the kind's name as the label so the line keeps its colour.
 fn first_line_opening(
     style: MarkerStyle,
     meta: &SectionMeta,
@@ -149,6 +175,15 @@ fn first_line_opening(
             .into_any_element()
     };
     let mut parts: Vec<AnyElement> = Vec::new();
+    if look.emoji {
+        parts.push(
+            div()
+                .flex_shrink_0()
+                .line_height(line)
+                .child(meta.emoji.clone())
+                .into_any_element(),
+        );
+    }
     if style == MarkerStyle::Badge {
         let (fill, edge) = tint(look);
         parts.push(
@@ -181,24 +216,25 @@ fn first_line_opening(
         if !meta.label.is_empty() && !meta.label_repeats {
             parts.push(label(look.foreground));
         }
-    } else {
+    } else if !meta.label.is_empty() {
+        parts.push(label(color));
+    } else if !look.emoji {
         parts.push(
             div()
                 .flex_shrink_0()
                 .line_height(line)
-                .child(meta.emoji.clone())
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(color)
+                .child(format!("{}:", meta.name))
                 .into_any_element(),
         );
-        if !meta.label.is_empty() {
-            parts.push(label(color));
-        }
     }
     parts
 }
 
-/// One section in `style`. `lead` is the rest of the first line drawn as Markdown (styles C and D);
-/// `body` is the section's lines drawn as Markdown: all of them for A, the ones after the first
-/// for C and D.
+/// One section in `style`. `lead` is `first_line_text` drawn as Markdown when the style draws its
+/// own first line; `body` is the section's lines drawn as Markdown: all of them when it does not,
+/// the ones after the first when it does.
 pub(crate) fn section(
     style: MarkerStyle,
     meta: &SectionMeta,
@@ -214,11 +250,12 @@ pub(crate) fn section(
         .w_full()
         .min_w_0()
         .gap(px(look.block_gap));
-    if !style.draws_first_line() {
+    if style == MarkerStyle::Rule {
         return column
             .border_l(px(3.0 * s))
             .border_color(kind_color(&meta.kind, look.light))
             .pl(px(12.0 * s))
+            .children(lead)
             .children(body)
             .into_any_element();
     }
@@ -300,9 +337,9 @@ pub(crate) fn preview_reply(
             match part {
                 PreviewPart::Prose(content) => text(key, content),
                 PreviewPart::Section(meta, lines) => {
-                    let (lead, body) = if style.draws_first_line() {
-                        let lead = (!meta.lead.is_empty())
-                            .then(|| text(format!("{key}:lead"), meta.lead.clone()));
+                    let (lead, body) = if style.draws_first_line(look.emoji) {
+                        let first = style.first_line_text(&meta);
+                        let lead = (!first.is_empty()).then(|| text(format!("{key}:lead"), first));
                         (lead, lines.get(1..).unwrap_or_default().join("\n"))
                     } else {
                         (None, lines.join("\n"))

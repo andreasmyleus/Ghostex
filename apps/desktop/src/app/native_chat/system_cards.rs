@@ -11,9 +11,8 @@ use gpui::{
 };
 use serde_json::Value;
 
-/// Collapsed, a goal shows this many lines of its objective and an agent message this many of its body.
+/// Collapsed, a goal shows this many lines of its objective.
 const GOAL_PREVIEW_LINES: usize = 3;
-const MESSAGE_PREVIEW_LINES: usize = 2;
 
 impl NativeChatView {
     /// A system turn that is a card or a rule rather than a sentence. Which card
@@ -34,7 +33,7 @@ impl NativeChatView {
             "goal" => self.goal_card(id, card, p, cx),
             "command-output" => self.command_output_card(id, card, p, cx),
             "agent-message" => {
-                self.agent_message_card(id, card, &message["markdownReferences"], p, cx)
+                self.subagent_message_card(id, card, &message["markdownReferences"], p, cx)
             }
             _ => self.system_marker_row(card, p),
         }
@@ -301,87 +300,6 @@ impl NativeChatView {
                 },
             )
             .into_any_element()
-    }
-
-    /// CDXC:SessionChat 2026-09-06 DECISION:
-    /// User: a message one agent sends to another shows as a collapsible card titled `Received a message from "<name>"`, in the same shape as the goal and status cards, leading with a message icon; collapsed it shows the first two lines, expanded the full message as markdown.
-    /// Ported from React's session-chat-agent-message-card.tsx.
-    /// CDXC:SessionChat 2026-09-14 DECISION:
-    /// User: received subagent messages use the same font size as the rest of the agent messages, including the header, collapsed preview, and expanded body.
-    fn agent_message_card(
-        &self,
-        id: &str,
-        card: &Value,
-        references: &Value,
-        p: &ChatAppearance,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let s = p.scale;
-        let key = format!("agent-message:{id}");
-        let expanded = self.expanded.contains(&key);
-        let body = text(card, "body");
-        let expandable = estimated_lines(&body) > MESSAGE_PREVIEW_LINES;
-        let motion = self.disclosure_frame(&key, expanded, cx);
-        let header = div()
-            .flex()
-            .items_start()
-            .gap(px(8.0 * s))
-            .child(
-                gpui::svg()
-                    .path("titlebar/message.svg")
-                    .size(px(14.0 * s))
-                    .mt(px(4.0 * s))
-                    .text_color(p.muted)
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_color(p.foreground)
-                    .child(format!(
-                        "Received a message from “{}” subagent",
-                        text(card, "name")
-                    )),
-            )
-            .when(expandable, |header| {
-                header.child(self.card_chevron(key.clone(), expanded, p, cx))
-            })
-            .into_any_element();
-        let body = if body.is_empty() {
-            Vec::new()
-        } else if expanded || motion.is_some() {
-            // The marked, reference-linked form of the same text, so a path the
-            // subagent wrote is the pill React drew it as rather than backticks.
-            let marked = text(card, "markdown");
-            let full = self.markdown(
-                format!("agent-message:{id}"),
-                if marked.is_empty() { body } else { marked },
-                references,
-                p,
-                cx,
-            );
-            vec![match motion {
-                // Clipped between the two-line preview's height and the full text's.
-                Some(frame) => self.capped_body_motion(&key, frame, 0.0, full),
-                None => full,
-            }]
-        } else {
-            // React's `line-clamp-2`: the first two lines and an ellipsis, with the chevron
-            // above opening the rest. GPUI needs the ellipsis for the clamp to take effect.
-            let preview = div()
-                .min_w_0()
-                .line_clamp(MESSAGE_PREVIEW_LINES)
-                .text_ellipsis()
-                .child(body)
-                .into_any_element();
-            vec![if expandable {
-                measured(self.disclosure_floor(&key), preview)
-            } else {
-                preview
-            }]
-        };
-        self.status_card_with_header(header, body, Vec::new(), p)
     }
 
     /// Every other system turn: one muted line of what the daemon wrote.

@@ -1,0 +1,438 @@
+//! The card a published HTML page (`ghostex show`) gets in the transcript: a window bar with three
+//! dots and the file name, a scaled-down picture of the page fading out at its bottom (with "Open
+//! page" over it on hover), then the title, "Interactive page · file.html", the Answered pill once
+//! the reader sent the page's answers, and Open.
+//!
+//! The picture is taken by the desktop app from the page the first time the user opens it in the
+//! floating page window (`app/visual_page_thumbnails.rs`), stored with the page in gxserver and read
+//! through the chat core (`loadPageThumbnail`, answered as a `pageThumbnail` host action), so the web
+//! build and the phone show the same one. Until it exists the window shows a plain placeholder: a
+//! page icon and the file name.
+//!
+//! CDXC:SessionChat 2026-10-11 SEE-ALSO:
+//! The user's decision is on server/src/visual_pages/thumbnail.rs. The asking rules are packages/gx-chat-core/src/transcript/page_thumbnails.rs; the measurements are packages/gx-chat-core/visual/page-card.json; the phone draws the same card in apps/mobile/app/src/chat/native/transcript/PageCard.tsx.
+
+use super::{appearance::ChatAppearance, state::NativeChatView};
+use crate::app::native_chat::cursor::ChatCursor as _;
+use base64::Engine as _;
+use ghostex_gx_chat_core::visual as gxv;
+use gpui::prelude::FluentBuilder as _;
+use gpui::{
+    AnyElement, App, Context, FontWeight, ImageFormat, InteractiveElement as _, IntoElement,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+    StyledImage as _, div, img, px, svg,
+};
+use serde_json::{Value, json};
+use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
+
+/// `packages/gx-chat-core/visual/page-card.json`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageCardVisual {
+    radius: f32,
+    bar_height: f32,
+    dot_size: f32,
+    dot_gap: f32,
+    preview_height: f32,
+    fade_height: f32,
+    footer_padding_x: f32,
+    footer_padding_y: f32,
+    title_size: f32,
+    detail_size: f32,
+    thumbnail_width: f32,
+    thumbnail_height: f32,
+}
+
+static VISUAL: std::sync::LazyLock<PageCardVisual> = std::sync::LazyLock::new(|| {
+    serde_json::from_str(include_str!(
+        "../../../../../packages/gx-chat-core/visual/page-card.json"
+    ))
+    .expect("shared page card")
+});
+
+const CARD_GROUP: &str = "chat-page-card";
+/// How long after the card opens its page in the floating window it asks for the new picture.
+const PICTURE_AFTER_OPEN: Duration = Duration::from_secs(4);
+
+/// One page's picture as this view knows it.
+#[derive(Default)]
+struct Thumbnail {
+    image: Option<Arc<gpui::Image>>,
+    /// The picture is the page's current one (or there will be none); nothing more to ask.
+    settled: bool,
+    /// A read is out, or the wait before the next one is running.
+    asking: bool,
+}
+
+/// The pictures of the transcript's page cards, by page id and whether the page was answered when
+/// the card asked (an answered page is pictured again).
+#[derive(Default)]
+pub(crate) struct PageThumbnails {
+    entries: RefCell<HashMap<(String, bool), Thumbnail>>,
+}
+
+impl NativeChatView {
+    /// The page's picture, asking the core for it the first time the card is drawn and again,
+    /// while the card is still drawn, each time the core said to wait.
+    fn page_thumbnail(
+        &self,
+        page_id: &str,
+        answered: bool,
+        cx: &Context<Self>,
+    ) -> Option<Arc<gpui::Image>> {
+        let key = (page_id.to_string(), answered);
+        let mut entries = self.visual.page_thumbnails.entries.borrow_mut();
+        let entry = entries.entry(key).or_default();
+        if !entry.settled && !entry.asking {
+            entry.asking = true;
+            let page_id = page_id.to_string();
+            // Asked on the next turn of the loop, because this runs while the row is rendering.
+            cx.spawn(async move |this, cx| {
+                let _ = this.update(cx, |this, cx| {
+                    this.invoke(json!({"type": "loadPageThumbnail", "pageId": page_id}), cx)
+                });
+            })
+            .detach();
+        }
+        entry.image.clone()
+    }
+
+    /// The core's `pageThumbnail` answer (`{pageId, png, settled, retryInMs}`).
+    pub(super) fn receive_page_thumbnail(&mut self, params: &Value, cx: &mut Context<Self>) {
+        let page_id = params["pageId"].as_str().unwrap_or_default().to_string();
+        if page_id.is_empty() {
+            return;
+        }
+        let image = params["png"]
+            .as_str()
+            .and_then(|png| base64::engine::general_purpose::STANDARD.decode(png).ok())
+            .map(|bytes| Arc::new(gpui::Image::from_bytes(ImageFormat::Png, bytes)));
+        let settled = params["settled"].as_bool().unwrap_or(true);
+        let retry = params["retryInMs"].as_u64();
+        {
+            let mut entries = self.visual.page_thumbnails.entries.borrow_mut();
+            for ((id, _), entry) in entries.iter_mut() {
+                if *id != page_id {
+                    continue;
+                }
+                // A stale picture stays up until its replacement arrives.
+                if image.is_some() {
+                    entry.image = image.clone();
+                }
+                entry.settled = settled;
+            }
+        }
+        if let (false, Some(retry)) = (settled, retry) {
+            // Waits, then lets the next draw of the card ask again: a card scrolled away asks
+            // nothing until it is drawn.
+            let timer = cx.background_executor().timer(Duration::from_millis(retry));
+            cx.spawn(async move |this, cx| {
+                timer.await;
+                let _ = this.update(cx, |this, cx| {
+                    let mut entries = this.visual.page_thumbnails.entries.borrow_mut();
+                    for ((id, _), entry) in entries.iter_mut() {
+                        if *id == page_id {
+                            entry.asking = false;
+                        }
+                    }
+                    drop(entries);
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    /// A published HTML page: the window preview card, opened by the chat's own link handling (or
+    /// in the floating page window when the block asks for it).
+    ///
+    /// CDXC:SessionChat 2026-10-06 WHY: The page's address is a random capability URL on gxserver that tells the reader nothing, so the card names the file the agent published instead (`file`, printed by `ghostex show`); a block without one just says it is an interactive page.
+    pub(super) fn visual_page_card(
+        &self,
+        key: &str,
+        page: gxv::PageRef,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let s = p.scale;
+        let v = &*VISUAL;
+        let chat = cx.weak_entity();
+        let floating = page.popup && super::visual_popup::FLOATING_PAGES;
+        let page_id = page.page_id().map(str::to_string);
+        // The reader already sent this page's answers (`answeredPages`, page_answers.rs).
+        let answered = page_id.as_deref().is_some_and(|page_id| {
+            self.snapshot["answeredPages"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|id| id == page_id))
+        });
+        let picture = page_id
+            .as_deref()
+            .and_then(|page_id| self.page_thumbnail(page_id, answered, cx));
+        let detail = match &page.file {
+            Some(file) => format!("Interactive page · {file}"),
+            None => "Interactive page".to_string(),
+        };
+        let file = page.file.clone();
+        let gxv::PageRef { title, url, .. } = page;
+        let bar_label = file.clone().unwrap_or_else(|| title.clone());
+        let page_title = title.clone();
+        let aria = format!("Open page {title}");
+        let placeholder_label = bar_label.clone();
+        let opened_page = page_id.clone();
+        let open = move |cx: &mut App| {
+            let url = url.clone();
+            let opened_page = opened_page.clone();
+            let _ = chat.update(cx, |chat, cx| {
+                // The floating window pictures a page that has no picture yet once it has loaded
+                // (app/visual_page_thumbnails.rs); ask for it again a moment after opening.
+                if let (true, Some(page_id)) = (floating, opened_page) {
+                    let timer = cx.background_executor().timer(PICTURE_AFTER_OPEN);
+                    cx.spawn(async move |this, cx| {
+                        timer.await;
+                        let _ = this.update(cx, |this, cx| {
+                            this.invoke(
+                                json!({"type": "loadPageThumbnail", "pageId": page_id, "fresh": true}),
+                                cx,
+                            )
+                        });
+                    })
+                    .detach();
+                }
+                // A page marked to float opens over the chat (the app's visual page window);
+                // otherwise where the chat opens every web link.
+                if floating {
+                    cx.emit(super::state::NativeChatEvent::Host(json!({
+                        "type": "open",
+                        "modal": "visualPage",
+                        "url": url,
+                        "title": page_title,
+                        "file": file,
+                    })));
+                } else {
+                    chat.invoke(
+                        json!({"type":"openMarkdownLink","href":url,"external":false}),
+                        cx,
+                    )
+                }
+            });
+        };
+        let open_card = open.clone();
+        let window_bg = p.input;
+        let bar = div()
+            .flex()
+            .items_center()
+            .gap(px(10.0 * s))
+            .h(px(v.bar_height * s))
+            .px(px(12.0 * s))
+            .bg(p.card_panel)
+            .border_b(px(1.0))
+            .border_color(p.border)
+            .child(
+                div()
+                    .flex()
+                    .flex_shrink_0()
+                    .gap(px(v.dot_gap * s))
+                    .children((0..3).map(|_| {
+                        div()
+                            .size(px(v.dot_size * s))
+                            .rounded_full()
+                            .bg(p.muted.opacity(0.3))
+                    })),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_center()
+                    .text_size(px(11.5 * s))
+                    .text_color(p.muted)
+                    .child(bar_label),
+            )
+            // Balances the dots so the name sits in the middle of the bar.
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .w(px((v.dot_size * 3.0 + v.dot_gap * 2.0) * s)),
+            );
+        let preview = div()
+            .relative()
+            .w_full()
+            .h(px(v.preview_height * s))
+            .overflow_hidden()
+            .bg(p.background)
+            .map(|this| match picture {
+                // As wide as the card, cut at the bottom: the top of the page is what it opens on.
+                Some(picture) => this.child(
+                    img(picture)
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .w_full()
+                        .aspect_ratio(v.thumbnail_width / v.thumbnail_height)
+                        .object_fit(gpui::ObjectFit::Fill),
+                ),
+                // No picture yet: a page icon and the file name.
+                None => this
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(6.0 * s))
+                    .child(
+                        svg()
+                            .path("titlebar/file-type-html.svg")
+                            .size(px(22.0 * s))
+                            .text_color(p.muted),
+                    )
+                    .child(
+                        div()
+                            .max_w(gpui::relative(0.8))
+                            .truncate()
+                            .text_size(px(11.5 * s))
+                            .text_color(p.muted)
+                            .child(placeholder_label),
+                    ),
+            })
+            // Painted, not masked: a plain div with no id takes no input.
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .h(px(v.fade_height * s))
+                    .bg(gpui::linear_gradient(
+                        180.0,
+                        gpui::linear_color_stop(window_bg.opacity(0.0), 0.0),
+                        gpui::linear_color_stop(window_bg, 1.0),
+                    )),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(p.background.opacity(0.45))
+                    .opacity(0.0)
+                    .group_hover(CARD_GROUP, |style| style.opacity(1.0))
+                    .child(primary_button("Open page", p)),
+            );
+        let footer = div()
+            .flex()
+            .items_center()
+            .gap(px(12.0 * s))
+            .px(px(v.footer_padding_x * s))
+            .py(px(v.footer_padding_y * s))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(v.title_size * s))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.foreground)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(v.detail_size * s))
+                            .text_color(p.muted)
+                            .child(detail),
+                    ),
+            )
+            .when(answered, |this| {
+                let good = super::page_answers::answered_color(p);
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0 * s))
+                        .flex_shrink_0()
+                        .px(px(8.0 * s))
+                        .py(px(2.0 * s))
+                        .rounded_full()
+                        .bg(good.opacity(0.14))
+                        .text_size(px(11.0 * s))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(good)
+                        .child(
+                            svg()
+                                .path("titlebar/check.svg")
+                                .size(px(11.0 * s))
+                                .text_color(good),
+                        )
+                        .child("Answered"),
+                )
+            })
+            .child(
+                div()
+                    .id("visual-page-open")
+                    .flex_shrink_0()
+                    .role(gpui::Role::Button)
+                    .aria_label("Open")
+                    .chat_cursor_pointer()
+                    // The card behind it opens the page too; one press opens it once.
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        open(cx)
+                    })
+                    .child(primary_button("Open", p)),
+            );
+        div()
+            .id(SharedString::from(format!("visual-page:{key}")))
+            .group(CARD_GROUP)
+            .flex()
+            .flex_col()
+            .w_full()
+            .min_w_0()
+            .overflow_hidden()
+            .bg(window_bg)
+            .border_1()
+            .border_color(p.border)
+            .rounded(px(v.radius * s))
+            .role(gpui::Role::Button)
+            .aria_label(aria)
+            .chat_cursor_pointer()
+            .hover(|style| style.border_color(p.muted.opacity(0.6)))
+            .on_click(move |_, _, cx| open_card(cx))
+            .child(bar)
+            .child(preview)
+            .child(footer)
+            .into_any_element()
+    }
+}
+
+/// The filled button the card opens its page with (also the hover label over the picture).
+fn primary_button(label: &'static str, p: &ChatAppearance) -> AnyElement {
+    let s = p.scale;
+    div()
+        .flex()
+        .items_center()
+        .gap(px(5.0 * s))
+        .h(px(28.0 * s))
+        .px(px(11.0 * s))
+        .rounded(px(8.0 * s))
+        .bg(p.control_primary)
+        .text_size(px(12.5 * s))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(p.background)
+        .child(label)
+        .child(
+            svg()
+                .path("titlebar/arrow-up-right.svg")
+                .size(px(13.0 * s))
+                .text_color(p.background),
+        )
+        .into_any_element()
+}

@@ -237,6 +237,16 @@ impl CefSurface {
         self.browser.toggle_dev_tools();
     }
 
+    /// A screenshot of the top of the page (`cef/shell/page_screenshot.rs`).
+    pub(crate) fn capture_page_top(
+        &self,
+        width: f64,
+        height: f64,
+        scale: f64,
+    ) -> Option<cef::PageScreenshot> {
+        self.browser.capture_page_top(width, height, scale)
+    }
+
     pub(crate) fn browser_identifier(&self) -> i32 {
         self.browser.identifier()
     }

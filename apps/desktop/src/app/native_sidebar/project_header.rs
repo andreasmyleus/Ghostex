@@ -128,6 +128,8 @@ impl GhostexGpuiApp {
                 .into_any_element()
         };
         let actions = (*group.header_actions).clone();
+        // Where this header (or its pinned copy) was painted: its menus hang below it (menus.rs).
+        let header_bounds = Rc::new(Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
         // CDXC:Projects 2026-09-18 DECISION:
         // User: the project header row has the same insets, side padding, rounding, and hover fill as a session card.
         h_flex()
@@ -146,23 +148,23 @@ impl GhostexGpuiApp {
             .cursor_default()
             .when(group.is_stale, |row| row.opacity(0.55))
             .hover(|row| row.bg(appearance.session_hover))
+            .on_prepaint({
+                let header_bounds = header_bounds.clone();
+                move |bounds, _, _| header_bounds.set(Some(bounds))
+            })
             .child(self.native_sidebar.header_hover.probe(hover_id))
             // CDXC:Projects 2026-10-06 DECISION:
             // User: "Make the chevron to the left of the project part of the button, not outside it". The chevron sits inside the header's hover/selected box at its left edge and is not a hit area of its own: a click on it is the row's click, which expands/collapses the project, and a drag from it moves the project. This supersedes the 2026-09-19 separate chevron button hanging outside the row.
             .child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .top(px(7.0 * scale))
-                    .child(
-                        gpui::svg()
-                            .path(COMMAND_ICON_CHEVRON_RIGHT)
-                            .size(px(16.0 * scale))
-                            .text_color(appearance.muted)
-                            .with_transformation(gpui::Transformation::rotate(gpui::percentage(
-                                if group.collapsed { 0.0 } else { 0.25 },
-                            ))),
-                    ),
+                div().absolute().left_0().top(px(7.0 * scale)).child(
+                    gpui::svg()
+                        .path(COMMAND_ICON_CHEVRON_RIGHT)
+                        .size(px(16.0 * scale))
+                        .text_color(appearance.muted)
+                        .with_transformation(gpui::Transformation::rotate(gpui::percentage(
+                            if group.collapsed { 0.0 } else { 0.25 },
+                        ))),
+                ),
             )
             .when(
                 hud["settings"]["showProjectIcons"].as_bool() != Some(false),
@@ -218,7 +220,8 @@ impl GhostexGpuiApp {
                             let label = item["label"].as_str().unwrap_or("").to_owned();
                             let command = item.get("command").cloned();
                             let children = item.get("children").cloned();
-                            let trigger = Rc::new(Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+                            let header_bounds = header_bounds.clone();
+                            let trigger_id = format!("project:{id}:{label}");
                             // CDXC:AgentLauncher 2026-09-18 DECISION:
                             // User: no gap between the last-used agent button and the Select agent chevron; the two halves join into one split button like the React header (24px action, 17px chevron, only the outer corners rounded).
                             let split = item["split"].as_str();
@@ -262,11 +265,6 @@ impl GhostexGpuiApp {
                                 .cursor_pointer()
                                 .hover(|button| button.bg(appearance.hover))
                                 .child(glyph)
-                                .when(children.is_some(), |button| {
-                                    let trigger = trigger.clone();
-                                    button
-                                        .on_prepaint(move |bounds, _, _| trigger.set(Some(bounds)))
-                                })
                                 .when(
                                     self.native_sidebar.pointer_inside
                                         && self.native_sidebar.menu.is_none()
@@ -274,10 +272,9 @@ impl GhostexGpuiApp {
                                     |row| {
                                         // CDXC:Sidebar 2026-09-23 DECISION: User: header button tooltips "appear below and aligned to the left not to the right (so they stay within the bounds of the sidebar)". The bubble's right edge lines up with the button and it grows leftward; the session card's buttons (hover_actions.rs) do the same.
                                         // The binding is read here, not in gx-core, so it follows the user's Settings > Hotkeys.
-                                        let tooltip = match item["hotkey"]
-                                            .as_str()
-                                            .and_then(crate::app::hotkeys::gpui_configured_hotkey_label)
-                                        {
+                                        let tooltip = match item["hotkey"].as_str().and_then(
+                                            crate::app::hotkeys::gpui_configured_hotkey_label,
+                                        ) {
                                             Some(shortcut) => format!("{label} ({shortcut})"),
                                             None => label.clone(),
                                         };
@@ -294,19 +291,17 @@ impl GhostexGpuiApp {
                                     move |app, event: &gpui::ClickEvent, window, cx| {
                                         cx.stop_propagation();
                                         if let Some(children) = &children {
-                                            // Project header menus open `HEADER_MENU_TRIGGER_GAP` below the button, right-aligned to it.
-                                            let anchor = trigger
-                                                .get()
-                                                .map(|bounds| {
-                                                    gpui::Point::new(
-                                                        bounds.right(),
-                                                        bounds.bottom()
-                                                            + px(crate::app::consts::HEADER_MENU_TRIGGER_GAP * scale),
-                                                    )
-                                                })
-                                                .unwrap_or_else(|| event.position());
-                                            Self::show_native_sidebar_menu(
-                                                children, anchor, scale, window, cx,
+                                            Self::show_native_sidebar_menu_hung(
+                                                children,
+                                                header_bounds.get(),
+                                                Some((
+                                                    trigger_id.clone(),
+                                                    super::menus::press_position(event),
+                                                )),
+                                                event.position(),
+                                                scale,
+                                                window,
+                                                cx,
                                             );
                                         } else if let Some(command) = &command {
                                             app.dispatch_native_sidebar_ui(command.clone(), cx);
@@ -318,7 +313,15 @@ impl GhostexGpuiApp {
             })
             .on_mouse_down(MouseButton::Right, move |event, window, cx| {
                 cx.stop_propagation();
-                Self::show_native_sidebar_menu(&menu, event.position, scale, window, cx);
+                Self::show_native_sidebar_menu_hung(
+                    &menu,
+                    header_bounds.get(),
+                    None,
+                    event.position,
+                    scale,
+                    window,
+                    cx,
+                );
             })
             .sidebar_drag_source(dragged, cx)
             .sidebar_drop_target("group", drag_id, None, cx)

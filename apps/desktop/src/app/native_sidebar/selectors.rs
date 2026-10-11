@@ -8,7 +8,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 use gpui_component::tooltip::ManagedTooltipExt as _;
-use gpui_component::{h_flex, v_flex};
+use gpui_component::{ElementExt as _, h_flex, v_flex};
 use serde_json::json;
 
 use super::{
@@ -86,6 +86,7 @@ impl GhostexGpuiApp {
             .filter(|space| !visible.iter().any(|item| item.id == space.id))
             .map(|space| (*space).clone())
             .collect();
+        let more_owner = super::menus::MenuOwner::default();
         v_flex().w_full().flex_shrink_0()
             .children(self.render_native_machine_tabs(snapshot, appearance, cx))
             .child(div().h(px(13.0 * scale)).flex_shrink_0())
@@ -95,14 +96,14 @@ impl GhostexGpuiApp {
                     .child(titlebar_svg_icon("titlebar/plus.svg", 14.0 * scale, appearance.muted)).child("Create space")
                     .on_click(cx.listener(|app, _, _, cx| { cx.stop_propagation(); app.dispatch_native_sidebar_ui(json!({"type": "editSpace"}), cx); }))))
                 .children(visible.into_iter().chain(snapshot.spaces.iter().filter(|space| space.id == "other")).map(|space| self.render_native_sidebar_space(space, &visible_ids, appearance, cx)))
-                .when(overflow, |row| row.child(div().id("native-sidebar-more-spaces").role(gpui::Role::Button).aria_label("More spaces").size(px(28.0 * scale)).flex().items_center().justify_center().rounded(px(6.0 * scale)).hover(|row| row.bg(appearance.hover))
+                .when(overflow, |row| row.child(div().id("native-sidebar-more-spaces").on_prepaint(super::menus::record_menu_owner(&more_owner)).role(gpui::Role::Button).aria_label("More spaces").size(px(28.0 * scale)).flex().items_center().justify_center().rounded(px(6.0 * scale)).hover(|row| row.bg(appearance.hover))
                     .child(titlebar_svg_icon("titlebar/dots.svg", 16.0 * scale, appearance.muted))
                     .on_click(cx.listener(move |_, event: &gpui::ClickEvent, window, cx| {
                         // CDXC:Spaces 2026-09-20 DECISION: User: the More menu lists the overflowing Spaces first and puts New Space last, under a separator.
                         let mut items: Vec<_> = hidden.iter().map(|space| json!({"label": space.name, "icon": space.icon, "iconColor": crate::app::window::space_editor_modal::space_display_color(&space.color, light), "checked": space.selected, "command": {"type": "selectSpace", "spaceId": space.id}})).collect();
                         if !items.is_empty() { items.push(json!({"separator": true})); }
                         items.push(json!({"label": "New Space", "icon": "plus", "command": {"type": "editSpace"}}));
-                        Self::show_native_sidebar_menu(&json!(items), event.position(), scale, window, cx);
+                        Self::show_native_sidebar_menu_hung(&json!(items), more_owner.get(), Some(("more-spaces".to_owned(), super::menus::press_position(event))), event.position(), scale, window, cx);
                     }))))
                 .when(snapshot.bots_enabled, |row| row.child(self.render_native_sidebar_bots_space_slot(snapshot.bots_mode, appearance, cx)))))
             .into_any_element()
@@ -171,7 +172,9 @@ impl GhostexGpuiApp {
         User: the Spaces row's buttons are centred in the sidebar, and every Space's icon has a very
         light outline. A selected Space, or one holding the active session, keeps its stronger outline.
         */
-        v_flex().id(format!("native-sidebar-space-{id}")).role(gpui::Role::Button).aria_label(format!("Space {name}")).aria_selected(space.selected).relative().size(px(28.0 * scale)).flex_shrink_0().items_center().justify_center().rounded(px(6.0 * scale)).border_1().border_color(appearance.foreground.opacity(0.08)).cursor_pointer()
+        let owner = super::menus::MenuOwner::default();
+        let space_owner = owner.clone();
+        v_flex().id(format!("native-sidebar-space-{id}")).on_prepaint(super::menus::record_menu_owner(&owner)).role(gpui::Role::Button).aria_label(format!("Space {name}")).aria_selected(space.selected).relative().size(px(28.0 * scale)).flex_shrink_0().items_center().justify_center().rounded(px(6.0 * scale)).border_1().border_color(appearance.foreground.opacity(0.08)).cursor_pointer()
             .when(self.native_sidebar.is_dragging("space", &id), |row| row.opacity(0.3))
             .when(space.contains_active_session && !space.selected, |row| row.bg(appearance.selected).border_color(appearance.selected_outline))
             .when(space.selected, |row| row.bg(selected_background).border_color(selected_outline).when(appearance.light && !appearance.glass, |row| row.shadow_sm()))
@@ -196,7 +199,7 @@ impl GhostexGpuiApp {
                 items.push(json!({"label": "Sleep", "heading": true}));
                 let plans = app.gx_store_space_sleep_plans(&menu_id);
                 items.push(json!({"label": "Sleep Inactive", "icon": "moon", "disabled": !app.gx_store_space_sleep_has_work(plans.as_ref(), SpaceSleepScope::Inactive), "command": {"type": "sleepSpace", "spaceId": menu_id, "scope": SpaceSleepScope::Inactive.as_str()}}));
-                Self::show_native_sidebar_menu(&json!(items), event.position, scale, window, cx);
+                Self::show_native_sidebar_menu_hung(&json!(items), space_owner.get(), None, event.position, scale, window, cx);
             }))
             .into_any_element()
     }

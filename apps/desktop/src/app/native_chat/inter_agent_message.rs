@@ -1,42 +1,61 @@
-//! The cards for messages between agents: one another agent sent this session, and one this
-//! session's agent sent another. Which rows these are, and whom a message went to, comes from the
-//! core (packages/gx-chat-core/src/transcript/agent_message.rs and sent_message.rs).
+//! The cards for messages between agents: one another agent sent this session, one this session's
+//! agent sent another, and a subagent's reply. Each is one 40px row (the agent's logo, its name,
+//! the message's first line, the time, the status and a chevron) that opens to the whole message.
+//! Which rows these are, whom a message went to, and everything a card says comes from the core's
+//! `card` object (packages/gx-chat-core/src/transcript/agent_message_card.rs, where the user's pick
+//! is the `CDXC:SessionChat 2026-10-11 DECISION`); this file only lays it out.
+//! The phone draws the same cards in apps/mobile/app/src/chat/native/transcript/AgentMessageCards.tsx.
 
-use super::cards::status_card_press_header;
-use super::disclosure_motion::measured;
-use super::thinking::estimated_lines;
+use super::cards::card_hover_fill;
+use super::new_session_welcome::brand_logo_color;
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
+use crate::app::helpers::workspace_tab_agent_icon_path;
 use crate::app::native_chat::cursor::ChatCursor as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    StatefulInteractiveElement as _, Styled as _, div, px,
+    AnyElement, Context, FontWeight, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, div, img, px,
+    rgb,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
-/// Collapsed, a received message shows this many lines of its body.
-const MESSAGE_PREVIEW_LINES: usize = 2;
+/// The row's height, before the chat's zoom.
+const ROW_HEIGHT: f32 = 40.0;
 
-/// What a message card's header says and how it sits on the card.
-struct MessageHeader {
+fn hue(p: &ChatAppearance, dark: u32, light: u32) -> Hsla {
+    rgb(if p.light { light } else { dark }).into()
+}
+
+fn tone_color(tone: &str, p: &ChatAppearance) -> Hsla {
+    match tone {
+        "failed" => hue(p, 0xfb7185, 0xe11d48),
+        "waiting" => hue(p, 0xfbbf24, 0xd97706),
+        _ => hue(p, 0x34d399, 0x059669),
+    }
+}
+
+fn icon(path: &'static str, size: f32, color: Hsla) -> AnyElement {
+    gpui::svg()
+        .path(path)
+        .size(px(size))
+        .flex_shrink_0()
+        .text_color(color)
+        .into_any_element()
+}
+
+/// What one card draws: its key, the core's `card`, and the message body with its references.
+struct AgentCard<'a> {
     key: String,
-    title: String,
-    detail: String,
-    /// A short tag before the chevron ("QUEUED", "NOT SENT") and its colour.
-    tag: Option<(&'static str, gpui::Hsla)>,
-    expandable: bool,
-    expanded: bool,
-    /// Whether the card shows a body under the header, and a footer under that.
-    has_body: bool,
-    has_actions: bool,
+    card: &'a Value,
+    body: String,
+    references: &'a Value,
 }
 
 impl NativeChatView {
+    /// A message another agent sent this session.
+    ///
     /// CDXC:SessionChat 2026-09-18 DECISION:
     /// User: a message another agent sent with `ghostex agents send` reads as a message from that agent, not as the user's own prompt bubble, and its sender header is never a heading.
-    /// CDXC:SessionChat 2026-09-30 DECISION:
-    /// User: "collapse the recieved message one to just show the first 2 lines by default but i can click to expand/collapse also". Collapsed, the card shows its body's first two lines; pressing the header or the preview opens the whole message, and the header closes it again.
-    /// SEE-ALSO: packages/gx-chat-core/src/transcript/agent_message.rs parses the header; apps/mobile/app/src/chat/native/transcript/SystemRows.tsx draws the phone's card.
     pub(super) fn inter_agent_message_card(
         &self,
         id: &str,
@@ -44,62 +63,43 @@ impl NativeChatView {
         p: &ChatAppearance,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let sent = &message["interAgentMessage"];
-        let body = text(sent, "body");
-        let key = format!("inter-agent:{id}");
-        let expandable = estimated_lines(&body) > MESSAGE_PREVIEW_LINES;
-        let expanded = expandable && self.expanded.contains(&key);
-        let motion = self.disclosure_frame(&key, expanded, cx);
-        // React footed this card with the send's delivery status; a waiting send says so here too.
-        let actions = self
-            .render_startup_delivery(message, true, p, cx)
-            .map_or_else(Vec::new, |status| vec![status]);
-        let header = self.message_header(
-            MessageHeader {
-                key: key.clone(),
-                title: format!("Message from {}", text(sent, "agentName")),
-                detail: text(sent, "sessionTitle"),
-                tag: (message["queued"] == true).then_some(("QUEUED", p.muted)),
-                expandable,
-                expanded,
-                has_body: !body.is_empty(),
-                has_actions: !actions.is_empty(),
+        let inter = &message["interAgentMessage"];
+        self.agent_card(
+            AgentCard {
+                key: format!("inter-agent:{id}"),
+                card: &inter["card"],
+                body: text(inter, "body"),
+                references: &message["markdownReferences"],
             },
             p,
             cx,
-        );
-        let body = if body.is_empty() {
-            Vec::new()
-        } else if !expandable || expanded || motion.is_some() {
-            let full = self.markdown(
-                format!("inter-agent:{id}"),
-                body,
-                &message["markdownReferences"],
-                p,
-                cx,
-            );
-            vec![match motion {
-                // Clipped between the two-line preview's height and the full text's.
-                Some(frame) => self.capped_body_motion(&key, frame, 0.0, full),
-                None => full,
-            }]
-        } else {
-            // GPUI only clamps when the text also asks for an ellipsis.
-            let toggle_key = key.clone();
-            let preview = div()
-                .id(format!("inter-agent-preview:{id}"))
-                .min_w_0()
-                .line_clamp(MESSAGE_PREVIEW_LINES)
-                .text_ellipsis()
-                .chat_cursor_pointer()
-                .child(body)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_marker_disclosure(toggle_key.clone(), false, cx)
-                }))
-                .into_any_element();
-            vec![measured(self.disclosure_floor(&key), preview)]
-        };
-        self.status_card_with_header(header, body, actions, p)
+        )
+    }
+
+    /// A subagent's reply that arrived as a system turn (`Message from <agent>`).
+    pub(super) fn subagent_message_card(
+        &self,
+        id: &str,
+        card: &Value,
+        references: &Value,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let marked = text(card, "markdown");
+        self.agent_card(
+            AgentCard {
+                key: format!("agent-message:{id}"),
+                card: &card["card"],
+                body: if marked.is_empty() {
+                    text(card, "body")
+                } else {
+                    marked
+                },
+                references,
+            },
+            p,
+            cx,
+        )
     }
 
     /// The cards for the messages one message's tool calls sent, or a finished turn lifted out of
@@ -107,7 +107,6 @@ impl NativeChatView {
     ///
     /// CDXC:SessionChat 2026-09-30 DECISION:
     /// User: a message this session's agent sends another agent gets "a small card that shows the message being sent when expanded", "collapsed by default", in the received card's shape.
-    /// SEE-ALSO: packages/gx-chat-core/src/transcript/sent_message.rs decides which calls these are and names the recipient; apps/mobile/app/src/chat/native/transcript/SystemRows.tsx draws the phone's card.
     pub(super) fn sent_agent_message_cards(
         &self,
         cards: &Value,
@@ -122,153 +121,333 @@ impl NativeChatView {
                 .min_w_0()
                 .w_full()
                 .gap(px(8.0 * p.scale))
-                .children(
-                    cards
-                        .iter()
-                        .map(|card| self.sent_agent_message_card(card, p, cx)),
-                )
+                .children(cards.iter().map(|sent| {
+                    let marked = text(sent, "markdown");
+                    self.agent_card(
+                        AgentCard {
+                            key: format!("sent-message:{}", text(sent, "key")),
+                            card: &sent["card"],
+                            body: if marked.is_empty() {
+                                text(sent, "body")
+                            } else {
+                                marked
+                            },
+                            references: &sent["markdownReferences"],
+                        },
+                        p,
+                        cx,
+                    )
+                }))
                 .into_any_element(),
         )
     }
 
-    fn sent_agent_message_card(
+    /// One card: the row, the whole message under it once opened, and why a message did not go out.
+    fn agent_card(
         &self,
-        card: &Value,
-        p: &ChatAppearance,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let key = format!("sent-message:{}", text(card, "key"));
-        let marked = text(card, "markdown");
-        let body = if marked.is_empty() {
-            text(card, "body")
-        } else {
-            marked
-        };
-        let expandable = !body.is_empty();
-        let expanded = expandable && self.expanded.contains(&key);
-        let motion = self.disclosure_frame(&key, expanded, cx);
-        let has_body = expanded || motion.is_some();
-        let header = self.message_header(
-            MessageHeader {
-                key: key.clone(),
-                title: text(card, "title"),
-                detail: text(card, "detail"),
-                tag: (card["failed"] == true).then(|| ("NOT SENT", p.error())),
-                expandable,
-                expanded,
-                has_body,
-                has_actions: false,
-            },
-            p,
-            cx,
-        );
-        let body = if has_body {
-            vec![self.markdown(key.clone(), body, &card["markdownReferences"], p, cx)]
-        } else {
-            Vec::new()
-        };
-        self.status_card_with_header_motion(
-            super::cards::CardBodyMotion {
-                key: &key,
-                frame: motion,
-                shut_body: false,
-                shut: !expanded,
-            },
-            header,
-            body,
-            Vec::new(),
-            p,
-        )
-    }
-
-    /// The message icon, the title with its session beside it, and the chevron; the whole header
-    /// is the toggle when the card has more to show.
-    fn message_header(
-        &self,
-        header: MessageHeader,
+        input: AgentCard<'_>,
         p: &ChatAppearance,
         cx: &Context<Self>,
     ) -> AnyElement {
         let s = p.scale;
-        let MessageHeader {
+        let AgentCard {
             key,
-            title,
-            detail,
-            tag,
-            expandable,
-            expanded,
-            has_body,
-            has_actions,
-        } = header;
-        let row = div()
-            .id(format!("{key}:header"))
+            card,
+            body,
+            references,
+        } = input;
+        let expandable = !body.is_empty();
+        let expanded = expandable && self.expanded.contains(&key);
+        let motion = self.disclosure_frame(&key, expanded, cx);
+        let hairline = p.foreground.opacity(if p.light { 0.08 } else { 0.05 });
+        let opened = (expanded || motion.is_some()).then(|| {
+            let message = div()
+                .border_t_1()
+                .border_color(hairline)
+                .px(px(12.0 * s))
+                .pt(px(8.0 * s))
+                .pb(px(10.0 * s))
+                .min_w_0()
+                .text_color(p.card_muted)
+                .child(self.markdown(key.clone(), body, references, p, cx))
+                .into_any_element();
+            self.disclosure_body_motion(&key, motion, 0.0, message)
+        });
+        let failure = self.agent_card_failure(&key, card, hairline, p, cx);
+        div()
+            .group(SharedString::from(format!("agent-card:{key}")))
             .flex()
-            .items_start()
+            .flex_col()
+            .w_full()
             .min_w_0()
-            .gap(px(8.0 * s))
+            .rounded(px(10.0 * s))
+            .border_1()
+            .border_color(p.input_border)
+            .bg(p.card_panel)
+            .overflow_hidden()
+            .child(self.agent_card_row(&key, card, expandable, expanded, p, cx))
+            .children(opened)
+            .children(failure)
+            .into_any_element()
+    }
+
+    /// The logo, the name, the first line (the other session once opened), then Go to session on
+    /// hover, the time, the status and the chevron. The row opens and closes the message.
+    fn agent_card_row(
+        &self,
+        key: &str,
+        card: &Value,
+        expandable: bool,
+        expanded: bool,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let s = p.scale;
+        let session = &card["session"];
+        let status = &card["status"];
+        let time = text(card, "time");
+        let line = if expanded {
+            text(card, "detail")
+        } else {
+            text(card, "preview")
+        };
+        let group = SharedString::from(format!("agent-card:{key}"));
+        let row = div()
+            .id(SharedString::from(format!("{key}:row")))
+            .h(px(ROW_HEIGHT * s))
+            .px(px(12.0 * s))
+            .flex()
+            .items_center()
+            .gap(px(9.0 * s))
+            .min_w_0()
+            .text_size(px(14.0 * s))
+            .child(self.agent_card_mark(card, p))
             .child(
-                gpui::svg()
-                    .path("titlebar/message.svg")
-                    .size(px(14.0 * s))
-                    .mt(px(4.0 * s))
-                    .text_color(p.muted)
-                    .flex_shrink_0(),
+                div()
+                    .flex_shrink_0()
+                    .whitespace_nowrap()
+                    .text_color(p.foreground)
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(text(card, "name")),
             )
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .flex()
-                    .flex_wrap()
-                    .gap_x(px(8.0 * s))
-                    .child(div().text_color(p.foreground).child(title.clone()))
-                    .when(!detail.is_empty(), |heading| {
-                        heading.child(div().text_color(p.muted).child(detail))
-                    }),
+                    .truncate()
+                    .text_color(if expanded { p.muted } else { p.card_muted })
+                    .child(line),
             )
-            // On the title's first line, centred on it like the chevron.
-            .when_some(tag, |row, (tag, color)| {
+            .when(
+                session.is_object() && text(card, "failure").is_empty(),
+                |row| {
+                    let command = json!({
+                        "type": "openAgentSession",
+                        "projectId": session["projectId"],
+                        "sessionId": session["sessionId"],
+                    });
+                    let (muted, foreground, fill) =
+                        (p.muted, p.foreground, p.foreground.opacity(0.08));
+                    row.child(
+                        div()
+                            .id(SharedString::from(format!("{key}:session")))
+                            .invisible()
+                            .group_hover(group.clone(), |style| style.visible())
+                            .flex()
+                            .flex_shrink_0()
+                            .items_center()
+                            .gap(px(4.0 * s))
+                            .px(px(6.0 * s))
+                            .py(px(1.0 * s))
+                            .rounded(px(6.0 * s))
+                            .text_size(px(12.5 * s))
+                            .text_color(muted)
+                            .whitespace_nowrap()
+                            .role(gpui::Role::Button)
+                            .aria_label("Go to session")
+                            .chat_cursor_pointer()
+                            .hover(move |style| style.text_color(foreground).bg(fill))
+                            .child(icon("titlebar/arrow-up-right.svg", 12.0 * s, muted))
+                            .child("Go to session")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.invoke(command.clone(), cx)
+                            })),
+                    )
+                },
+            )
+            .when(!time.is_empty(), |row| {
                 row.child(
                     div()
-                        .h(px(22.75 * s))
-                        .flex()
-                        .items_center()
                         .flex_shrink_0()
-                        .text_size(px(11.0 * s))
-                        .text_color(color)
-                        .child(tag),
+                        .whitespace_nowrap()
+                        .text_size(px(12.0 * s))
+                        .text_color(p.muted)
+                        .child(time),
                 )
             })
+            .when(status.is_object(), |row| {
+                row.child(self.agent_card_status(key, status, p))
+            })
             .when(expandable, |row| {
-                row.child(
-                    div()
-                        .h(px(22.75 * s))
-                        .flex()
-                        .items_center()
-                        .flex_shrink_0()
-                        .child(
-                            gpui::svg()
-                                .path(if expanded {
-                                    "titlebar/chevron-down.svg"
-                                } else {
-                                    "titlebar/chevron-right.svg"
-                                })
-                                .size(px(14.0 * s))
-                                .text_color(p.muted),
-                        ),
-                )
+                row.child(icon(
+                    if expanded {
+                        "titlebar/chevron-down.svg"
+                    } else {
+                        "titlebar/chevron-right.svg"
+                    },
+                    14.0 * s,
+                    p.muted,
+                ))
             });
         if !expandable {
             return row.into_any_element();
         }
-        let row = row
-            .role(gpui::Role::Button)
-            .aria_label(title)
+        let key = key.to_string();
+        let hover = card_hover_fill(p);
+        row.role(gpui::Role::Button)
+            .aria_label(text(card, "title"))
             .aria_expanded(expanded)
             .chat_cursor_pointer()
+            .hover(move |style| style.bg(hover))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.toggle_marker_disclosure(key.clone(), expanded, cx)
-            }));
-        status_card_press_header(row, has_body, has_actions, p).into_any_element()
+            }))
+            .into_any_element()
+    }
+
+    /// Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour.
+    fn agent_card_status(&self, key: &str, status: &Value, p: &ChatAppearance) -> AnyElement {
+        let s = p.scale;
+        let color = tone_color(&text(status, "tone"), p);
+        let glyph = match text(status, "icon").as_str() {
+            "alert" => "titlebar/alert-triangle.svg",
+            "clock" => "titlebar/clock.svg",
+            _ => "titlebar/check.svg",
+        };
+        let hint = SharedString::from(text(status, "hint"));
+        let icon_only = status["iconOnly"] == true;
+        div()
+            .id(SharedString::from(format!("{key}:status")))
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap(px(4.0 * s))
+            .text_size(px(12.0 * s))
+            .text_color(color)
+            .whitespace_nowrap()
+            .role(gpui::Role::Status)
+            .aria_label(hint.clone())
+            .child(icon(glyph, if icon_only { 13.0 } else { 12.0 } * s, color))
+            .when(!icon_only, |row| row.child(text(status, "label")))
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(hint.clone()).build(window, cx)
+            })
+            .into_any_element()
+    }
+
+    /// The agent's own logo with a small arrow badge (prose grey coming in, sky going out), or
+    /// the sparkle of a subagent.
+    fn agent_card_mark(&self, card: &Value, p: &ChatAppearance) -> AnyElement {
+        let s = p.scale;
+        let direction = text(card, "direction");
+        if direction == "subagent" {
+            return icon("titlebar/sparkles.svg", 16.0 * s, p.prose);
+        }
+        let (badge, arrow) = if direction == "sent" {
+            (hue(p, 0x7dd3fc, 0x0284c7), "titlebar/arrow-up-right.svg")
+        } else {
+            (p.prose, "titlebar/arrow-down-left.svg")
+        };
+        let agent = text(card, "agentIcon");
+        let logo = match workspace_tab_agent_icon_path(&agent) {
+            // OMP's artwork is deliberately multicolour (`new_session_agent_mark`).
+            Some(asset) if agent == "omp" => img(asset).size(px(17.0 * s)).into_any_element(),
+            Some(asset) => gpui::svg()
+                .path(asset)
+                .size(px(17.0 * s))
+                .text_color(brand_logo_color(&agent, p))
+                .into_any_element(),
+            None => icon("titlebar/robot.svg", 17.0 * s, p.foreground),
+        };
+        div()
+            .relative()
+            .size(px(17.0 * s))
+            .flex_shrink_0()
+            .child(logo)
+            .child(
+                div()
+                    .absolute()
+                    .right(px(-4.0 * s))
+                    .bottom(px(-4.0 * s))
+                    .size(px(11.0 * s))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_full()
+                    .bg(badge)
+                    // The ring that parts the badge from the logo is the card's own panel.
+                    .border_1()
+                    .border_color(p.card_panel)
+                    .child(icon(arrow, 7.0 * s, p.card_panel)),
+            )
+            .into_any_element()
+    }
+
+    /// A message that did not go out: why, with Retry and Remove when it is this chat's own send.
+    fn agent_card_failure(
+        &self,
+        key: &str,
+        card: &Value,
+        hairline: Hsla,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> Option<AnyElement> {
+        let failure = text(card, "failure");
+        if failure.is_empty() {
+            return None;
+        }
+        let s = p.scale;
+        let retry = card["retryPromptId"].clone();
+        let action = |suffix: &str, label: &'static str, command: Value| {
+            div()
+                .id(SharedString::from(format!("{key}:{suffix}")))
+                .role(gpui::Role::Button)
+                .aria_label(label)
+                .chat_cursor_pointer()
+                .px(px(6.0 * s))
+                .py(px(2.0 * s))
+                .rounded(px(5.0 * s))
+                .text_color(p.primary)
+                .hover(|style| style.bg(p.border))
+                .child(label)
+                .on_click(cx.listener(move |this, _, _, cx| this.invoke(command.clone(), cx)))
+        };
+        Some(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(4.0 * s))
+                .border_t_1()
+                .border_color(hairline)
+                .px(px(12.0 * s))
+                .py(px(8.0 * s))
+                .text_size(px(12.0 * s))
+                .child(div().flex_1().min_w_0().text_color(p.muted).child(failure))
+                .when(retry.is_string(), |row| {
+                    row.child(action(
+                        "retry",
+                        "Retry",
+                        json!({"type":"retryQueue","promptId":retry.clone()}),
+                    ))
+                    .child(action(
+                        "remove",
+                        "Remove",
+                        json!({"type":"removeQueue","promptId":retry.clone()}),
+                    ))
+                })
+                .into_any_element(),
+        )
     }
 }

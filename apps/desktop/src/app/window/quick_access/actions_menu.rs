@@ -352,7 +352,14 @@ impl GpuiQuickAccessWindow {
         let surface = surface
             .min_w(px(if panel { 290.0 } else { 240.0 }))
             .max_w(px(QUICK_ACCESS_ACTIONS_MENU_MAX_WIDTH));
-        let on_mouse_down_out = cx.listener(|this, _: &MouseDownEvent, _window, cx| {
+        let on_mouse_down_out = cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+            if panel
+                && super::chrome::ACTIONS_BUTTON_BOUNDS
+                    .with(|cell| cell.get())
+                    .is_some_and(|bounds| bounds.contains(&event.position))
+            {
+                return;
+            }
             this.context_menu = None;
             cx.notify();
         });

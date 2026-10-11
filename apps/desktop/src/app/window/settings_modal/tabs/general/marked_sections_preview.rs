@@ -12,7 +12,7 @@ mod marked_look;
 use super::super::super::super::native_modal_kit::*;
 use super::super::super::fields::{
     ButtonVariant, RowSpec, SELECT_WIDTH, icon, reset_key, setting_row, settings_dialog_sheet,
-    settings_icon_button, settings_select,
+    settings_icon_button, settings_select, toggle_field,
 };
 use super::{GeneralCx, GeneralTab, save};
 use gpui::prelude::FluentBuilder as _;
@@ -24,17 +24,50 @@ use marked_look::{MarkedLook, MarkerStyle, preview_reply};
 use serde_json::json;
 
 const KEY: &str = "markedHandoversStyle";
+const EMOJI_KEY: &str = "markedHandoversEmoji";
 
 impl GeneralTab {
-    /// The style row, while Marked handovers is on.
+    /// The style row and the emoji switch under it, while Marked handovers is on.
     pub(super) fn marked_sections_style_row(
         &mut self,
         g: &GeneralCx,
         section: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        if !g.values.bool("markedHandovers") {
+            return Vec::new();
+        }
+        let mut rows: Vec<AnyElement> = Vec::new();
+        rows.extend(self.marked_style_select_row(g, section, window, cx));
+        if g.visible(section, EMOJI_KEY) {
+            let spec = g
+                .spec(
+                    EMOJI_KEY,
+                    "Show marker emojis",
+                    "Show the marker emoji (❓ ✅ ⚠️ and the rest) at the start of each coloured section, in every style. Off: the colour and the label show the kind.",
+                )
+                .dependent();
+            rows.push(toggle_field(
+                self,
+                &g.p,
+                EMOJI_KEY,
+                spec,
+                g.values.bool(EMOJI_KEY),
+                cx,
+            ));
+        }
+        rows
+    }
+
+    fn marked_style_select_row(
+        &mut self,
+        g: &GeneralCx,
+        section: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        if !g.values.bool("markedHandovers") || !g.visible(section, KEY) {
+        if !g.visible(section, KEY) {
             return None;
         }
         let options = g.options("MARKED_HANDOVERS_STYLE_OPTIONS");
@@ -100,7 +133,7 @@ impl GeneralTab {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let focus = self.marked_preview.clone()?;
-        let chat = MarkedLook::chat_default(g.p.light);
+        let chat = MarkedLook::chat_default(g.p.light, g.values.bool(EMOJI_KEY));
         let chat_background = gpui::rgb(if chat.light { 0xffffff } else { 0x0d0d0d });
         let paragraph_gap = gpui::rems(chat.block_gap / 16.0);
         let prose = chat.prose;

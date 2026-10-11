@@ -173,11 +173,9 @@ impl GhostexGpuiApp {
                 )
             },
         );
-        menu.show(
-            self.native_kanban.anchors.filters.get().bottom_left(),
-            window,
-            cx,
-        );
+        // Hung from the Filters button like the Filters menu it replaced, so a click on Filters
+        // while it is open closes it instead of reopening the Filters menu.
+        menu.toggle_below(self.native_kanban.anchors.filters.get(), window, cx);
     }
 
     /// `View`: which details the cards show.

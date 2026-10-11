@@ -10,7 +10,9 @@ pub(crate) use super::marked_look::{
 
 /// The look of marked sections in this chat's tones.
 pub(super) fn look(p: &ChatAppearance) -> MarkedLook {
+    let settings = crate::shared_settings::shared_sidebar_settings_snapshot();
     MarkedLook {
+        emoji: super::marked_look::emoji_from_settings(settings.object()),
         light: p.light,
         scale: p.scale,
         foreground: p.foreground,

@@ -6,7 +6,8 @@
 //! the way an alert or a table is wrapped: `\u{e000}section:{…}` before a section's lines and
 //! `\u{e000}/section` after them. The JSON names the kind, the emoji, the kind's own name, the bold
 //! or `Label:` text the line started with (`label`, empty when there is none), whether that label
-//! only repeats the kind's name (`labelRepeats`), and the rest of the first line (`lead`). The lines
+//! only repeats the kind's name (`labelRepeats`), the rest of the first line (`lead`) and the whole
+//! first line without its emoji (`plain`, for the chat's emoji switch). The lines
 //! in between are the section exactly as the agent wrote it, so a renderer that keeps the emoji
 //! draws them as they are and one that replaces it draws its own first line from the JSON and the
 //! lines after the first.
@@ -94,6 +95,8 @@ struct Opening<'a> {
     marker: &'static Marker,
     label: String,
     lead: &'a str,
+    /// The whole first line with the marker emoji taken out (`**✅ Done:** x` → `**Done:** x`).
+    plain: String,
 }
 
 /// `^ {0,3}#{1,6}[ \t]+`, the heading's text when the line is one.
@@ -173,11 +176,59 @@ fn opening(line: &str) -> Option<Opening<'_>> {
         Some(rest) if !label.is_empty() && !label.ends_with(':') => (format!("{label}:"), rest),
         _ => (label, lead),
     };
+    // A title line that only names its kind (`🧪 Untested`, `🔄 in progress:`) is the label itself,
+    // so no renderer draws the name twice ("Untested: Untested").
+    let (label, lead) = match title_only(lead, marker) {
+        Some(title) if label.is_empty() => (title, ""),
+        Some(_) => (label, ""),
+        None if label.is_empty() => match leading_name(lead, marker) {
+            // `🧪 Untested on Windows`: the name is the label and the rest stays text.
+            Some((name, rest)) => (name.to_string(), rest),
+            None => (label, lead),
+        },
+        None => (label, lead),
+    };
     Some(Opening {
         marker,
         label,
         lead: without_hard_break(js_trim_end(js_trim_start(lead))),
+        plain: without_marker(line, marker),
     })
+}
+
+/// The rest of a title line, as its label, when it is only the marker's own name: any case, bold
+/// or not, with or without a trailing colon.
+fn title_only(lead: &str, marker: &Marker) -> Option<String> {
+    let text = js_trim(without_hard_break(js_trim_end(lead)));
+    let unbolded = text
+        .strip_prefix("**")
+        .and_then(|inner| inner.strip_suffix("**"))
+        .unwrap_or(text);
+    let unbolded = js_trim(unbolded);
+    let name = js_trim(unbolded.trim_end_matches(':'));
+    (!name.is_empty() && name.eq_ignore_ascii_case(marker.name)).then(|| unbolded.to_string())
+}
+
+/// The marker's own name at the start of `lead` (any case) when a space follows it, and the text
+/// after it.
+fn leading_name<'a>(lead: &'a str, marker: &Marker) -> Option<(&'a str, &'a str)> {
+    let text = js_trim_start(lead);
+    let head = text.get(..marker.name.len())?;
+    let rest = &text[marker.name.len()..];
+    (head.eq_ignore_ascii_case(marker.name) && rest.starts_with([' ', '\t']))
+        .then(|| (head, js_trim_start(rest)))
+}
+
+/// `line` with its marker emoji (and the space after it) taken out, as the line reads without it.
+fn without_marker(line: &str, marker: &Marker) -> String {
+    let bare = marker.emoji.trim_end_matches('\u{fe0f}');
+    let Some(at) = line.find(bare) else {
+        return line.to_string();
+    };
+    let rest = &line[at + bare.len()..];
+    let rest = rest.strip_prefix('\u{fe0f}').unwrap_or(rest);
+    let plain = format!("{}{}", &line[..at], js_trim_start(rest));
+    without_hard_break(js_trim_end(&plain)).to_string()
 }
 
 /// `^( *)([-*+]|\d{1,9}[.)])( +|$)`: the indent of a list item line.
@@ -314,6 +365,7 @@ pub fn mark_sections(markdown: String) -> String {
                 "label": opening.label,
                 "labelRepeats": label_name.eq_ignore_ascii_case(opening.marker.name),
                 "lead": opening.lead,
+                "plain": opening.plain,
             })
         ));
         let mut body: Vec<String> = body.iter().map(|line| (*line).to_string()).collect();

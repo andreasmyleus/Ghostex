@@ -13,6 +13,7 @@ use crate::questions::gates;
 use crate::questions::interactive::question_answer_controls;
 use crate::questions::model::{InteractivePrompt, TerminalNotice};
 use crate::questions::notice_choices::{collapsed_choice_label, COLLAPSED_CHOICE_COUNT};
+use crate::questions::notice_tone;
 use crate::questions::terminal_prompts::{
     terminal_dialog_presentation, terminal_notice_action_answer, terminal_notice_choice_answer,
 };
@@ -65,6 +66,19 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
             Some(InteractivePrompt::Approval { tool, .. }) => approval_ask(tool).to_string(),
             _ => String::new(),
         },
+        approval_title: match prompt.as_ref() {
+            Some(InteractivePrompt::Approval { tool, .. }) => {
+                notice_tone::approval_title(state.session.agent.as_deref(), tool)
+            }
+            _ => String::new(),
+        },
+        approval_detail: match prompt.as_ref() {
+            Some(InteractivePrompt::Approval { tool, .. }) => notice_tone::approval_detail(
+                tool,
+                state.transcript_view.working_directory.as_deref(),
+            ),
+            _ => String::new(),
+        },
     };
 
     into.question_forms = crate::questions::forms::project(state);
@@ -93,6 +107,7 @@ fn approval_ask(tool: &str) -> &'static str {
 /// presentation, and the answer each row and each action sends.
 fn decorate_notice(raw: &Value, notice: &TerminalNotice) -> Value {
     let mut object = raw.as_object().cloned().unwrap_or_default();
+    object.insert("tone".to_string(), json!(notice_tone::notice_tone(notice)));
     object.insert(
         "collapsedChoiceCount".to_string(),
         json!(COLLAPSED_CHOICE_COUNT),

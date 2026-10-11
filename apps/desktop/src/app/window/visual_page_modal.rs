@@ -84,6 +84,38 @@ impl GpuiVisualPageModalWindow {
                     .detach();
             })
         };
+        // The page's card picture comes from this window once the page has loaded
+        // (app/visual_page_thumbnails.rs); the surface is filled in once it exists.
+        let shown_surface: Rc<std::cell::RefCell<Option<gpui::WeakEntity<CefSurface>>>> =
+            Rc::default();
+        let page_loaded: cef::PageLoadEndHandler = {
+            let shown_surface = shown_surface.clone();
+            let page = url.clone();
+            let viewport = window.viewport_size();
+            let viewport = (
+                f32::from(viewport.width),
+                (f32::from(viewport.height) - HEADER_HEIGHT).max(1.0),
+            );
+            let async_cx = cx.to_async();
+            let foreground = cx.foreground_executor().clone();
+            Rc::new(move || {
+                let Some(surface) = shown_surface.borrow().clone() else {
+                    return;
+                };
+                let page = page.clone();
+                let async_cx = async_cx.clone();
+                // Run on the next turn: this is called from inside CEF's message pump.
+                foreground
+                    .spawn(async move {
+                        let _ = async_cx.update(|cx| {
+                            crate::app::visual_page_thumbnails::picture_opened_page(
+                                surface, &page, viewport, cx,
+                            )
+                        });
+                    })
+                    .detach();
+            })
+        };
         let created = cef_parent_native_view(window)
             .map_err(|error| error.to_string())
             .and_then(|parent| {
@@ -102,12 +134,13 @@ impl GpuiVisualPageModalWindow {
                     None,
                     None,
                     None,
-                    None,
+                    Some(page_loaded),
                     cx,
                 )
             });
         let (surface, error) = match created {
             Ok(surface) => {
+                *shown_surface.borrow_mut() = Some(surface.downgrade());
                 // A CEF page starts 1×1 and only gets its frame when the window paints; give it
                 // the area under the header from the start so it lays out at its real width.
                 let viewport = window.viewport_size();

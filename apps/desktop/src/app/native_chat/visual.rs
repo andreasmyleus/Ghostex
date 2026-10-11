@@ -12,7 +12,6 @@
 //! The marks come from packages/gx-chat-core/src/transcript/native_markdown.rs (`NATIVE_VISUAL_OPEN`); the layout is packages/gx-visual; the phone draws the same scene as SVG in apps/mobile/app/src/chat/native/transcript/VisualBlock.tsx; pages are published by `ghostex show` (server/src/ghostex_cli/) and agents learn both from skills/ghostex-visuals/SKILL.md.
 
 use super::{appearance::ChatAppearance, fonts::CHAT_MONO, state::NativeChatView};
-use crate::app::native_chat::cursor::ChatCursor as _;
 use ghostex_gx_chat_core::visual::{self as gxv, Anchor, Item, Region, Scene, Visual};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -21,7 +20,6 @@ use gpui::{
     Rgba, SharedString, StatefulInteractiveElement as _, Styled as _, TextAlign, TextRun, Window,
     canvas, div, point, px, size, svg,
 };
-use serde_json::json;
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
@@ -96,6 +94,8 @@ pub(crate) struct ChatVisualCache {
     hovered: RefCell<HashMap<String, Hover>>,
     /// The blocks the reader switched to their source.
     showing_source: HashSet<String>,
+    /// The pictures of the transcript's page cards (`page_card.rs`).
+    pub(super) page_thumbnails: super::page_card::PageThumbnails,
 }
 
 /// The region under the pointer and the pointer's place in scene units.
@@ -665,146 +665,6 @@ impl NativeChatView {
                     })
                     .when_some(tooltip, |this, tooltip| this.child(tooltip)),
             )
-            .into_any_element()
-    }
-
-    /// A published HTML page: its title and the file it came from, opened by the chat's own link
-    /// handling.
-    ///
-    /// CDXC:SessionChat 2026-10-06 WHY: The page's address is a random capability URL on gxserver that tells the reader nothing, so the card names the file the agent published instead (`file`, printed by `ghostex show`); a block without one just says it is an interactive page.
-    fn visual_page_card(
-        &self,
-        key: &str,
-        page: gxv::PageRef,
-        p: &ChatAppearance,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let s = p.scale;
-        let chat = cx.weak_entity();
-        let detail = match &page.file {
-            Some(file) => format!("Interactive HTML page · {file}"),
-            None => "Interactive HTML page".to_string(),
-        };
-        let floating = page.popup && super::visual_popup::FLOATING_PAGES;
-        // The reader already sent this page's answers (`answeredPages`, page_answers.rs).
-        let answered = page.page_id().is_some_and(|page_id| {
-            self.snapshot["answeredPages"]
-                .as_array()
-                .is_some_and(|ids| ids.iter().any(|id| id == page_id))
-        });
-        let file = page.file.clone();
-        let gxv::PageRef { title, url, .. } = page;
-        let page_title = title.clone();
-        let open = move |cx: &mut App| {
-            let url = url.clone();
-            let _ = chat.update(cx, |chat, cx| {
-                // A page marked to float opens over the chat (the app's visual page window);
-                // otherwise where the chat opens every web link.
-                if floating {
-                    cx.emit(super::state::NativeChatEvent::Host(json!({
-                        "type": "open",
-                        "modal": "visualPage",
-                        "url": url,
-                        "title": page_title,
-                        "file": file,
-                    })));
-                } else {
-                    chat.invoke(
-                        json!({"type":"openMarkdownLink","href":url,"external":false}),
-                        cx,
-                    )
-                }
-            });
-        };
-        let open_row = open.clone();
-        div()
-            .id(SharedString::from(format!("visual-page:{key}")))
-            .flex()
-            .items_center()
-            .gap(px(10.0 * s))
-            .w_full()
-            .min_w_0()
-            .p(px(PADDING * s))
-            .bg(p.input)
-            .border_1()
-            .border_color(p.border)
-            .rounded(px(12.0 * s))
-            .chat_cursor_pointer()
-            .hover(|style| style.border_color(p.muted.opacity(0.6)))
-            .on_click(move |_, _, cx| open_row(cx))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .flex_shrink_0()
-                    .size(px(32.0 * s))
-                    .rounded(px(8.0 * s))
-                    .bg(p.border.opacity(0.5))
-                    .child(
-                        svg()
-                            .path("titlebar/browser.svg")
-                            .size(px(16.0 * s))
-                            .text_color(p.prose),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(13.5 * s))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(p.prose)
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(11.5 * s))
-                            .text_color(p.muted)
-                            .child(if answered {
-                                format!("Your answers were sent · {detail}")
-                            } else {
-                                detail
-                            }),
-                    ),
-            )
-            .when(answered, |this| {
-                let good = super::page_answers::answered_color(p);
-                this.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0 * s))
-                        .flex_shrink_0()
-                        .px(px(8.0 * s))
-                        .py(px(2.0 * s))
-                        .rounded_full()
-                        .bg(good.opacity(0.14))
-                        .text_size(px(11.0 * s))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(good)
-                        .child(
-                            svg()
-                                .path("titlebar/check.svg")
-                                .size(px(11.0 * s))
-                                .text_color(good),
-                        )
-                        .child("Answered"),
-                )
-            })
-            .child(super::mermaid::button(
-                "visual-page-open",
-                "titlebar/external-link.svg",
-                Some("Open"),
-                p,
-                open,
-            ))
             .into_any_element()
     }
 }

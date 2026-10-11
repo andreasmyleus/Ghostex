@@ -135,6 +135,8 @@ impl NativeChatView {
     /// The bar a finished turn folds behind: a chevron, "Worked 2m 5s", and the turn's counts as
     /// chips, so the closed fold still says what happened. Pressing it opens the log, reading a
     /// turn whose rows are still on the server first.
+    ///
+    /// CDXC:SessionChat 2026-10-11 DECISION: User: move the count pills to the right side of the "Worked …" row and give them fully rounded (pill) corners. They wrap among themselves, right-aligned, when the row is narrow; the phone's `TranscriptItemRow.tsx` lays them out the same way.
     fn work_summary(
         &self,
         item: &Value,
@@ -171,7 +173,7 @@ impl NativeChatView {
                 .gap(px(5.0 * s))
                 .px(px(8.0 * s))
                 .py(px(2.0 * s))
-                .rounded(px(7.0 * s))
+                .rounded_full()
                 .border(px(s))
                 .border_color(p.foreground.opacity(0.1))
                 .text_size(px(11.5 * s))
@@ -187,7 +189,6 @@ impl NativeChatView {
             .aria_label(spoken)
             .aria_expanded(expanded)
             .flex()
-            .flex_wrap()
             .items_center()
             .w_full()
             .gap(px(8.0 * s))
@@ -219,7 +220,17 @@ impl NativeChatView {
                     .text_color(if expandable { p.foreground } else { p.muted })
                     .child(label),
             )
-            .children(stats.into_iter().map(|(kind, label)| chip(&kind, label)));
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_w_0()
+                    .flex_wrap()
+                    .justify_end()
+                    .items_center()
+                    .gap(px(6.0 * s))
+                    .children(stats.into_iter().map(|(kind, label)| chip(&kind, label))),
+            );
         if expandable {
             let id = id.to_string();
             let action = Some(json!({"type":"loadWork","id":item["id"],"work":item["deferred"]}))

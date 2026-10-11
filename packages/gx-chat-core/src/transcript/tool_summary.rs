@@ -142,12 +142,13 @@ fn at_word_boundary(text: &str, at: usize) -> bool {
     !before.is_some_and(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
-/// A JSON string literal starting at `at`, as `("(?:\\.|[^"\\])*")` reads it.
+/// A string literal starting at `at`, as `("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')` reads it.
 fn json_string_literal(text: &str, at: usize) -> Option<&str> {
     let bytes = text.as_bytes();
-    if bytes.get(at) != Some(&b'"') {
-        return None;
-    }
+    let quote = match bytes.get(at) {
+        Some(&quote @ (b'"' | b'\'')) => quote,
+        _ => return None,
+    };
     let mut index = at + 1;
     while index < text.len() {
         match bytes[index] {
@@ -161,14 +162,41 @@ fn json_string_literal(text: &str, at: usize) -> Option<&str> {
                 }
                 index += 1;
             }
-            b'"' => return Some(&text[at..index + 1]),
+            byte if byte == quote => return Some(&text[at..index + 1]),
             _ => index += 1,
         }
     }
     None
 }
 
-/// Every match of `(?:\bcmd|["']cmd["']|\bcommand|["']command["'])\s*:\s*("(?:\\.|[^"\\])*")` with the `s` flag.
+/// A string literal's value. Codex writes `cmd: '…'` as often as `cmd: "…"`, and a single-quoted
+/// literal is not JSON: its `\'` becomes `'` and a bare `"` is escaped before JSON reads it.
+fn js_string_value(literal: &str) -> Option<String> {
+    let Some(inner) = literal.strip_prefix('\'') else {
+        return serde_json::from_str::<String>(literal).ok();
+    };
+    let inner = inner.strip_suffix('\'')?;
+    let mut json = String::with_capacity(inner.len() + 2);
+    json.push('"');
+    let mut characters = inner.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '\\' => match characters.next()? {
+                '\'' => json.push('\''),
+                escaped => {
+                    json.push('\\');
+                    json.push(escaped);
+                }
+            },
+            '"' => json.push_str("\\\""),
+            other => json.push(other),
+        }
+    }
+    json.push('"');
+    serde_json::from_str(&json).ok()
+}
+
+/// Every match of `(?:\bcmd|["']cmd["']|\bcommand|["']command["'])\s*:\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')` with the `s` flag.
 ///
 /// Returns the JSON string literals the commands hide behind, still quoted, in source order. Codex's code mode batches several `tools.exec_command({cmd})` calls into one script (`Promise.allSettled([...])`), so the first match alone hides the rest.
 fn embedded_command_literals(input: &str) -> Vec<&str> {
@@ -228,14 +256,11 @@ fn embedded_command_literals(input: &str) -> Vec<&str> {
     literals
 }
 
-/// The commands a freeform Codex script runs, parsed out of their JSON string literals.
+/// The commands a freeform Codex script runs, parsed out of their string literals.
 fn embedded_commands(text: &str) -> Vec<String> {
     embedded_command_literals(text)
         .into_iter()
-        .filter_map(|literal| match serde_json::from_str::<Value>(literal) {
-            Ok(Value::String(parsed)) => Some(parsed),
-            _ => None,
-        })
+        .filter_map(js_string_value)
         .collect()
 }
 

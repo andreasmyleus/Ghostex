@@ -212,6 +212,18 @@ impl GhostexGpuiApp {
         if !self.titlebar_more_menu_visible() {
             return;
         }
+        // A panel one of the ⋯ rows opened (Help, Tips, Resources…) hangs from this button too, so
+        // a press on ⋯ while it is up closes it rather than swapping it for the ⋯ menu.
+        let open_panel = self
+            .titlebar_more_menu_items()
+            .into_iter()
+            .filter_map(GpuiTitlebarMoreMenuItem::popup_kind)
+            .find(|kind| self.titlebar_popup_menu_open(*kind));
+        if let Some(kind) = open_panel {
+            let trigger_bounds = self.titlebar_more_button_bounds.get();
+            self.set_gpui_titlebar_popup_open(kind, false, trigger_bounds, window, cx);
+            return;
+        }
         let open = !self.titlebar_popup_menu_open(GpuiTitlebarPopupKind::More);
         let trigger_bounds = self.titlebar_more_button_bounds.get();
         self.set_gpui_titlebar_popup_open(

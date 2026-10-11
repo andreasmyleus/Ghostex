@@ -11,6 +11,7 @@ mod publish;
 mod serve;
 mod store;
 mod theme;
+mod thumbnail;
 
 pub(crate) use answers::{is_answers_route, submit as submit_answers};
 pub(crate) use drafts::{is_draft_route, save as save_draft};
@@ -20,3 +21,8 @@ pub(crate) use publish::{
     PUBLISH_VISUAL_PAGE_ENDPOINT,
 };
 pub(crate) use serve::{serve, VISUAL_PAGE_ROUTE_PREFIX};
+pub(crate) use thumbnail::{
+    handle_read_http as handle_read_visual_page_thumbnail_http,
+    handle_store_http as handle_store_visual_page_thumbnail_http,
+    READ_VISUAL_PAGE_THUMBNAIL_ENDPOINT, STORE_VISUAL_PAGE_THUMBNAIL_ENDPOINT,
+};

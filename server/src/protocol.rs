@@ -924,6 +924,11 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         */
         "/api/publishVisualPage" => full_local(path),
         /*
+        CDXC:ServerApi 2026-10-11 WHY:
+        A page card's picture is read by the chat on this computer (or the phone through its forward to this listener) and stored only by this computer's desktop app, from a page of this gxserver it showed (visual_pages/thumbnail.rs).
+        */
+        "/api/readVisualPageThumbnail" | "/api/storeVisualPageThumbnail" => full_local(path),
+        /*
         CDXC:RemotePairing 2026-09-03:
         The only unauthenticated write endpoint. A phone registers its SSH key
         through the Easy Connect tunnel before it holds any gxserver credential,

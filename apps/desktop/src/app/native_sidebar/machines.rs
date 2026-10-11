@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, InteractiveElement, IntoElement, MouseButton, ParentElement,
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
-use gpui_component::h_flex;
+use gpui_component::{ElementExt as _, h_flex};
 use serde_json::json;
 
 impl GhostexGpuiApp {
@@ -24,6 +24,8 @@ impl GhostexGpuiApp {
                 let id = machine.id.clone();
                 let reconnect = id.clone();
                 let menu_id = id.clone();
+                let owner = super::menus::MenuOwner::default();
+                let menu_owner = owner.clone();
                 let workspace_menu = (id != "local").then(|| self.gx_store_machine_workspace_menu(&id)).flatten();
                 let selected = snapshot.selected_machine_id == id;
                 let busy = ghostex_gx_core::machine_state_is_busy(&machine.state);
@@ -32,6 +34,7 @@ impl GhostexGpuiApp {
                 let icon = gpui::svg().path(if id == "local" { "titlebar/device-desktop.svg" } else if busy { "titlebar/loader2.svg" } else { "titlebar/cloud.svg" }).size(px(14.0 * scale)).text_color(if failed { rgb(0xff9494).into() } else { appearance.muted });
                 let glyph = if busy { icon.with_throttled_animation(format!("native-machine-busy-{id}"), std::time::Duration::from_millis(900), |icon, progress| icon.with_transformation(gpui::Transformation::rotate(gpui::percentage(progress)))).into_any_element() } else { icon.into_any_element() };
                 h_flex().id(format!("native-sidebar-machine-{id}")).role(gpui::Role::Tab).aria_label(machine.label.clone()).aria_selected(selected).flex_1().min_w_0().h_full().px(px(6.0 * scale)).justify_center().gap(px(4.0 * scale)).text_size(px(12.0 * scale))
+                    .on_prepaint(super::menus::record_menu_owner(&owner))
                     .when(index > 0, |row| row.border_l_1().border_color(appearance.foreground.opacity(0.12)))
                     .when(selected, |row| row.bg(appearance.selected)).hover(|row| row.bg(appearance.hover))
                     .child(div().id(format!("native-machine-connect-{id}")).flex_shrink_0().child(glyph)
@@ -54,7 +57,7 @@ impl GhostexGpuiApp {
                         items.push(json!({"separator": true}));
                         items.push(json!({"label": "Configure Machines", "icon": "settings", "command": {"type": "machineAction", "action": "configure", "machineId": menu_id}}));
                         let items = serde_json::Value::Array(items);
-                        Self::show_native_sidebar_menu(&items, event.position, scale, window, cx);
+                        Self::show_native_sidebar_menu_hung(&items, menu_owner.get(), None, event.position, scale, window, cx);
                     }))
             })).into_any_element())
     }

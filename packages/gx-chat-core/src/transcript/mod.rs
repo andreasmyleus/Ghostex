@@ -6,6 +6,7 @@
 
 pub mod actions;
 pub mod agent_message;
+pub mod agent_message_card;
 pub mod deferred_work;
 pub mod diff;
 pub mod document;
@@ -29,6 +30,7 @@ pub mod message_time;
 pub mod native_markdown;
 pub mod noise;
 pub mod page_answers;
+pub mod page_thumbnails;
 pub mod presentation;
 pub mod prose;
 pub mod question_exchange;

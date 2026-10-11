@@ -11,7 +11,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 use gpui_component::{
-    h_flex,
+    ElementExt as _, h_flex,
     input::{Escape, Input},
     v_flex,
 };
@@ -88,10 +88,13 @@ impl GhostexGpuiApp {
                 .child(collection.title.clone())
                 .into_any_element(),
         };
+        let owner = super::menus::MenuOwner::default();
+        let menu_owner = owner.clone();
         v_flex().relative().when(self.native_sidebar.is_dragging("collection", &id), |row| row.opacity(0.28)).flex_shrink_0().ml(px(3.0 * scale)).mr(px(5.0 * scale)).mb(px(10.0 * scale)).pb(px(5.0 * scale)).pl(px((rail_width + 10.0) * scale))
             .child(div().absolute().left_0().top_0().bottom(px(5.0 * scale)).w(px(rail_width * scale)).bg(color.opacity(0.18)))
             .when_some(drop_position, |column, position| column.child(super::drag::drop_line(position, scale)))
             .child(h_flex().id(format!("native-collection-{id}")).role(gpui::Role::TreeItem).aria_label(collection.title.clone()).aria_expanded(!collection.collapsed).relative().ml(px(-10.0 * scale)).h(px(30.0 * scale)).pl(px(8.0 * scale)).pr(px(8.0 * scale)).gap(px(5.0 * scale))
+                .on_prepaint(super::menus::record_menu_owner(&owner))
                 .bg(color.opacity(0.18))
                 .hover(|row| row.bg(color.opacity(0.22)))
                 .when(active, |row| row.bg(appearance.selected).rounded(px(5.0 * scale)).child(super::decorations::selected_outline(appearance)))
@@ -110,7 +113,7 @@ impl GhostexGpuiApp {
                 }))
                 .sidebar_drag_source(dragged, cx)
 .sidebar_drop_target("collection", drop_id, None, cx)
-                .on_mouse_down(MouseButton::Right, move |event, window, cx| { cx.stop_propagation(); Self::show_native_sidebar_menu(&menu, event.position, scale, window, cx); })
+                .on_mouse_down(MouseButton::Right, move |event, window, cx| { cx.stop_propagation(); Self::show_native_sidebar_menu_hung(&menu, menu_owner.get(), None, event.position, scale, window, cx); })
                 .on_click(cx.listener(move |app, _, _, cx| { cx.stop_propagation(); app.dispatch_native_sidebar_ui(json!({ "type": "collectionAction", "collectionId": id, "action": "toggle" }), cx); })))
             .when(self.native_sidebar.disclosures.present(&format!("collection:{}", collection.collection_id), collection.collapsed), |column| {
                 let content = v_flex().w_full().pt(px(5.0 * scale)).pl(px(8.0 * scale))

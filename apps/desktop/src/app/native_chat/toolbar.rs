@@ -44,6 +44,9 @@ pub(super) const COMPOSER_CONTROLS: [(&str, &str, &str, &str); 7] = [
     ),
 ];
 
+/// The Linux Attach button's trigger id, so a second press closes its Files/Folders menu.
+const ATTACH_PATH_TRIGGER: &str = "chat-attach-path";
+
 impl NativeChatView {
     pub(super) fn composer_control_overflowed(&self, id: &str) -> bool {
         self.snapshot["composerOverflow"]["overflowed"]
@@ -75,6 +78,7 @@ impl NativeChatView {
             "maximizeComposer" => self.toggle_maximized(window,cx),
             "summaryMode" => self.invoke(json!({"type":"toggleSummary"}),cx),
             "dictate" => self.toggle_dictation(window,cx),
+            "attachPath" if cfg!(target_os = "linux") && self.chat_menu_toggled_shut(ATTACH_PATH_TRIGGER, cx) => {}
             "attachPath" if cfg!(target_os = "linux") => self.show_chat_menu_at(vec![
                 json!({"label":"Images or files…","command":{"type":"host","action":"pickAttachments","requestId":"native-chat-attachments","selection":"files"}}),
                 json!({"label":"Folders…","command":{"type":"host","action":"pickAttachments","requestId":"native-chat-attachments","selection":"folders"}}),

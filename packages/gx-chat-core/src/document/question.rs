@@ -21,6 +21,12 @@ pub struct QuestionCard {
     /// An approval card's question, worded for its tool ("Allow this edit?"); empty for a question.
     #[serde(default)]
     pub approval_ask: String,
+    /// An approval card's title in plain words ("Claude Code wants to run a command").
+    #[serde(default)]
+    pub approval_title: String,
+    /// The muted line under it: the tool, and the folder it runs in when known.
+    #[serde(default)]
+    pub approval_detail: String,
 }
 
 /// The card's primary button.

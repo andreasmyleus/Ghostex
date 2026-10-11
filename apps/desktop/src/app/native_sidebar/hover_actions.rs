@@ -53,6 +53,8 @@ impl GhostexGpuiApp {
                 let menu = item.get("children").cloned();
                 let expand = item["expand"].as_bool() == Some(true);
                 let storage_id = group.storage_id.clone();
+                let session_id = id.clone();
+                let trigger_label = label.clone();
                 div()
                     .id(format!("native-sidebar-hover-{id}-{index}"))
                     .role(gpui::Role::Button)
@@ -108,8 +110,17 @@ impl GhostexGpuiApp {
                                     cx,
                                 );
                             } else if let Some(menu) = &menu {
-                                Self::show_native_sidebar_menu(
+                                // The session card's menus hang below the card (menus.rs).
+                                Self::show_native_sidebar_menu_hung(
                                     menu,
+                                    app.native_sidebar
+                                        .session_card_bounds
+                                        .get(&session_id)
+                                        .copied(),
+                                    Some((
+                                        format!("session:{session_id}:{trigger_label}"),
+                                        super::menus::press_position(event),
+                                    )),
                                     event.position(),
                                     scale,
                                     window,

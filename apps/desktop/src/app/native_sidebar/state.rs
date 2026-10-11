@@ -15,8 +15,9 @@ pub(crate) struct NativeSidebarState {
     pub(crate) next_menu_request: u64,
     /// Where the sidebar menu button was last painted, so its menu can drop down from it.
     pub(crate) more_button_bounds: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
-    /// When the More menu was dismissed by the same press that is still on its button.
-    pub(crate) more_menu_dismissed_at: Option<web_time::Instant>,
+    /// The trigger of the menu the last outside press dismissed, and where that press landed: a
+    /// click on that trigger made by the same press is the closing half of a toggle (menus.rs).
+    pub(crate) menu_dismissed_by_press: Option<(String, gpui::Point<gpui::Pixels>)>,
     /// CDXC:Sidebar 2026-09-17 WHY:
     /// A frame profile found snapshot and session deep copies dominating the UI thread during redraws.
     /// Share immutable snapshots with row callbacks; incoming patches and clock updates use copy-on-write mutation.

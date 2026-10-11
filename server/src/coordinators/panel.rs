@@ -6,7 +6,7 @@
 //! SEE-ALSO: server/src/server/coordinator_runtime.rs (refresh and republish), server/src/session_chat_follower/frames.rs and session_chat_read.rs (carry it), packages/gx-chat-core/src/extras/coordinator_threads.rs (the panel).
 //!
 //! CDXC:Coordinators 2026-10-07 WHY:
-//! A frame carries only a summary: the threads the panel lists by default (working, needing the user's approval, or `recent`: active in the last two hours, the user's 2026-10-07 decision in the core), the total and a `revision` of the full list. With ~95 threads the whole list was ~30KB on every chat state frame. The full list, resolved threads included, is read once when the user opens the panel's "N more" row (`/api/readCoordinatorThreads`), and read again when the revision moves while it stays open, so every thread stays reachable. The two-hour boundary is decided here on every tick, so a thread ageing out changes the summary and republishes it.
+//! A frame carries only a summary: the threads in flight (working, or waiting on an answer or the user's approval) and the `recent` ones (active in the last two hours, which "Show recent" adds; the user's 2026-10-11 decision in the core), the total and a `revision` of the full list. With ~95 threads the whole list was ~30KB on every chat state frame. The full list, resolved threads included, is read once when the user opens the panel's "N more" row (`/api/readCoordinatorThreads`), and read again when the revision moves while it stays open, so every thread stays reachable. The two-hour boundary is decided here on every tick, so a thread ageing out changes the summary and republishes it.
 //! SEE-ALSO: packages/gx-chat-core/src/extras/coordinator_threads.rs (the panel and the read), packages/gx-core/src/sidebar_view/threads.rs (`RECENT_THREAD_MS`, the sidebar's same two hours).
 
 use std::collections::hash_map::DefaultHasher;
@@ -48,11 +48,12 @@ fn panels() -> &'static Mutex<HashMap<SessionKey, CachedPanel>> {
     PANELS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Working first, then blocked on the user, then the rest; each newest first.
+/// Working first, then waiting on the user (an answer or an approval), then the rest; each newest
+/// first. The first two are the panel's in-flight rows, always in the summary.
 fn panel_rank(row: &Value) -> u8 {
     match (row["state"].as_str(), row["needsApproval"] == true) {
         (Some("working"), _) => 0,
-        (_, true) => 1,
+        (Some("waiting"), _) | (_, true) => 1,
         _ => 2,
     }
 }

@@ -71,6 +71,7 @@ How to use this file:
 - **Simple mode** `sessionChatSimpleMode` (boolean, default true): Simplify all chats: hide tool command previews and group file edits behind an expandable file count.
 - **Marked handovers in every session** `markedHandovers` (boolean, default false): Orchestrators and their threads always start each part of the message they hand back with a marker such as ❓ Needs you, ✅ Done, ⚠️ Read this, 🧪 Untested or 🛑 Blocked, so a quick skim shows what needs you. Turn this on to have every other agent session do the same. Applies to sessions started or resumed after you change it.
 - **Marked sections style** `markedHandoversStyle` (one of labels | rule | badge; default labels): How the chat colours the sections an agent marks: coloured labels, a thin left rule, or a coloured badge in place of the emoji. Shown while Marked handovers is on. Option labels: labels = Coloured labels, rule = Thin left rule, badge = Coloured badge.
+- **Show marker emojis** `markedHandoversEmoji` (boolean, default false): Show the marker emoji (❓ ✅ ⚠️ and the rest) at the start of each coloured section, in every style. Off: the colour and the label show the kind. Shown while Marked handovers is on.
 - **Verbose mode** `sessionChatVerboseMode` (boolean, default false): Expand thinking blocks to show their tool calls by default. Each chat can override it from its composer.
 ### Tools
 

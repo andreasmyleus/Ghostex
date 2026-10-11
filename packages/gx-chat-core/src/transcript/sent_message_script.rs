@@ -147,16 +147,7 @@ impl<'a> Script<'a> {
         if output.contains("\"status\": \"") || output.contains("\"status\":\"") {
             return false;
         }
-        const SEND_ERRORS: [&str; 7] = [
-            "failed or is uncertain",
-            "Message body must not be empty",
-            "is not an agent session",
-            "Could not read message file",
-            "Could not read task file",
-            "exceeds the send limit",
-            "Unknown or hidden agent type",
-        ];
-        if SEND_ERRORS.iter().any(|error| output.contains(error)) {
+        if send_error_line(output).is_some() {
             return true;
         }
         call_failed
@@ -184,6 +175,26 @@ impl<'a> Script<'a> {
                     })
                 })
     }
+}
+
+/// What the CLI prints when it refuses or loses a send, by phrase.
+const SEND_ERRORS: [&str; 8] = [
+    "failed or is uncertain",
+    "Message body must not be empty",
+    "is not an agent session",
+    "Could not read message file",
+    "Could not read task file",
+    "exceeds the send limit",
+    "Unknown or hidden agent type",
+    "No matching session found",
+];
+
+/// The output line holding the CLI's send error, which the sent card shows as why it did not go out.
+pub fn send_error_line(output: &str) -> Option<&str> {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| SEND_ERRORS.iter().any(|error| line.contains(error)))
 }
 
 /// PowerShell here-strings (`@'` … `'@`, `@"` … `"@`) lifted out of a script before the POSIX

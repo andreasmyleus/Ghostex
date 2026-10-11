@@ -1,0 +1,148 @@
+//! Pictures for the chat's page cards, taken from a page the user opened: when the floating page
+//! window has loaded a page from this computer's gxserver and the page has no picture yet (or was
+//! answered since its picture), the window's own browser takes a screenshot of the top of the page
+//! (`CefSurface::capture_page_top`), which is shrunk and encoded off the main thread and stored
+//! with the page (`server/src/visual_pages/thumbnail.rs`) for every client's card.
+//!
+//! CDXC:SessionChat 2026-10-11 SEE-ALSO:
+//! The user's decision is on server/src/visual_pages/thumbnail.rs; the screenshot is apps/desktop/src/cef/shell/page_screenshot.rs; the window is apps/desktop/src/app/window/visual_page_modal.rs.
+
+use std::{
+    io::Cursor,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
+
+use base64::Engine as _;
+use futures::FutureExt as _;
+use serde_json::json;
+
+use crate::app::gx_store::gx_rpc;
+use crate::app::helpers::gpui_local_gxserver_api_port;
+use crate::*;
+
+/// The stored picture; `thumbnailWidth`/`thumbnailHeight` in packages/gx-chat-core/visual/page-card.json.
+const PICTURE: (u32, u32) = (800, 500);
+/// The picture is made smaller until it is under this (gxserver takes up to 600 KiB).
+const PICTURE_MAX_BYTES: usize = 560 * 1024;
+/// How long a page gets after it loaded for scripts and web fonts to lay it out.
+const SETTLE: Duration = Duration::from_millis(800);
+/// A screenshot not answered by then is given up on.
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// One picture at a time.
+static CAPTURING: AtomicBool = AtomicBool::new(false);
+
+/// The page id when `url` is a page this computer's gxserver serves (`http://127.0.0.1:<port>/visual/<id>`).
+fn local_page_id(url: &str) -> Option<String> {
+    let url = gpui::http_client::Url::parse(url).ok()?;
+    let local_host = matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
+    if url.scheme() != "http" || !local_host || url.port() != Some(gpui_local_gxserver_api_port()) {
+        return None;
+    }
+    let id = url.path().strip_prefix("/visual/")?.trim_end_matches('/');
+    (id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| id.to_ascii_lowercase())
+}
+
+/// The floating page window's page finished loading in `surface`, which shows `viewport` (logical
+/// pixels, which are CSS pixels at the page's default zoom). Pictures it when its card needs one.
+pub(crate) fn picture_opened_page(
+    surface: gpui::WeakEntity<CefSurface>,
+    url: &str,
+    viewport: (f32, f32),
+    cx: &mut gpui::App,
+) {
+    let Some(page_id) = local_page_id(url) else {
+        return;
+    };
+    if CAPTURING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let _ = picture_page(&surface, &page_id, viewport, cx).await;
+        CAPTURING.store(false, Ordering::Release);
+    })
+    .detach();
+}
+
+async fn picture_page(
+    surface: &gpui::WeakEntity<CefSurface>,
+    page_id: &str,
+    viewport: (f32, f32),
+    cx: &mut gpui::AsyncApp,
+) -> Option<()> {
+    // Only a page with no picture, or one answered since its picture, is pictured.
+    let known = gx_rpc(
+        None,
+        "/api/readVisualPageThumbnail",
+        json!({"pageId": page_id, "withPicture": false}),
+    )
+    .await
+    .ok()?;
+    if known["stale"] != true || known["gone"] == true {
+        return None;
+    }
+    cx.background_executor().timer(SETTLE).await;
+    // The top of the page in the picture's shape, as wide as the window allows.
+    let aspect = PICTURE.0 as f64 / PICTURE.1 as f64;
+    let (width, height) = (viewport.0 as f64, viewport.1 as f64);
+    let (width, height) = if height >= width / aspect {
+        (width, width / aspect)
+    } else {
+        (height * aspect, height)
+    };
+    if width < 1.0 {
+        return None;
+    }
+    let mut screenshot = surface
+        .update(cx, |surface, _| {
+            surface.capture_page_top(width, height, PICTURE.0 as f64 / width)
+        })
+        .ok()??;
+    let timeout = cx.background_executor().timer(ANSWER_TIMEOUT);
+    let base64 = futures::select! {
+        picture = (&mut screenshot.picture).fuse() => picture.ok()??,
+        _ = timeout.fuse() => return None,
+    };
+    // The observer is dropped here, on the main thread, once its answer is in.
+    drop(screenshot);
+    let png = cx
+        .background_executor()
+        .spawn(async move { encode_picture(&base64) })
+        .await?;
+    gx_rpc(
+        None,
+        "/api/storeVisualPageThumbnail",
+        json!({
+            "pageId": page_id,
+            "png": base64::engine::general_purpose::STANDARD.encode(png),
+        }),
+    )
+    .await
+    .ok()
+    .map(|_| ())
+}
+
+/// The screenshot (base64 PNG) at exactly the stored size, as an opaque PNG small enough to store.
+fn encode_picture(base64: &str) -> Option<Vec<u8>> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64)
+        .ok()?;
+    let full = image::load_from_memory(&bytes).ok()?.to_rgb8();
+    for scale in [1.0_f32, 0.8, 0.64] {
+        let width = (PICTURE.0 as f32 * scale) as u32;
+        let height = (PICTURE.1 as f32 * scale) as u32;
+        let picture =
+            image::imageops::resize(&full, width, height, image::imageops::FilterType::Triangle);
+        let mut png = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(picture)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .ok()?;
+        let png = png.into_inner();
+        if png.len() <= PICTURE_MAX_BYTES {
+            return Some(png);
+        }
+    }
+    None
+}

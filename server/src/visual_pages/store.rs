@@ -158,6 +158,24 @@ fn write_record(
     .and_then(|()| fs::rename(&temporary, &path))
 }
 
+/// Notes on the record that a picture of the page was just stored (`thumbnail.rs`), and whether the
+/// page was already answered when it was taken. Returns the updated record.
+pub(super) fn note_thumbnail(
+    gxserver_state_dir: &Path,
+    id: &str,
+    answered: bool,
+) -> Result<serde_json::Value, StoreAnswersError> {
+    let _guard = RECORD_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut record = read_record(gxserver_state_dir, id).ok_or(StoreAnswersError::NotFound)?;
+    record["thumbnailAt"] =
+        json!(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+    record["thumbnailAnswered"] = json!(answered);
+    write_record(gxserver_state_dir, id, &record).map_err(StoreAnswersError::Io)?;
+    Ok(record)
+}
+
 /// Notes on the record how handing the answers to the agent went: queued (`queuedAt`) or why not.
 pub(super) fn note_delivery(gxserver_state_dir: &Path, id: &str, error: Option<&str>) {
     let _guard = RECORD_WRITE_LOCK

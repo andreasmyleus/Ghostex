@@ -363,6 +363,22 @@ impl NativeChatView {
                 return;
             }
         }
+        // The approval card's Allow and Deny carry these two keys as hints (approval.rs).
+        if this.snapshot["questionCard"]["visible"] == true
+            && this.snapshot["questionCard"]["loading"] != true
+            && this.snapshot["questionCard"]["busy"] != true
+            && this.snapshot["prompt"]["kind"] == "approval"
+            && (primary || secondary)
+            && !event.is_held
+        {
+            this.invoke(
+                json!({"type":"answer","answer":{"kind":"approval","approvalSend":if primary {"1"} else {""}}}),
+                cx,
+            );
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
+        }
         if key.key == "up"
             && key.modifiers.alt
             && !key.modifiers.shift

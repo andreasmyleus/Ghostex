@@ -10,7 +10,6 @@ use gpui_component::tooltip::ManagedTooltipPlacement;
 use serde_json::json;
 
 use super::appearance::SidebarAppearance;
-use super::menu_state::SidebarMenuState;
 use crate::app::consts::*;
 use crate::app::helpers::*;
 use crate::app::render::window_drag_region::window_drag_region;
@@ -318,7 +317,7 @@ impl GhostexGpuiApp {
                     .native_sidebar
                     .menu
                     .as_ref()
-                    .is_some_and(SidebarMenuState::dropped_from_trigger);
+                    .is_some_and(|menu| menu.opened_by(super::menus::SIDEBAR_MORE_TRIGGER));
                 row.child(
                     div()
                         .id("native-sidebar-more")
@@ -347,17 +346,22 @@ impl GhostexGpuiApp {
                         })
                         .on_mouse_down(MouseButton::Left, {
                             let bounds = self.native_sidebar.more_button_bounds.clone();
-                            cx.listener(move |app, event: &gpui::MouseDownEvent, window, cx| {
+                            move |event: &gpui::MouseDownEvent, window, cx| {
                                 window.prevent_default();
                                 cx.stop_propagation();
                                 let trigger = bounds.get().unwrap_or_else(|| gpui::Bounds {
                                     origin: event.position,
                                     size: gpui::size(gpui::px(1.0), gpui::px(1.0)),
                                 });
-                                app.toggle_native_sidebar_more_menu(
-                                    &more_menu, trigger, scale, window, cx,
+                                Self::toggle_native_sidebar_more_menu(
+                                    &more_menu,
+                                    trigger,
+                                    event.position,
+                                    scale,
+                                    window,
+                                    cx,
                                 );
-                            })
+                            }
                         }),
                 )
             })

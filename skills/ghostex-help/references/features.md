@@ -1001,7 +1001,10 @@ view you can zoom and pan. The web chat shows the diagram's source.
 Agents can show charts, tables, stat tiles, and short text layouts right in the
 chat, drawn in the chat's own colors on desktop, web, and mobile. For things a
 chart can't show, such as a UI mockup or a small interactive tool, the agent
-writes an HTML page and the chat shows a card for it. On desktop the card opens
+writes an HTML page and the chat shows a card for it with a small preview
+picture of the page, the same on desktop, web, and mobile. The picture is taken
+the first time you open the page in the Ghostex desktop app (and again after you
+answer it); until then the card shows the page's file name. On desktop the card opens
 the page in a floating window over the chat, which closes when you click away
 or press Escape; its header can open the page in your browser instead. A page
 the agent publishes for the browser, and pages on web and mobile, open in the
@@ -1260,11 +1263,13 @@ to sessions started or resumed afterwards; a running agent keeps the
 instructions it started with until it is resumed. The chat colours each marked section by
 its kind, in the style picked under Marked sections style right below the
 switch (shown while it is on): coloured labels (the default), a thin left rule, or a coloured
-badge in place of the emoji; the eye button next to it previews all three side
-by side. Copying a message still gives the agent's own text. The phone
-app picks its style in its own Settings > Chat > Marked sections, which also
-offers Plain text. Settings: `markedHandovers`, `markedHandoversStyle`
-(`labels`, `rule`, `badge`).
+badge naming the kind; the eye button next to it previews all three side by
+side. Show marker emojis, under it and off by default, adds the marker emoji
+to every style; while it is off the colour and the label show the kind.
+Copying a message still gives the agent's own text. The phone app sets both in
+its own Settings > Chat > Marked sections, which also offers Plain text.
+Settings: `markedHandovers`, `markedHandoversStyle` (`labels`, `rule`,
+`badge`), `markedHandoversEmoji`.
 
 Summary mode folds each turn down to your prompt and an "Agent reply" row; the
 newest reply stays open, and older ones open with a click. The row holds every

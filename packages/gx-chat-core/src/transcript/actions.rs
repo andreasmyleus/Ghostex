@@ -249,6 +249,18 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
                 "paths": param(action, "paths").cloned().unwrap_or_else(|| json!([])),
             })),
         }],
+        // An agent message card's Go to session: the other session, focused like a fork branch.
+        ActionKind::OpenAgentSession => {
+            let (project_id, session_id) = (text(action, "projectId"), text(action, "sessionId"));
+            if project_id.is_empty() || session_id.is_empty() {
+                return Vec::new();
+            }
+            vec![Effect::HostAction {
+                action: "openAgentSession".to_string(),
+                params: Box::new(json!({ "projectId": project_id, "sessionId": session_id })),
+            }]
+        }
+        ActionKind::LoadPageThumbnail => crate::transcript::page_thumbnails::load(state, action),
         ActionKind::LoadImage => {
             /*
             The picture behind an "[Image #N](path)" reference lives on the session's machine, so the

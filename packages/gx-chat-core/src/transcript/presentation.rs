@@ -287,6 +287,15 @@ pub fn project_message(
                     "markdown".to_string(),
                     native_markdown(&agent_line_breaks(&body, line_breaks), false).into(),
                 );
+                let name = card
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                card.insert(
+                    "card".to_string(),
+                    crate::transcript::agent_message_card::subagent_card(&name, &body),
+                );
                 Value::Object(card)
             }
             other => other,
@@ -340,7 +349,9 @@ pub fn project_message(
         "shellCard".to_string(),
         crate::transcript::local_command::shell_card(message),
     );
-    Value::Object(projected)
+    let mut projected = Value::Object(projected);
+    crate::transcript::agent_message_card::dress_received(&mut projected);
+    projected
 }
 
 /// CDXC:SessionChat 2026-09-18 WHY:

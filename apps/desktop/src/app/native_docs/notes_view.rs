@@ -926,7 +926,14 @@ impl GhostexGpuiApp {
             .border_1()
             .border_color(p.border_strong)
             .shadow_lg()
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+            .on_mouse_down_out(cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                // A press on the list's own button is left to its click, which toggles it shut.
+                if NOTES_LIST_ANCHOR
+                    .with(|cell| cell.get())
+                    .contains(&event.position)
+                {
+                    return;
+                }
                 this.native_docs.notes_list_open = false;
                 this.native_docs_notify(cx);
             }))
