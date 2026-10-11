@@ -24,18 +24,19 @@ impl NativeChatView {
         let label = status["label"].as_str();
         if status["presentation"].is_object() {
             let activity = self.render_working_activity(p, reduced_motion, cx);
-            // A running turn keeps its word under a background-task card (the core sends both).
+            // A running turn keeps its word beside a background-task card (the core sends both).
             if label.is_none() && armed.is_empty() {
                 return Some(activity);
             }
+            // CDXC:SessionChat 2026-10-11 DECISION: User: the working indicator always comes first, above the background tasks, Threads, Tasks and Subagents cards, never between them.
             return Some(
                 div()
                     .w_full()
                     .flex()
                     .flex_col()
                     .gap(px(8.0 * p.scale))
-                    .child(activity)
                     .child(self.working_row(label, armed, p, reduced_motion))
+                    .child(activity)
                     .into_any_element(),
             );
         }
