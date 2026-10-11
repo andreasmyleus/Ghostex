@@ -35,9 +35,12 @@
 //! reopening the page brings them back.
 //!
 //! CDXC:SessionChat 2026-10-11 DECISION:
+//! User: "please same style for the html modal also and the inline questions": each question is a "Clear ask, clear answer" card like the chat's (apps/desktop/src/app/native_chat/ask_card.rs): an amber tile beside the tag chip and title that turns into a green check once the page is answered (muted for a question left blank), picks that turn green with it, options that light up amber when picked (the mockup Pick button too), and a footer bar with the status and a filled send button showing its key.
 //! User picked from the looks page: a question's tag is a filled chip above its title ("make it show like eyebrow"), and a choice keeps its radio or checkbox with the letter as a muted keycap on the right; the in-chat form (apps/desktop/src/app/native_chat/question_form.rs, the phone's QuestionForm.tsx) matches.
 //! User: Ctrl+Enter (Cmd+Enter on macOS) presses the page's send button from anywhere on it, a note box included; the in-chat form does the same.
 //! User: a reader picks an option right at its mockup (a Pick button by the mockup's title that picks that choice in its question, shown picked on both and cleared from either), and writes a note under each mockup that arrives with the answers keyed to that question and choice, is kept as a draft, and shows in the answers card.
+//! User: "question cards in the html having different width is an absolute NO GO … all take up the width as they should": every question card fills the column, even when a page's own CSS centres it with auto margins (which shrink a grid item to its content).
+//! User: the picked mockup's outline must never be cut off and needs more padding so it is not tight on the design: a tagged option gets 14px of room and a 2px ring inside its own box (content-box, so a fixed-width mockup keeps its width), because an outline drawn outside the box is clipped by a scrolling wrapper such as an `overflow-x:auto` frame.
 //! User: every question page offers "Other / none of these" with a note box, consistently, instead of each agent hand-rolling it, and the reader may leave a question unanswered. No choice is ever preselected; an agent marks the one it recommends with a Recommended badge and the reader picks. Mockups can use the full width of the page between or above the questions, and the Answered note is as wide as the question cards.
 //!
 //! CDXC:SessionChat 2026-10-11 SEE-ALSO:
@@ -55,30 +58,39 @@ gx-wide,gx-choice{display:block;min-width:0}
 :where(gx-questions>h1){font-size:18px;font-weight:600;line-height:1.35}
 :where(gx-questions>h2){margin-top:8px;font-size:15px;font-weight:600}
 :where(gx-questions>p){color:var(--muted-foreground)}
-gx-question{display:block;border:1px solid var(--border);background:var(--card);color:var(--card-foreground);border-radius:calc(var(--radius) + 2px);padding:14px 14px 12px}
-.gx-q-head{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:4px}
+gx-question{display:block;border:1px solid var(--border);background:var(--card);color:var(--card-foreground);border-radius:14px;padding:12px 14px 14px}
+gx-questions gx-question{width:100%;box-sizing:border-box;min-width:0}
+.gx-q-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.gx-q-tile{flex:none;display:grid;place-items:center;width:28px;height:28px;box-sizing:border-box;border-radius:8px;color:var(--warning);background:color-mix(in srgb,var(--warning) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warning) 22%,transparent)}
+.gx-q-tile svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+gx-question.gx-unanswered .gx-q-tile{color:var(--muted-foreground);background:color-mix(in srgb,var(--muted-foreground) 12%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--muted-foreground) 20%,transparent)}
+gx-question.gx-answered .gx-q-tile{color:var(--success);background:color-mix(in srgb,var(--success) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--success) 22%,transparent)}
+.gx-q-heading{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:4px}
 .gx-q-tag{font:500 10.5px/18px var(--font-mono);color:var(--muted-foreground);background:color-mix(in srgb,var(--muted-foreground) 18%,transparent);border-radius:999px;padding:0 7px}
-.gx-q-title{align-self:stretch;font-size:14px;font-weight:600;line-height:1.45}
-.gx-q-desc{color:var(--muted-foreground);font-size:12.5px;line-height:1.5;margin:2px 0 10px}
+.gx-q-title{align-self:stretch;color:var(--foreground);font-size:15px;font-weight:600;line-height:22px}
+.gx-q-desc{color:var(--muted-foreground);font-size:13px;line-height:1.5;margin:-4px 0 12px}
 .gx-q-desc>:first-child{margin-top:0}.gx-q-desc>:last-child{margin-bottom:0}
-.gx-choices{display:flex;flex-direction:column;gap:2px}
-.gx-choice{display:flex;gap:10px;align-items:flex-start;width:100%;box-sizing:border-box;margin:0;text-align:left;padding:8px 10px;border:1px solid transparent;border-radius:var(--radius);background:none;color:inherit;font:inherit;font-size:13px;line-height:1.45;cursor:pointer}
-.gx-choice:hover:not(:disabled){background:var(--accent)}
+.gx-choices{display:flex;flex-direction:column;gap:8px}
+.gx-choice{display:flex;gap:12px;align-items:flex-start;width:100%;box-sizing:border-box;margin:0;text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--background) 45%,var(--card));color:var(--foreground);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.gx-choice:hover:not(:disabled):not([aria-checked=true]){border-color:color-mix(in srgb,var(--foreground) 14%,transparent);background:color-mix(in srgb,var(--foreground) 3%,var(--card))}
 .gx-choice:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 20%,transparent)}
-.gx-choice[aria-checked=true]{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 9%,transparent)}
+.gx-choice[aria-checked=true]{border-color:color-mix(in srgb,var(--warning) 55%,transparent);background:color-mix(in srgb,var(--warning) 8%,var(--card))}
 .gx-choice:disabled{cursor:default}
-.gx-choice:disabled:not([aria-checked=true]){opacity:.5}
-.gx-mark{flex-shrink:0;width:14px;height:14px;margin-top:3px;box-sizing:border-box;border:1.5px solid var(--muted-foreground);border-radius:50%}
+.gx-choice:disabled:not([aria-checked=true]){opacity:.55}
+.gx-mark{flex-shrink:0;width:16px;height:16px;margin-top:2px;box-sizing:border-box;border:1.5px solid color-mix(in srgb,var(--muted-foreground) 70%,transparent);border-radius:50%}
 .gx-choice[role=checkbox] .gx-mark{border-radius:4px}
-.gx-choice[aria-checked=true] .gx-mark{border-color:var(--primary);background:var(--primary);box-shadow:inset 0 0 0 2.5px var(--card)}
-.gx-letter{flex:none;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;margin-top:.5px;border:1px solid color-mix(in srgb,var(--border) 60%,transparent);border-radius:4px;background:color-mix(in srgb,var(--background) 40%,transparent);font:500 11px/16px var(--font-mono);color:var(--muted-foreground);text-align:center}
+.gx-choice[aria-checked=true] .gx-mark{border-color:var(--warning);background:var(--warning);box-shadow:inset 0 0 0 3px var(--card)}
+.gx-choice[role=checkbox][aria-checked=true] .gx-mark{box-shadow:inset 0 0 0 2px var(--card)}
+gx-question.gx-answered .gx-choice[aria-checked=true]{border-color:color-mix(in srgb,var(--success) 55%,transparent);background:color-mix(in srgb,var(--success) 8%,var(--card))}
+gx-question.gx-answered .gx-choice[aria-checked=true] .gx-mark{border-color:var(--success);background:var(--success)}
+.gx-letter{flex:none;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;margin-top:1px;border:1px solid color-mix(in srgb,var(--foreground) 12%,transparent);border-radius:5px;background:color-mix(in srgb,var(--background) 50%,transparent);font:500 11px/16px var(--font-mono);color:var(--muted-foreground);text-align:center}
 .gx-choice[aria-checked=true] .gx-letter{color:var(--foreground)}
+.gx-choice-body{flex:1;min-width:0;font-weight:500}
 .gx-other .gx-choice-body{color:var(--muted-foreground)}
 .gx-other[aria-checked=true] .gx-choice-body{color:inherit}
 .gx-rec{display:inline-block;margin-left:6px;padding:0 6px;border:1px solid var(--primary);border-radius:999px;color:var(--primary);font-size:10.5px;font-weight:600;line-height:1.5;vertical-align:1px}
-.gx-choice-body{flex:1;min-width:0}
-.gx-choice-body small{display:block;color:var(--muted-foreground);font-size:12px;margin-top:2px}
-.gx-note,.gx-text{display:block;width:100%;box-sizing:border-box;margin:8px 0 0;min-height:34px;resize:vertical;field-sizing:content;font:inherit;font-size:12.5px;color:var(--foreground);background:transparent;border:1px solid var(--border);border-radius:var(--radius);padding:7px 9px}
+.gx-choice-body small{display:block;color:var(--muted-foreground);font-size:13px;font-weight:400;line-height:19px;margin-top:1px}
+.gx-note,.gx-text{display:block;width:100%;box-sizing:border-box;margin:8px 0 0;min-height:34px;resize:vertical;field-sizing:content;font:inherit;font-size:13.5px;line-height:20px;color:var(--foreground);background:color-mix(in srgb,var(--background) 45%,var(--card));border:1px solid var(--border);border-radius:9px;padding:6px 10px}
 .gx-text{min-height:64px}
 .gx-note:focus,.gx-text:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 20%,transparent)}
 .gx-note::placeholder,.gx-text::placeholder{color:var(--muted-foreground)}
@@ -87,22 +99,26 @@ gx-question{display:block;border:1px solid var(--border);background:var(--card);
 .gx-has-pick{display:flex;align-items:center;gap:8px}
 .gx-pick{display:inline-flex;flex:none;align-items:center;gap:4px;margin-left:auto;padding:2px 10px;vertical-align:middle;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--foreground);font:500 12px/1.5 var(--font-sans);cursor:pointer}
 .gx-pick:hover:not(:disabled):not([aria-pressed=true]){background:var(--accent);color:var(--accent-foreground)}
-.gx-pick[aria-pressed=true]{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
-.gx-pick[aria-pressed=true]:hover:not(:disabled),.gx-pick[aria-pressed=true]:active:not(:disabled){background:color-mix(in srgb,var(--primary) 85%,var(--foreground));border-color:color-mix(in srgb,var(--primary) 85%,var(--foreground));color:var(--primary-foreground)}
+.gx-pick[aria-pressed=true]{background:var(--warning);border-color:var(--warning);color:var(--background)}
+.gx-pick[aria-pressed=true]:hover:not(:disabled),.gx-pick[aria-pressed=true]:active:not(:disabled){background:color-mix(in srgb,var(--warning) 85%,var(--foreground));border-color:color-mix(in srgb,var(--warning) 85%,var(--foreground));color:var(--background)}
 .gx-pick:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 35%,transparent)}
 .gx-pick:disabled{cursor:default}
 .gx-pick:disabled:not([aria-pressed=true]){opacity:.5}
 .gx-option-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-weight:600}
-[data-question][data-choice].gx-picked:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6){outline:2px solid var(--primary);outline-offset:4px;border-radius:calc(var(--radius) + 4px)}
+[data-question][data-choice]:not(h1,h2,h3,h4,h5,h6){box-sizing:content-box;padding:14px;border:2px solid transparent;border-radius:16px}
+:where([data-question][data-choice]:not(h1,h2,h3,h4,h5,h6)){max-width:calc(100% - 32px)}
+[data-question][data-choice].gx-picked:not(h1,h2,h3,h4,h5,h6){border-color:color-mix(in srgb,var(--warning) 70%,transparent)}
 .gx-option-note{display:block;width:100%;box-sizing:border-box;margin:8px 0 0;min-height:34px;resize:vertical;field-sizing:content;font:inherit;font-size:12.5px;color:var(--foreground);background:transparent;border:1px solid var(--border);border-radius:var(--radius);padding:7px 9px}
 .gx-option-note:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 20%,transparent)}
 .gx-option-note::placeholder{color:var(--muted-foreground)}
 .gx-option-note[readonly]{resize:none}
 .gx-option-note[hidden]{display:none}
-.gx-send{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px}
-.gx-send-button{font:inherit;font-size:13px;font-weight:600;padding:8px 16px;border-radius:var(--radius);border:1px solid var(--primary);background:var(--primary);color:var(--primary-foreground);cursor:pointer}
-.gx-send-button:disabled{opacity:.55;cursor:default}
-.gx-send-status{font-size:12.5px;color:var(--muted-foreground)}
+.gx-send{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px;padding:10px 14px;border:1px solid var(--border);border-radius:14px;background:color-mix(in srgb,var(--background) 35%,var(--card))}
+.gx-send-button{display:inline-flex;align-items:center;gap:6px;margin-left:auto;height:28px;box-sizing:border-box;padding:0 11px;font:inherit;font-size:13px;font-weight:500;border-radius:8px;border:1px solid var(--foreground);background:var(--foreground);color:var(--background);cursor:pointer}
+.gx-send-button:hover:not(:disabled){opacity:.9}
+.gx-send-button:disabled{opacity:.5;cursor:default}
+.gx-send-keys{font:500 11px/16px var(--font-mono);padding:0 5px;border-radius:5px;border:1px solid color-mix(in srgb,var(--background) 18%,transparent);background:color-mix(in srgb,var(--background) 6%,transparent);color:color-mix(in srgb,var(--background) 70%,transparent)}
+.gx-send-status{flex:1;min-width:0;font-size:12.5px;color:var(--muted-foreground)}
 .gx-send-status.gx-error{color:var(--destructive)}
 </style>"#;
 
@@ -110,6 +126,8 @@ gx-question{display:block;border:1px solid var(--border);background:var(--card);
 /// loaded, after `PAGE_API` (theme.rs) has its answered state.
 pub(super) const KIT_SCRIPT: &str = r#"<script>(function(){
 var OTHER="Other / none of these";
+var ASK_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 16v.01"/><path d="M12 13a2 2 0 0 0 .914 -3.782a1.98 1.98 0 0 0 -2.414 .483"/></svg>';
+var DONE_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 function kids(node){return Array.prototype.slice.call(node.childNodes);}
 function labelText(node){var c=node.cloneNode(true);c.querySelectorAll("small").forEach(function(s){s.remove();});return c.textContent.replace(/\s+/g," ").trim();}
@@ -118,10 +136,13 @@ function question(qe,index,used,changed){
   for(var n=2;used[key];n++)key=key.replace(/ \(\d+\)$/,"")+" ("+n+")";
   used[key]=true;
   var multiple=qe.hasAttribute("multiple"),text=(qe.getAttribute("type")||"").toLowerCase()==="text";
-  var titleId="gx-q-"+index,head=el("div","gx-q-head"),tag=qe.getAttribute("tag");
+  var titleId="gx-q-"+index,head=el("div","gx-q-head"),heading=el("div","gx-q-heading"),tile=el("span","gx-q-tile"),tag=qe.getAttribute("tag");
   qe.removeAttribute("title");
-  if(tag)head.append(el("span","gx-q-tag",tag));
-  var titleEl=el("div","gx-q-title",title);titleEl.id=titleId;head.append(titleEl);
+  tile.innerHTML=ASK_ICON;head.append(tile,heading);
+  if(tag)heading.append(el("span","gx-q-tag",tag));
+  var titleEl=el("div","gx-q-title",title);titleEl.id=titleId;heading.append(titleEl);
+  /* Once sent, an answered question's tile turns into a green check; one left blank goes muted. */
+  function answered(given){if(given){qe.classList.add("gx-answered");tile.innerHTML=DONE_ICON;}else qe.classList.add("gx-unanswered");}
   var choiceEls=[],desc=el("div","gx-q-desc");
   kids(qe).forEach(function(node){if(node.nodeName==="GX-CHOICE")choiceEls.push(node);else desc.append(node);});
   qe.textContent="";qe.append(head);
@@ -130,7 +151,7 @@ function question(qe,index,used,changed){
     var area=el("textarea","gx-text");area.placeholder=qe.getAttribute("placeholder")||"Your answer (optional)";area.setAttribute("aria-labelledby",titleId);area.addEventListener("input",changed);qe.append(area);
     return{key:key,tag:(tag||"").trim(),choices:[],collect:function(out){out[key]=area.value.trim()||null;},
       restore:function(answers){if(typeof answers[key]==="string")area.value=answers[key];},
-      lock:function(){area.readOnly=true;if(!area.value)area.hidden=true;}};
+      lock:function(){answered(!!area.value.trim());area.readOnly=true;if(!area.value)area.hidden=true;}};
   }
   var list=el("div","gx-choices"),choices=[];
   list.setAttribute("role",multiple?"group":"radiogroup");list.setAttribute("aria-labelledby",titleId);
@@ -155,7 +176,7 @@ function question(qe,index,used,changed){
     restore:function(answers){var v=answers[key],picked=Array.isArray(v)?v:v==null?[]:[v];
       choices.forEach(function(c){c.set(picked.indexOf(c.value)>=0);});
       if(typeof answers[key+" (note)"]==="string")note.value=answers[key+" (note)"];sync();},
-    lock:function(){choices.forEach(function(c){c.button.disabled=true;});note.readOnly=true;if(!note.value)note.hidden=true;}};
+    lock:function(){answered(choices.some(function(c){return c.on();})||!!note.value.trim());choices.forEach(function(c){c.button.disabled=true;});note.readOnly=true;if(!note.value)note.hidden=true;}};
 }
 /* A mockup tied to a choice (`data-question` + `data-choice`): a Pick button by its title that
    clicks that choice, and a note box under it, sent as "<question> · <choice> (note)". */
@@ -194,9 +215,10 @@ function setup(root){
   function changed(){syncOptions();if(window.ghostex&&ghostex.__saveDraft)ghostex.__saveDraft("kit",collect());}
   questions=Array.prototype.map.call(root.querySelectorAll("gx-question"),function(qe,index){return question(qe,index,used,changed);});
   options=bindOptions(questions,changed);syncOptions();
-  var bar=el("div","gx-send"),button=el("button","gx-send-button",root.getAttribute("submit")||"Send answers"),status=el("span","gx-send-status","Questions you leave blank are sent as unanswered.");
-  button.type="button";bar.append(button,status);root.append(bar);
-  function lock(){questions.forEach(function(q){q.lock();});options.forEach(function(o){o.lock();});syncOptions();button.disabled=true;button.textContent="Sent";status.textContent="";}
+  var bar=el("div","gx-send"),button=el("button","gx-send-button"),label=el("span",null,root.getAttribute("submit")||"Send answers"),status=el("span","gx-send-status","Questions you leave blank are sent as unanswered.");
+  var keys=el("span","gx-send-keys",/Mac|iPhone|iPad/.test(navigator.platform||"")?"\u2318\u21b5":"Ctrl \u21b5");
+  button.type="button";button.append(label,keys);bar.append(status,button);root.append(bar);
+  function lock(){questions.forEach(function(q){q.lock();});options.forEach(function(o){o.lock();});syncOptions();button.disabled=true;label.textContent="Sent";keys.remove();status.textContent="Sent to the agent.";}
   if(!window.ghostex){button.disabled=true;status.textContent="This Ghostex can't send answers from a page; type them in the chat.";return;}
   if(ghostex.answered){restore(ghostex.answers||{});lock();return;}
   var saved=ghostex.__draft&&ghostex.__draft("kit");if(saved&&typeof saved==="object"){restore(saved);syncOptions();}
