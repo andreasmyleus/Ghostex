@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 10.20.1 - 2026-10-11
+
+**Ghostex 10.20.1 is out.** Messages with pictures wait for a slow-starting agent too, sessions move to an account with room faster when they hit a usage limit, and chat cards sit darker.
+
+### 💬 Chat
+- **Messages with pictures wait for a slow-starting agent** instead of giving up after 40 seconds; Ghostex keeps its own copy of each picture until the message goes through.
+- **Chat cards sit darker** and question cards use a softer yellow, matching the question cards on agents' pages.
+- **A finished background task just says it completed;** "exit code 0" and the duration are gone, and a failed task still shows its exit code.
+
+### 🤖 Accounts
+- **A session that hits its usage limit moves to an account with room within about 30 seconds,** instead of waiting minutes for a fresh usage reading.
+- **A sleeping session wakes on an account with room** when its own account is already at its limit.
+- **When every account is full,** the chat shows a card saying which limit was hit and when work continues, and the bell gets one notification.
+
 ## 10.20.0 - 2026-10-11
 
 **Ghostex 10.20.0 is out.** Agents ask you questions as a form right in the chat, a message you send while an agent is still starting waits and goes through on its own, chat cards get a new look (questions, notices, agent messages, file changes, page previews), `/resume` and Ctrl+Enter interrupt-and-send work from the chat view, Ctrl+V no longer freezes Ghostex on Windows, and Work Mode can start Claude Code in the cloud.
