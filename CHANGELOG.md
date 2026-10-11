@@ -4,19 +4,28 @@
 
 ## 10.20.0 - 2026-10-11
 
-**Ghostex 10.20.0 is out.** Agents ask you questions as a form right in the chat, `/resume` and Ctrl+Enter interrupt-and-send work from the chat view, file changes and finished turns get new cards, background tasks show what they're doing, Ctrl+V no longer freezes Ghostex on Windows, and Work Mode can start Claude Code in the cloud.
+**Ghostex 10.20.0 is out.** Agents ask you questions as a form right in the chat, a message you send while an agent is still starting waits and goes through on its own, chat cards get a new look (questions, notices, agent messages, file changes, page previews), `/resume` and Ctrl+Enter interrupt-and-send work from the chat view, Ctrl+V no longer freezes Ghostex on Windows, and Work Mode can start Claude Code in the cloud.
 
 ⚠️ **Teams:** run `ghostex team deploy` once after updating, so teammates' cloud sessions show on the Work page (team functions version 5).
 
 ### 💬 Chat
-- **Questions as a form in the chat:** agents ask several questions at once in one card: click to pick (nothing preselected), "Other / none of these" with a note, text answers, one Send (or Ctrl/Cmd+Enter). Your picks are kept until you send, answers wait while the agent is busy, and the answers card shows each answer under its question.
-- **Question pages for visual choices:** agents' HTML pages can ask about mockups, with a Pick button and a note box at each mockup and each question right under what it asks about; drafts are kept if you close the popup, and it closes once you send.
-- **File change cards:** a header with the files' folder, totals and a ratio bar, one row per file with an Edited / New / Deleted tag and a change bar, opening to a diff with line numbers; Review all opens the Code view's Source Control.
-- **Finished turns:** "Worked 16s" with chips for tool calls, files and failures, tool rows with icons, durations and a status mark, and a labelled Copy · Annotate · Save toolbar on hover.
+- **Questions as a form in the chat:** agents ask several questions at once in one card: click to pick (nothing preselected), "Other / none of these" with a note, text answers, one Send (or Ctrl/Cmd+Enter). Your picks are kept until you send, answers wait while the agent is busy, and the card turns green once answered, with each answer under its question.
+- **Question pages for visual choices:** agents' HTML pages can ask about mockups, with a Pick button and a note box at each mockup and each question right under what it asks about. The page's question cards look like the chat's and fill the page width; drafts are kept if you close the popup, and it closes once you send.
+- **Messages wait for a slow-starting agent:** a message you send while the agent is still starting stays in the chat and goes through on its own as soon as the agent is ready, even if you close the app. You can edit or delete it while it waits.
+- **Agent messages are one-line rows:** a message from or to another agent shows the agent's logo, the first line and its status (a check once delivered); click it to read the whole message, and Go to session appears on hover.
+- **New notice and approval cards** with a coloured icon for info, warnings, errors and successes.
+- **Page previews:** a page card shows a picture of the page once you've opened it in the floating window, and the file name until then.
+- **File change cards:** a header with the files' folder, totals and a ratio bar, one row per file with a change bar (the icon's colour tells an edit, a new file and a deletion apart), opening to a diff with line numbers; Review all opens the Code view's Source Control.
+- **Finished turns:** "Worked 16s" with rounded chips for tool calls, files and failures on the right, and tool rows with icons, durations and a status mark.
 - **`/resume` from the chat:** Claude Code's and Codex's conversation picker shows as a card you drive with ↑/↓, typing, Enter or a click; other agents' pickers show live in a card that takes the keyboard until you hand it back.
 - **Interrupt & Send:** Ctrl+Enter (or right-click Send) stops the agent's turn and sends your message right away; on the phone, hold Send while the agent works.
-- **Background tasks:** each running task shows what it's doing with a timer (two or more fold into one row), the working spinner stays while a turn runs, and the finished row says how long the task ran.
-- **Marked handovers:** orchestrators and their threads mark each part of their handover with ❓ ✅ ⚠️ 🛫 🔄 🧪 🚀 🛑 (Settings > Chat > Marked handovers in every session extends it to all agents), and the chat colours those sections in the style you pick.
+- **Background tasks:** each running task shows what it's doing with a timer (two or more fold into one row), the working indicator always comes first, and the finished row says how long the task ran.
+- **Marked handovers:** orchestrators and their threads mark each part of their handover with ❓ ✅ ⚠️ 🛫 🔄 🧪 🚀 🛑 (Settings > Chat > Marked handovers in every session extends it to all agents), and the chat colours those sections in the style you pick. Settings > Chat > Show marker emojis (off by default) keeps the emojis next to the coloured titles.
+- **The chat's scrollbar matches the Files view's:** inset from the edge, a little wider when you point at it.
+
+### 🧭 Orchestrators
+- **The Threads card lists working threads first;** Show recent adds the latest finished ones, then 30 more at a time.
+- **Orchestrators ask you their questions as a form in the chat** (or a page when there's something to look at), bring their threads' questions and pages to you, and list every running thread in their handover.
 
 ### 🪟 Windows
 - **Ctrl+V no longer freezes Ghostex** when the app you copied from is slow to hand over its data (Office, Remote Desktop, screenshot tools), in the chat, terminals, dialogs and Kanban.
@@ -33,14 +42,14 @@
 - **Assigned to me keeps all your tickets, Clean up works on Windows,** and work-card buttons never shrink.
 
 ### 🎨 Look and setup
-- **The Spaces row sits in a full-width rounded track** without outlines, on the computer and the phone.
-- **The Commands row collapses to its icon** when the sidebar is 441 screen pixels wide or less.
+- **The sidebar's bottom bar holds the workspace switcher and Send Feedback** on the left, and Commands (a lightning button) and Settings on the right; the Spaces row sits centred without a background.
+- **Menus close when you click their button again,** and sidebar menus open 3px below their row (the workspace menu opens above its button).
 - **Your views can be deleted** from the view editor, with a confirmation.
 - **Setup's last page sets Agent approvals** (Keep default / Skip permissions).
 - **The blue attention outline's top line shows** at any display scale, and an orchestrator's thread count lines up with the time.
 
 ### 📱 Phone
-- **The phone chat matches:** question forms, file change cards, the new turn look, the `/resume` card, background task rows, Interrupt & Send on a held Send, coloured handovers and the Spaces track.
+- **The phone chat matches:** question forms, agent message rows, notice and approval cards, page previews, file change cards, the new turn look, the `/resume` card, background task rows, Interrupt & Send on a held Send, coloured handovers and the marker emoji switch.
 
 ## 10.19.0 - 2026-10-10
 
