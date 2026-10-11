@@ -102,7 +102,7 @@ impl NativeChatView {
                     )
                 },
             )
-            .child(self.transcript_scrollbar(&p))
+            .child(self.transcript_scrollbar())
             .child(self.scroll_bottom_button(cx))
             .child(self.scroll_bottom_sync(cx))
             .child(

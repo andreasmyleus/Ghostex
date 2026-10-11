@@ -4,24 +4,21 @@
 //! `ListState`, so the chat list needs no hand-rolled thumb: the component reads
 //! the list's offset and content size, drags it through
 //! `set_offset_from_scrollbar`, and brackets the drag with the list's own
-//! `scrollbar_drag_started` / `scrollbar_drag_ended`. It also already carries
-//! the app's exact thumb colors (`apply_gpui_component_theme` in
-//! app/helpers/titlebar/chrome_colors.rs, shared with packages/components/ui/scrollbar-theme.css),
-//! so only the 5px thickness from React's session-chat-scrollbar.css is set here.
+//! `scrollbar_drag_started` / `scrollbar_drag_ended`.
 //!
-//! Its mouse handling is scoped to the thumb strip, so it never takes a click,
-//! a drag or a selection away from the transcript underneath it. The strip is
-//! the pane's last 5px, and every composer control is inset by the footer's own
-//! 16px padding, so the column beside the box covers nothing interactive: the
-//! same geometry React had, where the composer overlay centered a `max-w-3xl px-4`
-//! card under a track pinned to the pane's right edge.
+//! Its mouse handling is scoped to the bar's strip (the component's 16px track,
+//! only while the bar shows), so it never takes a click, a drag or a selection
+//! away from the transcript underneath it. Every composer control is inset by
+//! the footer's own 16px padding, and the minimap's dashes end 15.6px from the
+//! pane's edge, so the column beside them covers nothing interactive.
 
-use super::{appearance::ChatAppearance, state::NativeChatView};
+use super::state::NativeChatView;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{AnyElement, IntoElement as _, ParentElement as _, Styled as _, div, px, size};
 use gpui_component::scroll::{Scrollbar, ScrollbarMode};
 
-/// Unscaled track and thumb width, the value in session-chat-scrollbar.css.
+/// Unscaled track and thumb width of the transcript's table scrollbars, the value in
+/// session-chat-scrollbar.css. The transcript's own scrollbar does not use it (see below).
 pub(super) const THICKNESS: f32 = 5.0;
 
 impl NativeChatView {
@@ -57,13 +54,15 @@ impl NativeChatView {
     ///
     /// CDXC:SessionChat 2026-09-28 DECISION:
     /// "Make the scrollbar stick to the side in the chat view when it's wide, like we do when it's narrow." The bar draws in this column (`viewport_from_layout`), not in the list's viewport, which gpui-component uses by default: on a wide pane the list sits between the minimap's gutters, so the bar floated left of the minimap rail instead of on the pane's right edge, and it ended at the list's bottom rather than the pane's.
-    pub(super) fn transcript_scrollbar(&self, p: &ChatAppearance) -> AnyElement {
+    ///
+    /// CDXC:SessionChat 2026-10-11 DECISION:
+    /// User: "make the scrollbar in the chat view EXACTLY match the scroll bar in the files view when looking at md file (gap from edge, how it gets bigger when i hover, the width values color etc". Supersedes the 5px thumb from React's session-chat-scrollbar.css. The bar keeps gpui-component's own geometry and the app theme's thumb, as the Files view's Markdown scrollbar does (`render_body_scrollbar` in native_docs/markdown_body.rs): a 16px strip, a 6px thumb 4px from the edge that grows to 8px over 300ms when the pointer is on it or drags it, the 2px theme radius, a 48px minimum length, and the same colour at rest, on hover and while dragging. Setting `thickness` here, or scaling with the chat zoom, would part the two again. Only when it shows still differs: the Files bar is always shown, this one only while the reader scrolls (the 2026-09-21 decision above).
+    pub(super) fn transcript_scrollbar(&self) -> AnyElement {
         let track = self.scrollbar_track.get();
         let measured = track > px(0.0);
         let mut bar = Scrollbar::vertical(&self.list)
             .id("chat-transcript-scrollbar")
             .viewport_from_layout()
-            .thickness(px(THICKNESS * p.scale))
             .mode(ScrollbarMode::Scrolling)
             .shown_by_host_scroll(self.transcript_scrolled_at);
         if measured {
@@ -77,7 +76,7 @@ impl NativeChatView {
             .absolute()
             .top_0()
             .right_0()
-            .w(px(THICKNESS * p.scale))
+            .w(Scrollbar::width())
             // Before the first measurement the column is the transcript region alone, the placement
             // and the content size the component computes on its own.
             .map(|column| {
