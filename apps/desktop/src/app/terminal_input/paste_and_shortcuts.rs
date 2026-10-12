@@ -45,19 +45,18 @@ impl GhostexGpuiApp {
     /// The terminal a paste is meant for, taken when the key is pressed. The clipboard read
     /// finishes later (see `gpui_read_clipboard`), and the paste lands only if that terminal still
     /// has the keyboard; `None` when no terminal has it.
+    ///
+    /// CDXC:Clipboard 2026-10-12 WHY: the terminal is taken from `shell_keyboard_owner`, not from shell focus alone. Shell focus keeps naming the Agents pane while a chat-mode session's composer owns its keys, so claiming the paste from shell focus swallowed Cmd+V before the composer's own `Paste` could run, and aimed it at the parked terminal behind the chat.
     fn terminal_paste_target(&self) -> Option<TerminalPasteTarget> {
-        let view = self
-            .focused_gpui_engine_terminal_view()
-            .map(|view| view.entity_id());
-        let text_target = focused_terminal_text_target(self.active_mode, self.shell_focus);
-        // Only macOS sends text to the embedded Ghostty surfaces; elsewhere a GPUI-engine
-        // terminal is the only one that takes it (`send_text_to_focused_terminal_surface`).
-        if view.is_none() && !(cfg!(target_os = "macos") && text_target.is_some()) {
-            return None;
-        }
+        let view = match self.shell_keyboard_owner() {
+            ShellKeyboardOwner::EngineTerminal { view, .. } => Some(view.entity_id()),
+            #[cfg(target_os = "macos")]
+            ShellKeyboardOwner::NativeTerminal(_) => None,
+            _ => return None,
+        };
         Some(TerminalPasteTarget {
             view,
-            text_target,
+            text_target: focused_terminal_text_target(self.active_mode, self.shell_focus),
             session_id: self.focused_terminal_shell_session_id(),
         })
     }

@@ -432,8 +432,10 @@ impl Render for GhostexGpuiApp {
                 }),
             )
             .on_action(
-                cx.listener(|this, _: &PasteIntoFocusedTerminal, _window, cx| {
-                    if this.propagate_renderer_edit_cef_hotkey_passthrough(cx) {
+                cx.listener(|this, _: &PasteIntoFocusedTerminal, window, cx| {
+                    if this.propagate_renderer_edit_cef_hotkey_passthrough(cx)
+                        || this.propagate_gpui_text_input_paste_passthrough(window, cx)
+                    {
                         return;
                     }
                     if !this.paste_into_focused_terminal_from_clipboard(cx) {
