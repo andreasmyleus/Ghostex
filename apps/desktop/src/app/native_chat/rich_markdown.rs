@@ -437,6 +437,20 @@ impl NativeChatView {
         p: &ChatAppearance,
         cx: &gpui::Context<Self>,
     ) -> AnyElement {
+        self.text_view_toned(id, content, references, p, None, cx)
+    }
+
+    /// `text_view` in another text colour and semibold (a marked section's label), which keeps
+    /// its links, code spans and wrapping.
+    pub(super) fn text_view_toned(
+        &self,
+        id: String,
+        content: String,
+        references: &Value,
+        p: &ChatAppearance,
+        label_color: Option<gpui::Hsla>,
+        cx: &gpui::Context<Self>,
+    ) -> AnyElement {
         let chat = cx.weak_entity();
         let menu_chat = chat.clone();
         let header_chat = chat.clone();
@@ -513,7 +527,10 @@ impl NativeChatView {
             .style(style)
             .text_size(px(14.0 * p.scale))
             .line_height(px(PROSE_LINE_HEIGHT * p.scale))
-            .text_color(p.prose)
+            .text_color(label_color.unwrap_or(p.prose))
+            .when(label_color.is_some(), |view| {
+                view.font_weight(FontWeight::SEMIBOLD)
+            })
             .into_any_element()
     }
 
@@ -596,10 +613,22 @@ impl NativeChatView {
                     let first = style.first_line_text(meta);
                     let lead = (!first.is_empty())
                         .then(|| self.text_view(format!("{key}:lead"), first, references, p, cx));
+                    // The label is Markdown too: a marked heading's label is the whole heading,
+                    // with its links and code spans, and it wraps like any paragraph.
+                    let label = style.label_color(meta, &look).map(|color| {
+                        self.text_view_toned(
+                            format!("{key}:label"),
+                            meta.label_markdown.clone(),
+                            references,
+                            p,
+                            Some(color),
+                            cx,
+                        )
+                    });
                     let rest = lines.get(1..).unwrap_or_default();
-                    super::marked_sections::section(style, meta, lead, draw(rest), &look)
+                    super::marked_sections::section(style, meta, label, lead, draw(rest), &look)
                 } else {
-                    super::marked_sections::section(style, meta, None, draw(&lines), &look)
+                    super::marked_sections::section(style, meta, None, None, draw(&lines), &look)
                 }
             }
             Segment::Alert { kind, children } => {

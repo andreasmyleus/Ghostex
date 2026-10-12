@@ -5,7 +5,9 @@
 //! The pass runs over the native Markdown (`native_markdown.rs`) and wraps each section in marks,
 //! the way an alert or a table is wrapped: `\u{e000}section:{…}` before a section's lines and
 //! `\u{e000}/section` after them. The JSON names the kind, the emoji, the kind's own name, the bold
-//! or `Label:` text the line started with (`label`, empty when there is none), whether that label
+//! or `Label:` text the line started with (`label`, empty when there is none, and `labelMarkdown`,
+//! the same text safe to draw as one Markdown paragraph: the label of a marked heading is the whole
+//! heading, links and code spans included, and wraps), whether that label
 //! only repeats the kind's name (`labelRepeats`), the rest of the first line (`lead`) and the whole
 //! first line without its emoji (`plain`, for the chat's emoji switch). The lines
 //! in between are the section exactly as the agent wrote it, so a renderer that keeps the emoji
@@ -121,6 +123,26 @@ fn plain_label(text: &str) -> Option<(&str, &str)> {
     let plain = !label.contains(['*', '`', '[', ']', '_', '(', ')', '<', '>', '!', '?', '.']);
     (plain && (1..=4).contains(&words) && label.chars().count() <= 24)
         .then(|| (label, &text[colon + 1..]))
+}
+
+/// `label` as a Markdown paragraph that reads as the label: a leading `2.`, `-`, `#` or `>` would
+/// open a list, a heading or a quote on its own, so its first punctuation is escaped.
+fn label_markdown(label: &str) -> String {
+    let digits = label.bytes().take_while(u8::is_ascii_digit).count();
+    let after = &label[digits..];
+    let ordered = (1..=9).contains(&digits)
+        && after.starts_with(['.', ')'])
+        && after[1..].starts_with([' ', '\t']);
+    if ordered {
+        return format!("{}\\{}", &label[..digits], after);
+    }
+    let hashes = label.bytes().take_while(|byte| *byte == b'#').count();
+    let heading = (1..=6).contains(&hashes) && label[hashes..].starts_with([' ', '\t']);
+    let bullet = label.starts_with(['-', '+', '*']) && label[1..].starts_with([' ', '\t']);
+    if heading || bullet || label.starts_with('>') {
+        return format!("\\{label}");
+    }
+    label.to_string()
 }
 
 /// One trailing hard break (an odd run of backslashes), which a line loses when it ends a block.
@@ -363,6 +385,7 @@ pub fn mark_sections(markdown: String) -> String {
                 "emoji": opening.marker.emoji,
                 "name": opening.marker.name,
                 "label": opening.label,
+                "labelMarkdown": label_markdown(&opening.label),
                 "labelRepeats": label_name.eq_ignore_ascii_case(opening.marker.name),
                 "lead": opening.lead,
                 "plain": opening.plain,

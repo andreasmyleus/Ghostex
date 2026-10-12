@@ -70,6 +70,20 @@ impl MarkerStyle {
             meta.lead.clone()
         }
     }
+
+    /// The colour the label is drawn in when the style draws one: the kind's colour in coloured
+    /// labels, the chat's foreground beside a badge. `None` when the style draws no label (the
+    /// rule, a badge that only repeats its own name, a section with no label of its own).
+    pub(crate) fn label_color(self, meta: &SectionMeta, look: &MarkedLook) -> Option<Hsla> {
+        if meta.label.is_empty() {
+            return None;
+        }
+        match self {
+            Self::Rule => None,
+            Self::Badge => (!meta.label_repeats).then_some(look.foreground),
+            Self::Labels => Some(kind_color(&meta.kind, look.light)),
+        }
+    }
 }
 
 /// Whether marked sections show the marker emoji (`markedHandoversEmoji`, off by default).
@@ -88,6 +102,8 @@ pub(crate) struct SectionMeta {
     pub(crate) emoji: String,
     pub(crate) name: String,
     pub(crate) label: String,
+    /// The label as one Markdown paragraph (a heading's label keeps its links and code spans).
+    pub(crate) label_markdown: String,
     pub(crate) label_repeats: bool,
     pub(crate) lead: String,
     /// The whole first line without its emoji.
@@ -157,22 +173,32 @@ fn tint(look: &MarkedLook) -> (f32, f32) {
 /// What the first line opens with in styles C and D: the emoji when shown, the badge (C), then the
 /// label (coloured in D, plain bold in C unless it only repeats the badge). Without the emoji and
 /// without a label of its own, D shows the kind's name as the label so the line keeps its colour.
+///
+/// The label may be long (a marked heading's label is the whole heading), so it can shrink and
+/// wrap; it takes the row when no lead follows it. `label_text` is the label drawn as Markdown by
+/// the caller (links and code spans work); without it the label is plain text.
 fn first_line_opening(
     style: MarkerStyle,
     meta: &SectionMeta,
     look: &MarkedLook,
+    label_text: Option<AnyElement>,
+    lead_follows: bool,
 ) -> Vec<AnyElement> {
     let s = look.scale;
     let color = kind_color(&meta.kind, look.light);
     let line = px(look.line_height * s);
-    let label = |color: Hsla| {
-        div()
-            .flex_shrink_0()
-            .line_height(line)
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(color)
-            .child(meta.label.clone())
-            .into_any_element()
+    let mut label_text = label_text;
+    let mut label = |color: Hsla| {
+        let cell = div().min_w_0().when(!lead_follows, |cell| cell.flex_1());
+        match label_text.take() {
+            Some(text) => cell.child(text).into_any_element(),
+            None => cell
+                .line_height(line)
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(color)
+                .child(meta.label.clone())
+                .into_any_element(),
+        }
     };
     let mut parts: Vec<AnyElement> = Vec::new();
     if look.emoji {
@@ -232,12 +258,14 @@ fn first_line_opening(
     parts
 }
 
-/// One section in `style`. `lead` is `first_line_text` drawn as Markdown when the style draws its
-/// own first line; `body` is the section's lines drawn as Markdown: all of them when it does not,
-/// the ones after the first when it does.
+/// One section in `style`. `label` is the section's label drawn as Markdown in
+/// `MarkerStyle::label_color` (none: it is drawn as plain text); `lead` is `first_line_text` drawn
+/// as Markdown when the style draws its own first line; `body` is the section's lines drawn as
+/// Markdown: all of them when it does not, the ones after the first when it does.
 pub(crate) fn section(
     style: MarkerStyle,
     meta: &SectionMeta,
+    label: Option<AnyElement>,
     lead: Option<AnyElement>,
     body: Vec<AnyElement>,
     look: &MarkedLook,
@@ -267,7 +295,13 @@ pub(crate) fn section(
         .gap(px(6.0 * s))
         .text_size(px(14.0 * s))
         .text_color(look.prose)
-        .children(first_line_opening(style, meta, look))
+        .children(first_line_opening(
+            style,
+            meta,
+            look,
+            label,
+            lead.is_some(),
+        ))
         .when_some(lead, |row, lead| {
             row.child(div().flex_1().min_w_0().child(lead))
         });
@@ -348,7 +382,7 @@ pub(crate) fn preview_reply(
                         .then(|| text(format!("{key}:body"), body))
                         .into_iter()
                         .collect();
-                    section(style, &meta, lead, body, look)
+                    section(style, &meta, None, lead, body, look)
                 }
             }
         })
