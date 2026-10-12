@@ -107,5 +107,13 @@ fn route(state: &mut ChatState, event: &Event, context: &ChatContext) -> Vec<Eff
         | Event::ModelCatalogChanged { .. }
         | Event::Measured(_)
         | Event::DraftChanged { .. } => Vec::new(),
+        Event::SessionDirectoryChanged { sessions } => {
+            let view = &mut state.transcript_view;
+            if view.session_directory != *sessions {
+                view.session_directory = sessions.clone();
+                view.session_directory_revision += 1;
+            }
+            Vec::new()
+        }
     }
 }

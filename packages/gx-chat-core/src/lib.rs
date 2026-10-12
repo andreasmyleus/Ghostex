@@ -53,8 +53,8 @@ pub use crate::document::{
 };
 pub use crate::effect::{Effect, HostRequest, OpenTarget, RequestKind, StorageWrite};
 pub use crate::event::{
-    ChatSettings, ComposerBootRead, ConnectionUpdate, Event, Measurement, OpenRowDetail,
-    StartConfig, StorageKey, StorageRecord,
+    ChatSettings, ComposerBootRead, ConnectionUpdate, Event, KnownSession, Measurement,
+    OpenRowDetail, StartConfig, StorageKey, StorageRecord,
 };
 pub use crate::state::{
     ChatContext, ChatState, CommandMarker, ComposerState, CoreState, ExtrasState, FormattedTime,

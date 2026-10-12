@@ -237,6 +237,9 @@ pub fn apply_draft_agent_carriage(state: &mut ChatState, result: &ReadSessionCha
     if let Some(uses_own_login) = result.uses_own_login {
         state.session.uses_own_login = uses_own_login;
     }
+    if let Some(catch_up) = result.catch_up {
+        state.core.catch_up_enabled = catch_up;
+    }
 }
 
 /// Applies one authoritative result: a seed read, a resync read, a snapshot, or the cached

@@ -111,6 +111,9 @@ pub struct Document {
     pub pending_attachments: u32,
     pub incoming_draft: Option<IncomingDraft>,
     pub note: Note,
+    /// The Catch me up button and card. Family d.
+    #[serde(default)]
+    pub catch_up: crate::composer::catch_up::CatchUp,
     pub interaction: Interaction,
     /// The toast in the scroll-to-bottom pill's place: "Press Escape again to interrupt" while a
     /// first Escape waits, then the red "Agent was interrupted". Family d.

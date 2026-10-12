@@ -42,6 +42,8 @@ pub struct ComposerState {
     pub history: ComposerHistory,
     /// The session note sheet.
     pub note: NoteState,
+    /// The Catch me up card.
+    pub catch_up: crate::composer::catch_up::CatchUpState,
     /// The stash badge and the note dot.
     pub chrome: ComposerChromeState,
     /// Which toolbar controls the renderer could not fit.

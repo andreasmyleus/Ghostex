@@ -426,7 +426,7 @@ fn page_messages(page: &Value) -> Vec<Value> {
 
 /// The row's role, except that a prompt the agent's harness injected (a task notification, a
 /// system reminder, a local command's output) reads as `harness`, not as something the user typed.
-fn effective_role(message: &Value) -> &str {
+pub(crate) fn effective_role(message: &Value) -> &str {
     let role = message.get("role").and_then(Value::as_str).unwrap_or("");
     if role == "user"
         && crate::session_chat_decode_claude::is_known_harness_injected_user_turn_text(
@@ -440,7 +440,7 @@ fn effective_role(message: &Value) -> &str {
 
 /// The row's readable text: its text blocks, one line per tool call, and a note for collapsed
 /// work. Tool results are left out; `--history-mode detail --format json` has them.
-fn message_text(message: &Value, tool_summary_chars: usize) -> String {
+pub(crate) fn message_text(message: &Value, tool_summary_chars: usize) -> String {
     let mut parts: Vec<String> = Vec::new();
     for block in message
         .get("blocks")

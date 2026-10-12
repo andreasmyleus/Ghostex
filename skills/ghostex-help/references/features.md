@@ -1282,6 +1282,18 @@ its own Settings > Chat > Marked sections, which also offers Plain text.
 Settings: `markedHandovers`, `markedHandoversStyle` (`labels`, `rule`,
 `badge`), `markedHandoversEmoji`.
 
+Catch me up: turn on Catch me up button (Settings > Chat, off by default) and
+the chat box shows a Catch me up button at its top right, on the computer and
+on the phone. Clicking it has your Title Generation Agent (Settings > Agents, a
+small, cheap model such as Claude Haiku or Codex's mini model) read the
+session's last 200 messages and opens a card above the chat box that says what
+the session is working on, then what needs you, what is blocked, in progress,
+done, untested, kicked off or shipped, coloured like marked handovers. It takes
+a few seconds; Refresh writes a fresh one, Copy copies it, and Close or the
+button again closes it. Nothing is sent to the session's own agent. If the
+Title Generation Agent is not installed, the card says so; pick another one in
+Settings > Agents. Setting: `chatCatchMeUp`.
+
 Summary mode folds each turn down to your prompt and an "Agent reply" row; the
 newest reply stays open, and older ones open with a click. The row holds every
 reply the agent gave to that prompt, including the ones it wrote after a
@@ -1793,9 +1805,13 @@ still starting, and fails with the reason when the agent did not take it. If Gho
 a queued message, the row stays in the recipient's queue marked Not delivered
 with Retry and Delete, and the sending agent gets a note saying so. `agents close
 <session-ref>` ends that session, including any unfinished work. `ghostex read-session-chat` and `ghostex read-text` read replies.
-In the chat, a message another agent sent shows as a "Message from" card with
-its first two lines; click it to read the rest. A message the session's own
-agent sent shows as a "Message to" card, closed until you click it.
+In the chat, a message between agents is one line named after the other
+session's title, with that agent's logo and the message's first line: a message
+another agent sent reads "<session title>", one this session's agent sent reads
+"To <session title>". Click the line to read the whole message. One command that
+sends the same message to several sessions is a single "To 2 sessions" line
+that lists each recipient when opened. A session Ghostex cannot find any more
+reads "Another agent".
 An agent can also read or search any other thread, including a sleeping one:
 `ghostex read-session-chat <session> --all --format text` prints the whole
 conversation, and `--grep "<words>" --context 1` finds where a topic came up.

@@ -28,7 +28,7 @@ pub mod saved_prompts;
 pub mod selector;
 mod session_chat_model;
 mod session_chat_rpc;
-mod session_chat_transcript;
+pub(crate) mod session_chat_transcript;
 mod session_parking;
 pub mod sessions;
 mod sessions_brief;

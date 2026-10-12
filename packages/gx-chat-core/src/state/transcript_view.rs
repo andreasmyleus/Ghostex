@@ -123,6 +123,10 @@ pub struct TranscriptViewState {
     /// `sentTranscriptItems === transcriptItems`, and a rebuilt list is a new array even when
     /// every row in it was reused.
     pub projection_revision: u64,
+    /// The host's session list, which names the other session on a message between agents.
+    pub session_directory: Vec<crate::event::KnownSession>,
+    /// Bumped whenever [`Self::session_directory`] changes, so the projection rebuilds.
+    pub session_directory_revision: u64,
 }
 
 /// One message's full projection, with the source it was built from.
@@ -160,6 +164,8 @@ pub struct ProjectionInputs {
     pub line_breaks: crate::transcript::line_breaks::AgentLineBreaks,
     /// The side question whose card is open above the composer, which the list leaves out.
     pub live_side_question: Option<String>,
+    /// [`TranscriptViewState::session_directory_revision`]: the names on agent message cards.
+    pub session_directory_revision: u64,
 }
 
 impl Default for TranscriptViewState {
@@ -196,6 +202,8 @@ impl Default for TranscriptViewState {
             fold_settled_at: None,
             projection_rebuilt: false,
             projection_revision: 0,
+            session_directory: Vec::new(),
+            session_directory_revision: 0,
         }
     }
 }

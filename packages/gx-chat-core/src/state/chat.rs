@@ -51,6 +51,8 @@ pub struct CoreState {
     pub operation_error_code: Option<String>,
     /// Masks account text everywhere the chat shows it.
     pub hide_account_emails: bool,
+    /// The Catch me up setting (`chatCatchMeUp`), from the chat settings or the latest read.
+    pub catch_up_enabled: bool,
     /// The session's display title, or `None` when it has none.
     pub title: Option<String>,
     /// Every deadline the core is waiting on. Any family may arm one by key; the host only ever

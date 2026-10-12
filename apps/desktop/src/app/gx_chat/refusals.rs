@@ -121,6 +121,7 @@ fn rpc_method_name(wire: &str) -> &'static str {
         ChatRpcMethod::ReadCoordinatorThreads => "readCoordinatorThreads",
         ChatRpcMethod::OpenCoordinatorThread => "openCoordinatorThread",
         ChatRpcMethod::TakeBackSessionChatQueuedMessage => "takeBackSessionChatQueuedMessage",
+        ChatRpcMethod::CatchUpSession => "catchUpSession",
         ChatRpcMethod::Other(_) => "other",
     }
 }

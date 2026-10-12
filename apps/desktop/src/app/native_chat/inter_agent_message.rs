@@ -1,9 +1,10 @@
 //! The cards for messages between agents: one another agent sent this session, one this session's
 //! agent sent another, and a subagent's reply. Each is one 40px row (the agent's logo, its name,
-//! one line of text, the time, the status and a chevron) that opens to the whole message.
+//! one line of text, the time, the status and a chevron) that opens to the whole message; a message
+//! sent to several sessions at once lists each of them above it.
 //! Which rows these are, whom a message went to, and everything a card says comes from the core's
 //! `card` object (packages/gx-chat-core/src/transcript/agent_message_card.rs, where the user's pick
-//! is the `CDXC:SessionChat 2026-10-11 DECISION`); this file only lays it out.
+//! is the `CDXC:SessionChat 2026-10-12 DECISION`); this file only lays it out.
 //! The phone draws the same cards in apps/mobile/app/src/chat/native/transcript/AgentMessageCards.tsx.
 
 use super::cards::card_hover_fill;
@@ -169,6 +170,7 @@ impl NativeChatView {
                 .pb(px(10.0 * s))
                 .min_w_0()
                 .text_color(p.card_muted)
+                .children(self.agent_card_recipients(&key, card, p, cx))
                 .child(self.markdown(key.clone(), body, references, p, cx))
                 .into_any_element();
             self.disclosure_body_motion(&key, motion, 0.0, message)
@@ -311,6 +313,65 @@ impl NativeChatView {
                 this.toggle_marker_disclosure(key.clone(), expanded, cx)
             }))
             .into_any_element()
+    }
+
+    /// A message sent to several sessions lists each one above the message, with its own status;
+    /// a recipient's name opens its session.
+    fn agent_card_recipients(
+        &self,
+        key: &str,
+        card: &Value,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> Option<AnyElement> {
+        let recipients = card["recipients"]
+            .as_array()
+            .filter(|recipients| !recipients.is_empty())?;
+        let s = p.scale;
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(4.0 * s))
+                .pb(px(8.0 * s))
+                .text_size(px(13.0 * s))
+                .children(recipients.iter().enumerate().map(|(index, recipient)| {
+                    let row_key = format!("{key}:recipient:{index}");
+                    let session = &recipient["session"];
+                    let name = div()
+                        .id(SharedString::from(format!("{row_key}:name")))
+                        .min_w_0()
+                        .truncate()
+                        .text_color(p.foreground)
+                        .child(text(recipient, "name"))
+                        .when(session.is_object(), |name| {
+                            let command = json!({
+                                "type": "openAgentSession",
+                                "projectId": session["projectId"],
+                                "sessionId": session["sessionId"],
+                            });
+                            name.role(gpui::Role::Button)
+                                .aria_label("Go to session")
+                                .chat_cursor_pointer()
+                                .hover(|style| style.underline())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.invoke(command.clone(), cx)
+                                }))
+                        });
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0 * s))
+                        .min_w_0()
+                        .child(self.agent_card_mark(recipient, p))
+                        .child(name)
+                        .when(recipient["status"].is_object(), |row| {
+                            row.child(self.agent_card_status(&row_key, &recipient["status"], p))
+                        })
+                }))
+                .into_any_element(),
+        )
     }
 
     /// Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour.

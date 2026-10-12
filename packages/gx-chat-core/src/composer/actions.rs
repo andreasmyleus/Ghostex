@@ -187,6 +187,9 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
             save_note(state)
         }
         ActionKind::SaveNote => save_note(state),
+        ActionKind::CatchUp => crate::composer::catch_up::toggle(state),
+        ActionKind::CatchUpRefresh => crate::composer::catch_up::run(state),
+        ActionKind::CatchUpClose => crate::composer::catch_up::close(state),
         ActionKind::SendKey => {
             crate::composer::send::send_key(
                 state,

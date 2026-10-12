@@ -413,6 +413,10 @@ pub struct ReadSessionChatResult {
     /// and `None` (an older daemon, or a frame) leaves what the core already knows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uses_own_login: Option<bool>,
+    /// Whether the Catch me up setting is on; reads alone carry it, and `None` (an older daemon,
+    /// or a frame) leaves what the core already knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catch_up: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_info: Option<ChatForkInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

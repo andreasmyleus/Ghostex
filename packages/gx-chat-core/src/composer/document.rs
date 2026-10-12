@@ -99,6 +99,7 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
         .chrome
         .projection(&composer.note, state.transcript_view.summary_mode);
     into.note = composer.note.document();
+    into.catch_up = crate::composer::catch_up::document(state);
 
     let card_visible = notice_visible(state);
     let choice_pending = terminal_choice_pending(state, notice.as_ref());

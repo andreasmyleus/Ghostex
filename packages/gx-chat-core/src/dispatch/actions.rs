@@ -118,7 +118,10 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::ToggleNote
         | ActionKind::EditNote
         | ActionKind::ClearNote
-        | ActionKind::SaveNote => Family::Composer,
+        | ActionKind::SaveNote
+        | ActionKind::CatchUp
+        | ActionKind::CatchUpRefresh
+        | ActionKind::CatchUpClose => Family::Composer,
 
         ActionKind::SelectOption
         | ActionKind::ModelMenuView

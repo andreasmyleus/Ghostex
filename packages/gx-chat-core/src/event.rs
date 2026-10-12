@@ -80,6 +80,27 @@ pub enum Event {
     Measured(Measurement),
     /// The host's draft text changed outside the core (it owns the text field).
     DraftChanged { text: String },
+    /// Every session the host's own session list knows, on every machine, so a message between
+    /// agents is named after the other session even when the transcript never says who it is.
+    SessionDirectoryChanged { sessions: Vec<KnownSession> },
+}
+
+/// One session the host's session list knows (the sidebar on the desktop and the web build, the
+/// inventory on the phone).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct KnownSession {
+    /// `<machine>:<project>:<session>`, the reference `ghostex agents send` takes; empty when the
+    /// host does not know the machine's part.
+    pub global_ref: String,
+    pub project_id: String,
+    pub session_id: String,
+    /// The title the session list shows.
+    pub title: String,
+    /// The agent id (`claude`, `codex`), which names its logo.
+    pub agent_id: String,
+    /// The agent's display name (`Claude`, `Codex`).
+    pub agent_name: String,
 }
 
 /// What the host knows when it opens a chat.
@@ -204,6 +225,10 @@ pub struct ChatSettings {
     pub hide_account_emails: bool,
     /// The session's display title, or `null` when it has none.
     pub title: Option<String>,
+    /// The Catch me up setting (`chatCatchMeUp`); absent from a host that has no settings file
+    /// (the phone), which learns it from the chat read instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catch_up: Option<bool>,
 }
 
 /// A size or position only the renderer can know, folded back into the document.

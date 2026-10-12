@@ -1026,6 +1026,20 @@
       "agentWritable": true
     },
     {
+      "key": "chatCatchMeUp",
+      "title": "Catch me up button",
+      "subtitle": "Show a Catch me up button at the top right of the chat box. It has your Title Generation Agent (a small, cheap model) read the session's recent messages and shows where the session stands: what needs you, what is done, in progress or untested.",
+      "tab": "settings",
+      "tabTitle": "General",
+      "group": "chat",
+      "groupTitle": "Chat",
+      "section": "chat",
+      "sectionTitle": "Chat",
+      "type": "boolean",
+      "default": false,
+      "agentWritable": true
+    },
+    {
       "key": "markedHandovers",
       "title": "Marked handovers in every session",
       "subtitle": "Orchestrators and their threads always start each part of the message they hand back with a marker such as ❓ Needs you, ✅ Done, ⚠️ Read this, 🧪 Untested or 🛑 Blocked, so a quick skim shows what needs you. Turn this on to have every other agent session do the same. Applies to sessions started or resumed after you change it.",

@@ -378,6 +378,9 @@ impl NativeChatView {
         if let Some(note) = self.render_note(p, window, cx) {
             footer = footer.child(note);
         }
+        if let Some(card) = self.render_catch_up(p, window, cx) {
+            footer = footer.child(card);
+        }
         if maximized {
             if let Some(suggestions) = self.inline_suggestions(window, cx) {
                 let height =
@@ -470,78 +473,83 @@ impl NativeChatView {
             .children(attachment_previews)
             .children(self.render_queue(p, cx))
             .child(
-                div()
-                    .id("composer-editor")
-                    .role(gpui::Role::Group)
-                    .aria_label("Message composer")
-                    .min_w_0()
-                    .w_full()
-                    // React's floating input thumb stops 2px short of the viewport's right edge
-                    // (app-scrollbars.ts places the 5px bar at `right - 7px`). gpui-component pins a
-                    // custom-thickness thumb to the track edge, so the field gives back those 2px.
-                    .pr(px(2.0 * s))
-                    .when(collapsed, |this| {
-                        this.flex_1()
-                            .h(px(metrics.collapsed_height_px * s))
-                            .overflow_hidden()
-                    })
-                    .when(maximized, |this| this.flex_1().h_full().min_h_0())
-                    .on_mouse_down(
-                        gpui::MouseButton::Left,
-                        cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
-                            this.invoke(json!({"type":"composerExpand","editor":true}), cx);
-                            this.click_composer_reference(event, cx);
-                        }),
-                    )
-                    .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-                        this.hover_composer_reference(Some(event.position), cx);
-                    }))
-                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                        if !hovered {
-                            this.hover_composer_reference(None, cx);
-                        }
-                    }))
-                    .on_mouse_down(
-                        gpui::MouseButton::Right,
-                        cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
-                            if this.show_composer_reference_menu(event, window, cx) {
-                                cx.stop_propagation();
+                self.with_catch_up_button(
+                    div()
+                        .id("composer-editor")
+                        .role(gpui::Role::Group)
+                        .aria_label("Message composer")
+                        .min_w_0()
+                        .w_full()
+                        // React's floating input thumb stops 2px short of the viewport's right edge
+                        // (app-scrollbars.ts places the 5px bar at `right - 7px`). gpui-component pins a
+                        // custom-thickness thumb to the track edge, so the field gives back those 2px.
+                        .pr(px(2.0 * s))
+                        .when(collapsed, |this| {
+                            this.flex_1()
+                                .h(px(metrics.collapsed_height_px * s))
+                                .overflow_hidden()
+                        })
+                        .when(maximized, |this| this.flex_1().h_full().min_h_0())
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                                this.invoke(json!({"type":"composerExpand","editor":true}), cx);
+                                this.click_composer_reference(event, cx);
+                            }),
+                        )
+                        .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                            this.hover_composer_reference(Some(event.position), cx);
+                        }))
+                        .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                            if !hovered {
+                                this.hover_composer_reference(None, cx);
                             }
-                        }),
-                    )
-                    .child(
-                        Textarea::new(&input)
-                            .on_paste(Self::paste_handler(cx.entity().downgrade(), None))
-                            .placeholder_color(p.muted.opacity(0.6))
-                            // CDXC:SessionChat 2026-09-27 WHY: The chat draws in its own palette (sessionChatTheme can differ from the app theme, and the web page never switches GPUI Kit off its light default), so the kit theme's caret vanished against the composer. Every chat field takes its caret from the chat palette.
-                            .caret_color(p.foreground)
-                            .appearance(false)
-                            .bordered(false)
-                            .focus_bordered(false)
-                            // The chat box's own scrollbar: React's 5px floating thumb that appears
-                            // while the draft scrolls and fades out afterwards
-                            // (packages/components/ui/app-scrollbars.ts, session-chat-lexical/input.css).
-                            .scrollbar_thickness(px(5.0 * s))
-                            .scrollbar_show(gpui_component::scroll::ScrollbarMode::Scrolling)
-                            .w_full()
-                            .p_0()
-                            .text_size(px(14.0 * s))
-                            .text_color(p.primary)
-                            .line_height(px(if collapsed {
-                                metrics.collapsed_line_height_px
-                            } else {
-                                metrics.expanded_line_height_px
-                            } * s))
-                            // CDXC:SessionChat 2026-09-14 DECISION: User: an empty, collapsed composer shows only the first line of its placeholder. The collapsed field is one line tall and its row clips, so the placeholder's second line never shows.
-                            .when(collapsed, |this| {
-                                this.h(px(metrics.collapsed_height_px * s))
-                                    .max_h(px(metrics.collapsed_height_px * s))
-                            })
-                            .when(!collapsed && !maximized, |this| {
-                                this.max_h(px(metrics.expanded_max_height_px * s))
-                            })
-                            .when(maximized, |this| this.h_full().flex_1().min_h_0()),
-                    ),
+                        }))
+                        .on_mouse_down(
+                            gpui::MouseButton::Right,
+                            cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
+                                if this.show_composer_reference_menu(event, window, cx) {
+                                    cx.stop_propagation();
+                                }
+                            }),
+                        )
+                        .child(
+                            Textarea::new(&input)
+                                .on_paste(Self::paste_handler(cx.entity().downgrade(), None))
+                                .placeholder_color(p.muted.opacity(0.6))
+                                // CDXC:SessionChat 2026-09-27 WHY: The chat draws in its own palette (sessionChatTheme can differ from the app theme, and the web page never switches GPUI Kit off its light default), so the kit theme's caret vanished against the composer. Every chat field takes its caret from the chat palette.
+                                .caret_color(p.foreground)
+                                .appearance(false)
+                                .bordered(false)
+                                .focus_bordered(false)
+                                // The chat box's own scrollbar: React's 5px floating thumb that appears
+                                // while the draft scrolls and fades out afterwards
+                                // (packages/components/ui/app-scrollbars.ts, session-chat-lexical/input.css).
+                                .scrollbar_thickness(px(5.0 * s))
+                                .scrollbar_show(gpui_component::scroll::ScrollbarMode::Scrolling)
+                                .w_full()
+                                .p_0()
+                                .text_size(px(14.0 * s))
+                                .text_color(p.primary)
+                                .line_height(px(if collapsed {
+                                    metrics.collapsed_line_height_px
+                                } else {
+                                    metrics.expanded_line_height_px
+                                } * s))
+                                // CDXC:SessionChat 2026-09-14 DECISION: User: an empty, collapsed composer shows only the first line of its placeholder. The collapsed field is one line tall and its row clips, so the placeholder's second line never shows.
+                                .when(collapsed, |this| {
+                                    this.h(px(metrics.collapsed_height_px * s))
+                                        .max_h(px(metrics.collapsed_height_px * s))
+                                })
+                                .when(!collapsed && !maximized, |this| {
+                                    this.max_h(px(metrics.expanded_max_height_px * s))
+                                })
+                                .when(maximized, |this| this.h_full().flex_1().min_h_0()),
+                        ),
+                    !collapsed && !maximized,
+                    p,
+                    cx,
+                ),
             )
             .child(
                 div()

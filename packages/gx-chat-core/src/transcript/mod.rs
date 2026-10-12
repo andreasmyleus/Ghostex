@@ -39,6 +39,7 @@ pub mod raw_html;
 pub mod rows;
 pub mod sent_message;
 pub mod sent_message_script;
+pub mod script_loops;
 pub mod shell_script;
 pub mod side_question;
 pub mod simple;

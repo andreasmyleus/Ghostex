@@ -200,6 +200,10 @@ action_kinds! {
     EditNote => "editNote",
     ClearNote => "clearNote",
     SaveNote => "saveNote",
+    // Catch me up (`composer/catch_up.rs`).
+    CatchUp => "catchUp",
+    CatchUpRefresh => "catchUpRefresh",
+    CatchUpClose => "catchUpClose",
     MarkdownSaveOpen => "markdownSaveOpen",
     MarkdownSaveFolder => "markdownSaveFolder",
     MarkdownSaveName => "markdownSaveName",

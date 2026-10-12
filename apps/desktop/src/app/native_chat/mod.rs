@@ -45,6 +45,7 @@ mod menu_toggle;
 mod minimap;
 mod nested_scroll;
 mod new_session_welcome;
+mod catch_up;
 mod note;
 mod notice;
 mod pagination;

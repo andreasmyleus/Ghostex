@@ -62,6 +62,7 @@ pub(crate) mod session_chat_agent_restart;
 pub mod session_chat_agent_tasks;
 pub mod session_chat_antigravity_mirror;
 pub mod session_chat_app_command;
+pub(crate) mod session_chat_catch_up;
 pub(crate) mod session_chat_async_questions;
 pub mod session_chat_branch;
 pub mod session_chat_claude_dialog;

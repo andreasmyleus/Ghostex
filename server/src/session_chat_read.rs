@@ -69,6 +69,18 @@ pub(crate) struct SessionChatReadResolution {
     fingerprint: String,
 }
 
+impl SessionChatReadResolution {
+    /// The transcript family and file the chat reads, for readers outside the chat read.
+    pub(crate) fn transcript(&self) -> (Option<&str>, Option<&std::path::Path>) {
+        (self.agent.as_deref(), self.transcript_path.as_deref())
+    }
+
+    /// Whether the agent is working on a turn right now.
+    pub(crate) fn working(&self) -> bool {
+        self.working
+    }
+}
+
 pub(crate) fn resolve_session_chat_read_state(
     state: &AppState,
     project_id: &str,
@@ -552,6 +564,11 @@ pub(crate) async fn handle_read_session_chat_http(
     }
     // On every answer, so a client tells "this daemon says no" from an older daemon that never sends it.
     result.insert("usesOwnLogin".to_string(), json!(uses_own_login));
+    // The Catch me up switch rides every read, so a client without the settings file (the phone) learns it too.
+    result.insert(
+        "catchUp".to_string(),
+        json!(crate::session_chat_catch_up::catch_up_enabled(&state.paths)),
+    );
     if let Some(session_agent_id) = session_agent_id.as_deref() {
         result.insert("sessionAgentId".to_string(), json!(session_agent_id));
     }

@@ -171,6 +171,8 @@ pub(super) struct World {
     broadcasts: Vec<(String, Event)>,
     /// When the timer pass last compared the chats' settings with Settings.
     settings_checked_at: Option<Instant>,
+    /// The session list revision each chat was last handed (`session_directory.rs`).
+    directory_sent: std::collections::HashMap<String, u64>,
 }
 
 /// When the host must wake with no command: the core's timers and the draft retry ladder.
@@ -198,6 +200,7 @@ pub(super) fn turn(world: &mut World, command: Option<HostCommand>) {
     // panic there would have ended the host outright with none of the above applying.
     let pruned = std::panic::catch_unwind(AssertUnwindSafe(|| {
         step(world, command);
+        directory_pass(world);
         flush_broadcasts(world);
         world.store.prune()
     }));
@@ -275,6 +278,7 @@ fn purge(world: &mut World, key: &str) {
     world.parked.remove(key);
     world.delivered.remove(key);
     world.held_requests.remove(key);
+    world.directory_sent.remove(key);
     // The chat is gone from the store, so its identity is read back from its key.
     if let Some(identity) = ChatIdentity::from_retention_key(key) {
         world.transport.unfollow(key, &identity);
@@ -483,8 +487,9 @@ fn settings_moved(world: &World, key: &str) -> Option<Event> {
     }
     let settings = boot::chat_settings();
     (settings.hide_account_emails != state.core.hide_account_emails
-        || settings.title != state.core.title)
-        .then(|| Event::SettingsChanged(Box::new(settings)))
+        || settings.title != state.core.title
+        || settings.catch_up != Some(state.core.catch_up_enabled))
+    .then(|| Event::SettingsChanged(Box::new(settings)))
 }
 
 /// How often the timer pass compares the chats' settings with Settings.
@@ -509,6 +514,39 @@ fn settings_pass(world: &mut World) {
             drive(world, &key, vec![event]);
         }
     }
+}
+
+/// Hands each started chat the sidebar store's session list when it holds an older one.
+///
+/// Run after every command and timer pass rather than on a timer of its own: the store publishes
+/// from the UI thread, and a chat with a view is driven often enough (its frames, its paint's
+/// queries, its stall watchdog) to pick a rename up within a moment.
+fn directory_pass(world: &mut World) {
+    let (revision, sessions) = super::session_directory::current();
+    if revision == 0 {
+        return;
+    }
+    let stale: Vec<String> = world
+        .store
+        .keys()
+        .into_iter()
+        .filter(|key| world.directory_sent.get(key) != Some(&revision))
+        .filter(|key| {
+            world
+                .store
+                .get(key)
+                .is_some_and(|retained| retained.core.state().core.controller_started)
+        })
+        .collect();
+    for key in stale {
+        world.directory_sent.insert(key.clone(), revision);
+        world.driving = Some(key.clone());
+        let event = Event::SessionDirectoryChanged {
+            sessions: (*sessions).clone(),
+        };
+        drive(world, &key, vec![event]);
+    }
+    world.driving = None;
 }
 
 /// Hands every other retained chat the context-detail preference one chat just wrote.

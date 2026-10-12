@@ -55,6 +55,8 @@ pub enum ChatRpcMethod {
     OpenCoordinatorThread,
     /// Takes a message the agent CLI queued back out of its queue, for the composer.
     TakeBackSessionChatQueuedMessage,
+    /// A short summary of where the session stands (`composer/catch_up.rs`).
+    CatchUpSession,
     /// A method this build does not know; kept verbatim.
     Other(String),
 }
@@ -95,6 +97,7 @@ impl ChatRpcMethod {
             Self::ReadCoordinatorThreads => "readCoordinatorThreads",
             Self::OpenCoordinatorThread => "openCoordinatorThread",
             Self::TakeBackSessionChatQueuedMessage => "takeBackSessionChatQueuedMessage",
+            Self::CatchUpSession => "catchUpSession",
             Self::Other(name) => name.as_str(),
         }
     }
@@ -134,6 +137,7 @@ impl ChatRpcMethod {
             "readCoordinatorThreads" => Self::ReadCoordinatorThreads,
             "openCoordinatorThread" => Self::OpenCoordinatorThread,
             "takeBackSessionChatQueuedMessage" => Self::TakeBackSessionChatQueuedMessage,
+            "catchUpSession" => Self::CatchUpSession,
             other => Self::Other(other.to_string()),
         }
     }
