@@ -7,7 +7,7 @@
 //! same after the fact as it did while it was being given.
 
 use super::ask_card::{
-    AskBodyMotion, AskTone, answer_aside, answer_chip, ask_head, chevron, press_head, receipt_row,
+    AskBodyMotion, AskTone, answer_aside, ask_head, chevron, plain_answer, press_head, receipt_row,
 };
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
 use gpui::{
@@ -44,7 +44,7 @@ impl NativeChatView {
         Some(column.into_any_element())
     }
 
-    /// CDXC:SessionChat 2026-10-11 DECISION: User picked "Clear ask, clear answer": an answered exchange is a compact green receipt ("You answered 2 questions", its headers under it) that folds to that one line; each question is a numbered row with the answer as a chip and its description beside it. A question nobody answered says Skipped or Dismissed, and an exchange with no answer at all is a muted "Question skipped" card.
+    /// CDXC:SessionChat 2026-10-12 DECISION: User picked "Clear ask, clear answer" (2026-10-11): an answered exchange is a compact green receipt ("You answered 2 questions", its headers under it) that folds to that one line, with a numbered row per question; a question nobody answered says Skipped or Dismissed, and an exchange with no answer at all is a muted "Question skipped" card. The same day the user answered "yes" to "The agent's own question receipts still show green chips. Make them plain like the new answer card?": each answer is plain foreground text at medium weight under its muted question, with no chip, border or fill, exactly as the answer card under a form (`plain_answer`, page_answers.rs). Supersedes the green answer chips; the option's description and a note sit under the answer.
     fn question_exchange_card(
         &self,
         key: &str,
@@ -135,7 +135,7 @@ impl NativeChatView {
             rows = rows.child(receipt_row(
                 total + 1,
                 String::new(),
-                vec![answer_chip(fallback, p)],
+                vec![plain_answer(fallback, p)],
                 Vec::new(),
                 total == 0,
                 p,
@@ -198,40 +198,41 @@ impl NativeChatView {
         if prompt.is_empty() {
             prompt = text(question, "header");
         }
-        let mut chips = Vec::new();
+        let mut answer_line = Vec::new();
         let picked: Vec<&Value> = selected
             .iter()
             .filter_map(|option_index| options.get(*option_index))
             .collect();
-        for option in &picked {
-            chips.push(answer_chip(text(option, "label"), p));
+        let mut below = Vec::new();
+        if !picked.is_empty() {
+            let labels: Vec<String> = picked.iter().map(|option| text(option, "label")).collect();
+            answer_line.push(plain_answer(labels.join(", "), p));
         }
-        // One picked option's description reads beside its chip, as the card showed it while it was asked.
+        // One picked option's description reads under its answer, as the card showed it while it was asked.
         if let [option] = picked.as_slice() {
             let description = text(option, "description");
             if !description.is_empty() && description != text(option, "label") {
-                chips.push(answer_aside(description, false, p));
+                below.push(answer_aside(description, false, p));
             }
         }
-        let mut below = Vec::new();
         if !other.is_empty() {
             if picked.is_empty() {
-                chips.push(answer_chip(other, p));
-                chips.push(answer_aside("Your own answer".to_string(), false, p));
+                answer_line.push(plain_answer(other, p));
+                below.push(answer_aside("Your own answer".to_string(), false, p));
             } else {
                 below.push(answer_aside(format!("Note: {other}"), false, p));
             }
         }
         // A question the reader walked away from still says so, rather than looking unanswered.
-        if chips.is_empty() {
+        if answer_line.is_empty() {
             if answer["dismissed"] == true {
-                chips.push(answer_aside(
+                answer_line.push(answer_aside(
                     "Dismissed without answering".to_string(),
                     true,
                     p,
                 ));
             } else if parsed_answers {
-                chips.push(answer_aside("Skipped".to_string(), true, p));
+                answer_line.push(answer_aside("Skipped".to_string(), true, p));
             }
         }
         if !options.is_empty() {
@@ -282,7 +283,7 @@ impl NativeChatView {
                 ));
             }
         }
-        receipt_row(index + 1, prompt, chips, below, index == 0, p)
+        receipt_row(index + 1, prompt, answer_line, below, index == 0, p)
     }
 }
 

@@ -2,7 +2,7 @@
 //! and its answered record (question_exchange.rs), a ```questions form (question_form.rs) and the
 //! answers sent from a form or an HTML page (page_answers.rs). A tinted tile and a two-line title
 //! lead it, the options are radio or checkbox rows that light up in the asking colour, and the
-//! answers come back as green chips.
+//! answers come back as plain text under their question.
 //!
 //! CDXC:SessionChat 2026-10-11 DECISION:
 //! User picked "Clear ask, clear answer" for the agent's question card, then "please same style for the html modal also and the inline questions": all three places a question appears share this look. Amber marks a question waiting for the reader (its tile, progress bars and the picked option), green an answered one, muted one that got no answer. The amber is a light tint, not a strong one ("please make the yellow more subtle" on the page cards, then "yellow + dark all" for the chat): the tile fills 9% with a 14% ring and an 80% icon, a picked option takes a 32% border over a 4% wash with an 85% mark.
@@ -521,45 +521,21 @@ impl NativeChatView {
     }
 }
 
-/// An answer as a green chip with its check.
-pub(super) fn answer_chip(label: String, p: &ChatAppearance) -> AnyElement {
+/// An answer as plain text: the card's foreground colour at medium weight, no chip, border or fill.
+pub(super) fn plain_answer(words: String, p: &ChatAppearance) -> AnyElement {
     let s = p.scale;
-    let good = p.success();
     div()
-        .flex()
-        .items_start()
-        .gap(px(6.0 * s))
-        .max_w_full()
         .min_w_0()
-        .pl(px(8.0 * s))
-        .pr(px(10.0 * s))
-        .py(px(3.0 * s))
-        .rounded(px(8.0 * s))
-        .border_1()
-        .border_color(good.opacity(0.28))
-        .bg(good.opacity(0.1))
-        .child(
-            svg()
-                .path("titlebar/check.svg")
-                .size(px(12.0 * s))
-                .mt(px(4.0 * s))
-                .flex_shrink_0()
-                .text_color(good),
-        )
-        .child(
-            div()
-                .min_w_0()
-                .text_size(px(14.0 * s))
-                .line_height(px(20.0 * s))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.foreground)
-                .child(label),
-        )
+        .text_size(px(14.0 * s))
+        .line_height(px(20.0 * s))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(p.foreground)
+        .child(words)
         .into_any_element()
 }
 
-/// One answered question in a receipt: its number, the question (muted), and under it the answer
-/// chips and whatever follows them (an option's description, a note, "Show all options").
+/// One answered question in a receipt: its number, the question (muted), and under it the plain
+/// answer and whatever follows it (an option's description, a note, "Show all options").
 pub(super) fn receipt_row(
     number: usize,
     question: String,
@@ -623,7 +599,7 @@ pub(super) fn receipt_row(
         .into_any_element()
 }
 
-/// The muted words beside or under an answer chip.
+/// The muted words beside or under an answer.
 pub(super) fn answer_aside(words: String, italic: bool, p: &ChatAppearance) -> AnyElement {
     let s = p.scale;
     div()

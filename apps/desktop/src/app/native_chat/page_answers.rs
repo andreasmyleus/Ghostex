@@ -4,11 +4,9 @@
 //! CDXC:SessionChat 2026-10-11 SEE-ALSO:
 //! The phone draws the same card in apps/mobile/app/src/chat/native/transcript/PageAnswersCard.tsx; the page's own card reads Answered in visual.rs. Change them together.
 
-use super::ask_card::{AskTone, answer_aside, ask_head, receipt_row};
+use super::ask_card::{AskTone, answer_aside, ask_head, plain_answer, receipt_row};
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
-use gpui::{
-    AnyElement, FontWeight, Hsla, IntoElement, ParentElement as _, Styled as _, div, px, rgb,
-};
+use gpui::{AnyElement, Hsla, IntoElement, ParentElement as _, Styled as _, div, px, rgb};
 use serde_json::Value;
 
 /// The green the chat's charts use for good news, which also marks an answered page.
@@ -17,7 +15,7 @@ pub(super) fn answered_color(p: &ChatAppearance) -> Hsla {
 }
 
 impl NativeChatView {
-    /// CDXC:SessionChat 2026-10-12 DECISION: User, on the answer card under an answered form: "please make sure the selected answer doesn't have that green thing around it, make it more simple should just say the answer and question there with bit different color/fontweight etc (like we have in other cards) but no background behind the answer like you're showing / also plase remove "1 answer" no need for it". The card keeps its green check tile and numbered rows; each answer is plain foreground text at medium weight under its muted question, with no chip, border or fill, and the head has no answer count. Supersedes the 2026-10-11 green answer chips on this card; the agent's own question receipts (question_exchange.rs) keep theirs.
+    /// CDXC:SessionChat 2026-10-12 DECISION: User, on the answer card under an answered form: "please make sure the selected answer doesn't have that green thing around it, make it more simple should just say the answer and question there with bit different color/fontweight etc (like we have in other cards) but no background behind the answer like you're showing / also plase remove "1 answer" no need for it". The card keeps its green check tile and numbered rows; each answer is plain foreground text at medium weight under its muted question, with no chip, border or fill, and the head has no answer count. Supersedes the 2026-10-11 green answer chips on this card. The agent's own question receipts (question_exchange.rs) take the same plain answer (`plain_answer`, ask_card.rs).
     pub(super) fn page_answers_card(&self, answers: &Value, p: &ChatAppearance) -> AnyElement {
         let rows: Vec<Value> = answers["rows"].as_array().cloned().unwrap_or_default();
         let more = answers["more"].as_u64().unwrap_or(0) as usize;
@@ -36,14 +34,7 @@ impl NativeChatView {
             let value = text(row, "value");
             let note = text(row, "note");
             // CDXC:SessionChat 2026-10-11 DECISION: User: "make it show the Q above the Answer so they both have more width area": each row is the question (muted) on its own line, the answer below it at the card's full width, then its note. The phone (PageAnswersCard.tsx) stacks the same way.
-            let answer = div()
-                .min_w_0()
-                .text_size(px(14.0 * s))
-                .line_height(px(20.0 * s))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.foreground)
-                .child(value)
-                .into_any_element();
+            let answer = plain_answer(value, p);
             let below = if note.is_empty() {
                 Vec::new()
             } else {
