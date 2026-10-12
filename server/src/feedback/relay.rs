@@ -176,13 +176,34 @@ fn relay_error_message(status: u16, error: &Value, retry_after: Option<u64>) -> 
         (_, "invalid_json" | "invalid_request" | "invalid_image") | (400, _) => {
             relay_said("the issue was not in the expected shape.")
         }
-        (502, _) | (_, "github_error") => {
-            "GitHub did not accept the issue just now. Please try again in a moment.".to_string()
-        }
+        (502, _) | (_, "github_error") => github_refusal_message(error),
         (503, _) | (_, "not_configured") => {
             "The feedback service is not available yet. Please try again later.".to_string()
         }
         _ => format!("The feedback service had a problem (HTTP {status}). Please try again."),
+    }
+}
+
+/// CDXC:Feedback 2026-10-12 WHY:
+/// A refusal used to read only "GitHub did not accept the issue just now", which hid why GitHub said no
+/// (the 2026-10-11 Windows report). The relay now retries GitHub's transient failures itself and sends
+/// GitHub's own status and message (`githubStatus`, `githubMessage`), so a refusal that reaches the user
+/// says what GitHub answered. A relay without those fields still gets the old sentence.
+fn github_refusal_message(error: &Value) -> String {
+    let status = error["githubStatus"].as_u64();
+    let said = error["githubMessage"]
+        .as_str()
+        .map(str::trim)
+        .filter(|said| !said.is_empty());
+    match (status, said) {
+        (Some(status), Some(said)) => {
+            format!("GitHub did not accept the issue (HTTP {status}): {said}")
+        }
+        (Some(status), None) if status >= 500 => format!(
+            "GitHub is having trouble right now (HTTP {status}). Please try again in a few minutes."
+        ),
+        (Some(status), None) => format!("GitHub did not accept the issue (HTTP {status})."),
+        _ => "GitHub did not accept the issue just now. Please try again in a moment.".to_string(),
     }
 }
 
