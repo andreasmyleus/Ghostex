@@ -194,21 +194,30 @@ impl NativeChatView {
                                 )
                             }),
                     )
+                    // Where it lives and when it was mentioned share one line, so a long list
+                    // shows more rows; the path gives way first.
                     .child(
                         div()
                             .min_w_0()
-                            .truncate()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0 * s))
                             .text_size(px(11.5 * s))
-                            .text_color(p.muted)
-                            .child(detail.clone()),
-                    )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(11.0 * s))
-                            .text_color(p.muted.opacity(0.75))
-                            .child(meta),
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(p.muted)
+                                    .child(detail.clone()),
+                            )
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_size(px(11.0 * s))
+                                    .text_color(p.muted.opacity(0.75))
+                                    .child(meta),
+                            ),
                     ),
             )
             .children(jumps)

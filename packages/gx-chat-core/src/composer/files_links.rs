@@ -13,7 +13,9 @@
 //! CDXC:FilesAndLinks 2026-10-12 DECISION:
 //! User: "i want to add a feature to see all the attachements and links that were mentioned in a session (and for coordinator threads should be that session and it's own sub sessions) should be a button, when i click it then it should show me a list that shows these files locations and links so i can go through them quick". The button sits in the composer's toolbar after Session note (it folds into More actions like the others when the row is narrow); the card lists Attachments, Files and Links, each item once with its first and last mention, and a coordinator's list covers its own chat and every thread, done ones included, grouped by thread title.
 //! CDXC:FilesAndLinks 2026-10-12 WHY:
-//! A row's jump finds the message among the rows the transcript has loaded; a message folded into a finished turn lands on that turn, and one older than the loaded history lands on the top row with a note to load earlier messages, because paging the history in from here would race the user's own scrolling.
+//! A row's jump finds the message among the rows the transcript has loaded, and a message folded into a finished turn lands on that turn. One older than the loaded history (a coordinator's First is often days back) pages the history in the way "Load earlier" does, one page per settle and at most `MAX_JUMP_PAGES`, then scrolls; a note says so only when it still cannot be reached.
+//! CDXC:FilesAndLinks 2026-10-12 WHY:
+//! A coordinator's list runs to thousands of rows (235 threads held 6,506 items), and a plain 40-row cap per section was filled by the coordinator's own chat so no thread showed. The first view gives each session's group its 5 newest rows, and "Show more" then adds 100 rows a click, so the threads are visible at once and the card never draws thousands of rows.
 //! SEE-ALSO: server/src/session_files_links.rs (the list), apps/desktop/src/app/native_chat/files_links.rs and apps/mobile/app/src/chat/native/cards/FilesLinksCard.tsx (drawing).
 
 use serde::{Deserialize, Serialize};
@@ -25,8 +27,15 @@ use crate::state::{ChatContext, ChatState};
 use crate::transcript::files_links::{FilesLinksItem, FilesLinksMention, FilesLinksSection};
 use crate::wire::{ChatRpcMethod, RpcOutcome};
 
-/// Rows a section shows before "Show all".
+/// Rows a section shows before its "Show more".
 const SECTION_ROWS: usize = 40;
+/// Rows each "Show more" adds, so a coordinator's thousands of files never draw at once.
+const PAGE_ROWS: usize = 100;
+/// Rows each session's group shows at first when the list spans several sessions, so the threads
+/// are listed under their titles instead of the coordinator's own chat filling the section.
+const GROUP_ROWS: usize = 5;
+/// History pages a jump reads at most before it gives up on reaching its message.
+const MAX_JUMP_PAGES: u32 = 60;
 /// The filter box shows once the list holds this many items.
 const FILTER_FROM: usize = 10;
 
@@ -62,9 +71,20 @@ pub struct FilesLinksState {
     pub sessions: Option<Vec<FilesLinksSession>>,
     pub error: Option<String>,
     pub query: String,
-    /// Sections shown whole.
-    pub expanded: Vec<FilesLinksSection>,
+    /// The "Show more" pages each section has opened.
+    pub pages: Vec<(FilesLinksSection, usize)>,
     pub jump: Option<FilesLinksJump>,
+    /// A jump still paging the history in.
+    pub pending_jump: Option<PendingJump>,
+}
+
+/// A jump whose message is older than the loaded rows.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PendingJump {
+    pub message_id: String,
+    pub timestamp: Option<i64>,
+    /// History pages read for it so far.
+    pub pages: u32,
 }
 
 /// One row.
@@ -165,29 +185,75 @@ pub fn close(state: &mut ChatState) -> Vec<Effect> {
     files_links.open = false;
     files_links.request = None;
     files_links.query.clear();
-    files_links.expanded.clear();
+    files_links.pages.clear();
     files_links.jump = None;
+    files_links.pending_jump = None;
     Vec::new()
 }
 
 pub fn set_query(state: &mut ChatState, query: &str) -> Vec<Effect> {
     state.composer.files_links.query = query.to_string();
+    state.composer.files_links.pages.clear();
     Vec::new()
 }
 
-/// "Show all" and "Show fewer" on one section.
+/// A section's "Show more" adds a page of rows; once every row shows, "Show fewer" goes back to the
+/// first view.
 pub fn toggle_section(state: &mut ChatState, section: &str) -> Vec<Effect> {
     let Some(section) = section_of(section) else {
         return Vec::new();
     };
-    let expanded = &mut state.composer.files_links.expanded;
-    match expanded.iter().position(|known| *known == section) {
-        Some(index) => {
-            expanded.remove(index);
-        }
-        None => expanded.push(section),
+    let files_links = &mut state.composer.files_links;
+    let needle = files_links.query.trim().to_lowercase();
+    let several = files_links
+        .sessions
+        .as_ref()
+        .is_some_and(|sessions| sessions.len() > 1);
+    let count = files_links
+        .sessions
+        .iter()
+        .flatten()
+        .map(|session| {
+            session
+                .items
+                .iter()
+                .filter(|item| item.section == section && matches(item, session, &needle, several))
+                .count()
+        })
+        .sum();
+    let pages = page_of(&files_links.pages, section);
+    files_links.pages.retain(|(known, _)| *known != section);
+    // The first click always opens a page: the first view may hide rows per thread even when the
+    // section is short.
+    if pages == 0 || budget(pages) < count {
+        files_links.pages.push((section, pages + 1));
     }
     Vec::new()
+}
+
+fn page_of(pages: &[(FilesLinksSection, usize)], section: FilesLinksSection) -> usize {
+    pages
+        .iter()
+        .find(|(known, _)| *known == section)
+        .map_or(0, |(_, pages)| *pages)
+}
+
+/// The rows a section shows after `pages` "Show more" clicks.
+fn budget(pages: usize) -> usize {
+    SECTION_ROWS + pages * PAGE_ROWS
+}
+
+/// The filter: the item's name or path, or (across several sessions) its thread's title.
+fn matches(
+    item: &FilesLinksItem,
+    session: &FilesLinksSession,
+    needle: &str,
+    several: bool,
+) -> bool {
+    needle.is_empty()
+        || item.label.to_lowercase().contains(needle)
+        || item.detail.to_lowercase().contains(needle)
+        || (several && session.title.to_lowercase().contains(needle))
 }
 
 /// A row's jump: scrolls the transcript to the message, or to the turn that holds it.
@@ -197,11 +263,35 @@ pub fn jump(
     message_id: &str,
     timestamp: Option<i64>,
 ) -> Vec<Effect> {
-    let rows = crate::transcript::rows(state, context);
-    let (item, older) = match row_of(&rows, message_id, timestamp) {
-        Some(item) => (item, false),
-        None => (0, true),
+    state.composer.files_links.pending_jump = Some(PendingJump {
+        message_id: message_id.to_string(),
+        timestamp,
+        pages: 0,
+    });
+    advance_jump(state, context)
+}
+
+/// Pages the history in until the jump's message is among the loaded rows, then scrolls to it.
+/// Runs on the click and again on every settle while a page read is on its way.
+pub fn advance_jump(state: &mut ChatState, context: &ChatContext) -> Vec<Effect> {
+    let Some(pending) = state.composer.files_links.pending_jump.clone() else {
+        return Vec::new();
     };
+    if state.messages.loading_earlier || state.messages.load_earlier_request.is_some() {
+        return Vec::new();
+    }
+    let rows = crate::transcript::rows(state, context);
+    let found = row_of(&rows, &pending.message_id, pending.timestamp);
+    if found.is_none() && state.messages.has_more && pending.pages < MAX_JUMP_PAGES {
+        let effects = crate::session::actions::load_earlier(state, context);
+        if !effects.is_empty() {
+            if let Some(pending) = state.composer.files_links.pending_jump.as_mut() {
+                pending.pages += 1;
+            }
+            return effects;
+        }
+    }
+    state.composer.files_links.pending_jump = None;
     if rows.is_empty() {
         return Vec::new();
     }
@@ -210,12 +300,15 @@ pub fn jump(
         .files_links
         .jump
         .map_or(1, |jump| jump.revision + 1);
-    state.composer.files_links.jump = Some(FilesLinksJump { item, revision });
-    if older && state.messages.has_more {
+    state.composer.files_links.jump = Some(FilesLinksJump {
+        item: found.unwrap_or(0),
+        revision,
+    });
+    state.core.request_publish();
+    if found.is_none() {
         return vec![Effect::Toast {
             level: "info".to_string(),
-            message: "That message is further up: load earlier messages, then jump again."
-                .to_string(),
+            message: "Could not reach that message in the loaded history.".to_string(),
         }];
     }
     Vec::new()
@@ -462,18 +555,19 @@ pub fn document(state: &ChatState, context: &ChatContext) -> FilesLinks {
     let several = sessions.len() > 1;
     let needle = files_links.query.trim().to_lowercase();
     let filtering = !needle.is_empty();
-    let matches = |item: &FilesLinksItem, session: &FilesLinksSession| {
-        !filtering
-            || item.label.to_lowercase().contains(&needle)
-            || item.detail.to_lowercase().contains(&needle)
-            || (several && session.title.to_lowercase().contains(&needle))
-    };
     for (section, id, label) in [
         (FilesLinksSection::Attachments, "attachments", "Attachments"),
         (FilesLinksSection::Files, "files", "Files"),
         (FilesLinksSection::Links, "links", "Links"),
     ] {
-        let expanded = filtering || files_links.expanded.contains(&section);
+        let pages = page_of(&files_links.pages, section);
+        let limit = budget(pages);
+        // The first view of a list across several sessions gives each its few newest rows.
+        let group_cap = if several && !filtering && pages == 0 {
+            GROUP_ROWS
+        } else {
+            usize::MAX
+        };
         let mut count = 0usize;
         let mut shown = 0usize;
         let mut groups = Vec::new();
@@ -482,10 +576,10 @@ pub fn document(state: &ChatState, context: &ChatContext) -> FilesLinks {
             for item in session
                 .items
                 .iter()
-                .filter(|item| item.section == section && matches(item, session))
+                .filter(|item| item.section == section && matches(item, session, &needle, several))
             {
                 count += 1;
-                if expanded || shown < SECTION_ROWS {
+                if shown < limit && rows.len() < group_cap {
                     shown += 1;
                     rows.push(row(item, session, context));
                 }
@@ -507,12 +601,12 @@ pub fn document(state: &ChatState, context: &ChatContext) -> FilesLinks {
         if count == 0 {
             continue;
         }
-        let more_label = if filtering || count <= SECTION_ROWS {
-            String::new()
-        } else if expanded {
+        let more_label = if shown < count {
+            format!("Show more ({shown} of {count} shown)")
+        } else if pages > 0 {
             "Show fewer".to_string()
         } else {
-            format!("Show all {count}")
+            String::new()
         };
         document.sections.push(FilesLinksSectionView {
             id: id.to_string(),
