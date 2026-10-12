@@ -108,12 +108,12 @@ fn team_flow_steps(state: &str) -> Value {
         "canEdit": !is_member(state),
         "steps": [
             { "id": "ticket", "label": "Ticket", "rule": { "kind": "ticketExists" } },
-            { "id": "working-thread", "label": "Working thread", "rule": { "kind": "slackWorkingThread" } },
+            { "id": "working-thread", "label": "Slack thread", "optional": true, "rule": { "kind": "slackWorkingThread" } },
             { "id": "session", "label": "Session", "rule": { "kind": "sessionLinked" } },
             { "id": "pr", "label": "PR", "rule": { "kind": "pullRequestExists" } },
+            { "id": "video", "label": "Video", "rule": { "kind": "videoApproved" } },
             { "id": "review-comments", "label": "Review comments", "rule": { "kind": "reviewCommentsResolved" } },
             { "id": "ci", "label": "CI", "rule": { "kind": "checksPassing" } },
-            { "id": "video", "label": "Video", "rule": { "kind": "videoApproved" } },
             { "id": "qc-package", "label": "QC package", "rule": { "kind": "pullRequestLabel", "label": "READY-FOR-QC" } },
             { "id": "validation", "label": "Validation", "rule": { "kind": "slackValidationPost" } }
         ],

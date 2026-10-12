@@ -104,22 +104,25 @@ open that page (the ticket, the PR, the repo on GitHub, the project) in the
 app's browser. Click anywhere else on a row, or a ticket or PR chip on a session card, to see its
 details: the ticket and its latest comments, the PR with each check by name and
 its reviews, videos (Loom, YouTube and video files play right there), the
-sessions linked to it, and where it is in your team's flow (Ticket, Working
-thread, Session, PR, Review comments, CI, Video, QC package, Validation). Steps
-Ghostex cannot see, such as the video OK, show a question mark instead of a tick.
+sessions linked to it, and where it is in your team's flow (Ticket, Slack
+thread, Session, PR, Video, Review comments, CI, QC package, Validation). Steps
+Ghostex cannot see, such as the video OK, show a question mark instead of a tick,
+and so does an optional step that isn't done yet (Slack thread is optional, since
+not every ticket has one); the next step never waits for an optional one.
 In a Work workspace connected to its team (see the team backend under Git and
 worktrees), each row shows how many Slack threads the ticket has, and the details
 show every thread: its channel, the first message and the latest replies with who
 wrote them and when, files, links, and Loom or YouTube videos that play right
 there, with **Open in Slack**; the ticket's working thread is marked as such.
-Working thread is ticked once the ticket has one (click the step to open it), and
+Slack thread is ticked once the ticket has a working thread (click the step to open it), and
 Validation once the request shows up in a watch-only channel or a session posted
 the final result. **Conversations** also lists the sessions your teammates (and
 you, in the cloud or on another computer) run on the ticket, with **Open in
 Claude** and **Open in terminal** for a cloud session; watching a teammate's conversation is not available
 yet. Without a team, as in a Personal workspace, these stay as they are. To
 change the steps, open Settings > Workspaces and use
-the workspace's **Team-flow steps**: reorder, rename or remove steps, add one with
+the workspace's **Team-flow steps**: reorder, rename or remove steps, tick
+**Optional** on a step the team can skip, add one with
 the rule that marks it done (for example "The pull request has a label" with
 `READY-FOR-QC`), then **Save steps**; **Reset to default** goes back to the
 default flow. In a workspace connected to a team the steps are the team's, shared

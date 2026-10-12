@@ -4,8 +4,9 @@ import type { TeamFlowStepState } from "./types";
 
 /**
  * The ticket's place in the team's flow. A step whose data Ghostex does not have (the video OK,
- * Slack without a team connection) shows as unknown, never as done
- * (server/src/work_mode/team_flow.rs). A step with evidence (the working thread) opens it.
+ * Slack without a team connection) shows as unknown, never as done, and so does an optional step
+ * that is not done (the Slack thread) (server/src/work_mode/team_flow.rs). A step with evidence
+ * (the Slack thread) opens it.
  */
 export function TeamFlowTracker({
   steps,
@@ -57,7 +58,9 @@ function stepStatusText(step: TeamFlowStepState): string {
     case "failed":
       return `needs attention${step.detail ? ` (${step.detail})` : ""}`;
     case "unknown":
-      return "unknown: Ghostex cannot see this step yet";
+      return step.optional
+        ? `optional${step.detail ? ` (${step.detail})` : ""}`
+        : "unknown: Ghostex cannot see this step yet";
     default:
       return step.detail || "not yet";
   }

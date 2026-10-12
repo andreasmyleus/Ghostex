@@ -640,7 +640,8 @@ function details(item: WorkItem): WorkItemDetails {
               },
               {
                 id: "working-thread",
-                label: "Working thread",
+                label: "Slack thread",
+                optional: true,
                 status: "done",
                 detail: "#kevin-the-bot",
                 url: "https://shortpoint.slack.com/archives/C0KEVIN/p1791500100000100",
@@ -653,18 +654,18 @@ function details(item: WorkItem): WorkItemDetails {
               },
               { id: "pr", label: "PR", status: "done", detail: "#6538" },
               {
+                id: "video",
+                label: "Video",
+                status: "unknown",
+                detail: "not recorded",
+              },
+              {
                 id: "review-comments",
                 label: "Review comments",
                 status: "done",
                 detail: "0 open",
               },
               { id: "ci", label: "CI", status: "done", detail: "4 / 4" },
-              {
-                id: "video",
-                label: "Video",
-                status: "unknown",
-                detail: "not recorded",
-              },
               {
                 id: "qc-package",
                 label: "QC package",
@@ -687,7 +688,8 @@ function details(item: WorkItem): WorkItemDetails {
               },
               {
                 id: "working-thread",
-                label: "Working thread",
+                label: "Slack thread",
+                optional: true,
                 status: "unknown",
                 detail: "not connected",
               },
@@ -700,8 +702,14 @@ function details(item: WorkItem): WorkItemDetails {
               {
                 id: "pr",
                 label: "PR",
-                status: "pending",
+                status: item.sessions.length ? "current" : "pending",
                 detail: "not opened",
+              },
+              {
+                id: "video",
+                label: "Video",
+                status: "unknown",
+                detail: "not recorded",
               },
               {
                 id: "review-comments",
@@ -710,12 +718,6 @@ function details(item: WorkItem): WorkItemDetails {
                 detail: "after PR",
               },
               { id: "ci", label: "CI", status: "pending", detail: "after PR" },
-              {
-                id: "video",
-                label: "Video",
-                status: "unknown",
-                detail: "not recorded",
-              },
               {
                 id: "qc-package",
                 label: "QC package",

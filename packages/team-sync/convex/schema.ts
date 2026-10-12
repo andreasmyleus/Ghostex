@@ -205,6 +205,7 @@ export default defineSchema({
       v.object({
         id: v.string(),
         label: v.string(),
+        optional: v.optional(v.boolean()),
         rule: v.object({
           kind: v.string(),
           label: v.optional(v.string()),
