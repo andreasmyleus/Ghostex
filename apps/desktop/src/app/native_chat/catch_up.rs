@@ -130,14 +130,23 @@ impl NativeChatView {
                     .into_any_element(),
             );
         } else {
-            body.push(self.side_answer_body(
-                "catch-up".to_string(),
-                text(catch_up, "markdown"),
-                &catch_up["references"],
-                Some(window.viewport_size().height.as_f32() * 0.55),
-                p,
-                cx,
-            ));
+            // The whole catch-up shows at once (no "Show all" cap: it is short and read in one go);
+            // a tall one scrolls inside the card so the transcript stays in view.
+            body.push(
+                div()
+                    .id("catch-up-summary")
+                    .min_w_0()
+                    .max_h(px(window.viewport_size().height.as_f32() * 0.55))
+                    .overflow_y_scroll()
+                    .child(self.markdown(
+                        "catch-up-summary".to_string(),
+                        text(catch_up, "markdown"),
+                        &catch_up["references"],
+                        p,
+                        cx,
+                    ))
+                    .into_any_element(),
+            );
             if let Some(caption) = catch_up["caption"].as_str() {
                 body.push(
                     div()

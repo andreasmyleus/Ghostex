@@ -153,7 +153,7 @@ impl NativeChatView {
     /// its full height; the card above the composer passes a `limit` past which it scrolls, so a
     /// long answer cannot push the transcript out of view, while the transcript row scrolls with
     /// the transcript.
-    pub(super) fn side_answer_body(
+    fn side_answer_body(
         &self,
         key: String,
         markdown: String,

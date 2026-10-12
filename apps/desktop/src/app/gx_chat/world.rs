@@ -488,7 +488,9 @@ fn settings_moved(world: &World, key: &str) -> Option<Event> {
     let settings = boot::chat_settings();
     (settings.hide_account_emails != state.core.hide_account_emails
         || settings.title != state.core.title
-        || settings.catch_up != Some(state.core.catch_up_enabled))
+        || settings
+            .catch_up
+            .is_some_and(|catch_up| catch_up != state.core.catch_up_enabled))
     .then(|| Event::SettingsChanged(Box::new(settings)))
 }
 
