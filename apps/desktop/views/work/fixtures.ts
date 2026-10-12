@@ -13,6 +13,11 @@ import type {
   WorkReady,
   WorkTeamDetails,
 } from "./types";
+import {
+  MARKDOWN_COMMENT,
+  MARKDOWN_DESCRIPTION,
+  MARKDOWN_PR_BODY,
+} from "./fixtures-markdown";
 
 const minutesAgo = (minutes: number) =>
   new Date(Date.now() - minutes * 60_000).toISOString();
@@ -516,7 +521,9 @@ function details(item: WorkItem): WorkItemDetails {
           description:
             item.id === "SPX-1234"
               ? "Live mode disappears as soon as a Table element is on the page. Happens in the sandbox and on 9.199.\n\nSteps: add a Table, switch to Live mode, refresh.\n\nRepro: https://www.loom.com/share/5bbdeb480ba84e65b1b3de8c190e2003"
-              : "People want to copy a share link without opening the share dialog. Add “Copy link” to the share menu, and show a short “Link copied” toast.",
+              : item.id === "SPX-1245"
+                ? MARKDOWN_DESCRIPTION
+                : "People want to copy a share link without opening the share dialog. Add “Copy link” to the share menu, and show a short “Link copied” toast.",
           stateName: item.status.name,
           stateType: item.status.group === "todo" ? "unstarted" : "started",
           cycle: item.cycle,
@@ -532,8 +539,17 @@ function details(item: WorkItem): WorkItemDetails {
               body: "It comes back if you switch tabs.",
               createdAt: minutesAgo(200),
             },
+            ...(item.id === "SPX-1245"
+              ? [
+                  {
+                    author: "Kevin",
+                    body: MARKDOWN_COMMENT,
+                    createdAt: minutesAgo(100),
+                  },
+                ]
+              : []),
           ],
-          commentCount: 2,
+          commentCount: item.id === "SPX-1245" ? 3 : 2,
           attachments: [],
         }
       : null,
@@ -560,6 +576,7 @@ function details(item: WorkItem): WorkItemDetails {
             item.pullRequest.url ??
             `https://github.com/shortpoint/shortpoint/pull/${item.pullRequest.number}`,
           state: item.pullRequest.state,
+          body: item.id === "SPX-1234" ? MARKDOWN_PR_BODY : "",
           headBranch: item.branchName ?? null,
           reviewDecision:
             item.pullRequest.checks === "passing" ? "APPROVED" : null,

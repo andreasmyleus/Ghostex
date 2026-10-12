@@ -102,11 +102,13 @@ owner's picture, then the repo, the PR, and the Linear project (or GitHub
 Project) last. Click a row's ticket ID, PR number, repo name or project name to
 open that page (the ticket, the PR, the repo on GitHub, the project) in the
 app's browser. Click anywhere else on a row, or a ticket or PR chip on a session card, to see its
-details: the ticket and its latest comments, the PR with each check by name and
-its reviews, videos (Loom, YouTube and video files play right there), the
+details: the ticket and its latest comments, the PR with each check by name,
+its reviews and its description, videos (Loom, YouTube and video files play right there), the
 sessions linked to it, and where it is in your team's flow (Ticket, Slack
-thread, Session, PR, Video, Review comments, CI, QC package, Validation). Steps
-Ghostex cannot see, such as the video OK, show a question mark instead of a tick,
+thread, Session, PR, Video, Review comments, CI, QC package, Validation).
+Descriptions, comments and Slack messages show formatted the way Linear, GitHub
+and Slack show them (headings, bold, lists, checklists, tables, code and links).
+Steps Ghostex cannot see, such as the video OK, show a question mark instead of a tick,
 and so does an optional step that isn't done yet (Slack thread is optional, since
 not every ticket has one); the next step never waits for an optional one.
 In a Work workspace connected to its team (see the team backend under Git and
