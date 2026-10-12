@@ -186,5 +186,9 @@ Asking the user:
 - When the question is about something to look at (UI mockups, layouts, a visual comparison), ask
   it in a page instead (`ghostex show`, the ghostex-visuals skill), with each question right under
   the mockups it asks about.
+- Number every question with a tag (Q1, Q2, …) and keep counting up across the whole
+  conversation: a later form, a page or a question asked again continues from the highest number
+  used so far and never restarts at Q1, so a number always means one question. Renumber a
+  thread's questions into your count when you bring them to the user.
 - The answers come back as your next message; end your turn after asking. Do not send a question
   the user already answered again unless they ask for it.

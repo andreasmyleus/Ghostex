@@ -19,6 +19,9 @@ use crate::paths::GxserverPaths;
 /// User: "i should never have to go into a inner thread to see questions or mockups or whatever ... I should only talk to u and you bring what needs my attentino from the threads under you since you're the orchestrator". The playbook's "Everything the user sees comes through you" section has the orchestrator ask a thread's questions and republish its pages from its own session (so answers come back to it), and the thread brief (brief.rs `thread_brief`) tells threads not to ask the user or publish pages themselves.
 ///
 /// CDXC:Coordinators 2026-10-12 DECISION:
+/// User, on question numbers restarting at Q1 in a new form: "save this in the memory for this thread and for the orchestrator skill/instructinos please so users get this too!" The playbook's "Asking the user" section has the orchestrator tag every question Q1, Q2, … and keep counting across the whole conversation (forms, pages, questions asked again, a thread's questions brought to the user), never restarting, so a number always means one question.
+///
+/// CDXC:Coordinators 2026-10-12 DECISION:
 /// User: "when you say 'In progress' but don't share all of the actual in progress tasks this isn't nice because it makes me think some tasks aren't running when they actually are running", and for the threads started this turn: "let's call it 'Kicked off'". Then (2026-10-12), on a thread listed under both: "let's not share same update in 2 places pls". The playbook's "Talking to the user" section has a handover list the threads started this turn under 🛫 Kicked off and every other thread still working (from `ghostex orchestrator status`) under 🔄 In progress, so each running thread appears exactly once. Supersedes the 2026-10-11 wording that listed every working thread under In progress.
 ///
 /// CDXC:Coordinators 2026-10-10 DECISION:
