@@ -98,22 +98,6 @@ Open plans, HTML prototypes, and Excalidraw diagrams next to your agent, select 
 
 <br/>
 
-### Kanban board on Beads
-
-Dump your thoughts on the board, then let an agent pick up the tickets. Runs on the [Beads](https://github.com/gastownhall/beads) `bd` CLI, so agents and humans share one backlog.
-
-<br/>
-
-</td>
-<td width="50%">
-  <img src="media/readme/gx-kanban-board.jpg" alt="The Kanban board with Backlog, Todo, In Progress and Test lanes" width="100%" />
-</td>
-</tr>
-<tr>
-<td width="50%" valign="middle">
-
-<br/>
-
 ### Find any past session
 
 Fuzzy search every prompt you ever sent, across all your agents, and press Enter to resume the conversation. Star favourites and filter by agent or project. Also available as `gx f` for command-line fans.
@@ -141,11 +125,58 @@ Agents can open sessions, send prompts, and read replies from other agents throu
   <img src="media/readme/gx-threads.png" alt="An orchestrator with its threads in the sidebar and the Threads panel" width="100%" />
 </td>
 </tr>
+<tr>
+<td width="50%" valign="middle">
+
+<br/>
+
+### Charts and tables in the chat
+
+Ask for `$ghostex-visuals` and agents answer with charts, tables, and stat tiles drawn right in the chat, or publish an HTML page that opens as a card. Same look on desktop, web, and phone.
+
+<br/>
+
+</td>
+<td width="50%">
+  <img src="media/readme/gx-visuals.png" alt="A chat reply with stat tiles, a bar chart and a table of failing tests" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+<br/>
+
+### Queue your next prompts
+
+Keep typing while the agent works. Press Tab to queue a prompt and it waits above the input until the agent is free; drag to reorder, or press play on a message you already sent to interrupt and deliver it right away.
+
+<br/>
+
+</td>
+<td width="50%">
+  <img src="media/readme/gx-queue.png" alt="An agent at work with two queued prompts waiting above the chat input" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+<br/>
+
+### Answer your agents in one click
+
+When an agent needs your decisions, it asks them as a form right in the chat: every question at once, choices you click, a note box for each, and one Send. It works the same on desktop, web, and your phone.
+
+<br/>
+
+</td>
+<td width="50%">
+  <img src="media/readme/gx-questions.png" alt="A question form in the chat with clickable choices, Recommended badges and a Send answers button" width="100%" />
+</td>
+</tr>
 </table>
 
 ### Also in the box
 
-- **Docs with annotations**: open Markdown, HTML prototypes, and Excalidraw diagrams next to your agent and leave notes on anything.
 - **Rich prompt editor**: press Ctrl+G to edit any prompt in a full editor.
 - **Built-in IDE**: a VS Code editor that loads on demand and sleeps when you are not using it.
 - **Remote machines**: connect another computer with an Easy Connect code or SSH and it shows up in the sidebar.
