@@ -14,6 +14,9 @@ const LINEAR_TIMEOUT: Duration = Duration::from_secs(10);
 /// Issue status changes on human timescales; two minutes keeps cards fresh without hammering
 /// Linear's rate limit.
 const LINEAR_ISSUE_TTL: Duration = Duration::from_secs(120);
+/// An issue a session links while it has no PR yet is re-read on every 60s pass instead: Linear's
+/// GitHub integration attaches a new PR within seconds, and the card should show it as soon.
+const LINEAR_ISSUE_AWAITING_PR_TTL: Duration = Duration::from_secs(45);
 const LINEAR_TEAM_KEYS_TTL: Duration = Duration::from_secs(60 * 60);
 /// After a failed call (bad key, no network) a key is left alone for this long.
 const LINEAR_FAILURE_BACKOFF: Duration = Duration::from_secs(5 * 60);
@@ -95,6 +98,34 @@ pub(crate) fn cached_linear_issue(fingerprint: u64, identifier: &str) -> Option<
         .issues
         .get(&(fingerprint, identifier.to_string()))
         .and_then(|cached| cached.value.clone())
+}
+
+/// Adds PR URLs a fresher read of the issue found (the Work details) to the cached issue, so a
+/// session card linking it shows the PR without waiting for the issue's TTL. Returns whether the
+/// cached issue gained a URL; an issue not cached yet is left to the background pass.
+pub(crate) fn remember_linear_issue_pull_requests(
+    fingerprint: u64,
+    identifier: &str,
+    urls: &[String],
+) -> bool {
+    let Ok(mut cache) = cache().lock() else {
+        return false;
+    };
+    let Some(Some(issue)) = cache
+        .issues
+        .get_mut(&(fingerprint, identifier.to_string()))
+        .map(|cached| cached.value.as_mut())
+    else {
+        return false;
+    };
+    let mut changed = false;
+    for url in urls {
+        if !issue.pull_request_urls.contains(url) {
+            issue.pull_request_urls.push(url.clone());
+            changed = true;
+        }
+    }
+    changed
 }
 
 fn in_backoff(cache: &LinearCache, fingerprint: u64) -> bool {
@@ -215,10 +246,11 @@ pub(crate) fn refresh_linear_team_keys(api_key: &str) -> bool {
 }
 
 /// Fetches the stale ones among `identifiers`, at most `request_budget` requests. Returns how
-/// many requests were sent.
+/// many requests were sent. The ones in `awaiting_pull_request` go stale sooner.
 pub(crate) fn refresh_linear_issues(
     api_key: &str,
     identifiers: &[String],
+    awaiting_pull_request: &[String],
     request_budget: usize,
 ) -> usize {
     let fingerprint = linear_key_fingerprint(api_key);
@@ -232,10 +264,15 @@ pub(crate) fn refresh_linear_issues(
         let mut stale: Vec<String> = identifiers
             .iter()
             .filter(|identifier| {
+                let ttl = if awaiting_pull_request.contains(identifier) {
+                    LINEAR_ISSUE_AWAITING_PR_TTL
+                } else {
+                    LINEAR_ISSUE_TTL
+                };
                 cache
                     .issues
                     .get(&(fingerprint, (*identifier).clone()))
-                    .is_none_or(|cached| cached.fetched_at.elapsed() >= LINEAR_ISSUE_TTL)
+                    .is_none_or(|cached| cached.fetched_at.elapsed() >= ttl)
             })
             .cloned()
             .collect();

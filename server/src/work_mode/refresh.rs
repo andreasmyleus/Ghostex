@@ -84,12 +84,24 @@ pub(crate) fn refresh_work_caches(paths: &GxserverPaths, projects: &[Value], ses
     };
 
     let mut wanted_issues: HashMap<u64, Vec<String>> = HashMap::new();
+    // Issues of sessions with no PR yet, re-read sooner so the ticket's new PR shows up quickly.
+    let mut awaiting_pull_request: HashMap<u64, Vec<String>> = HashMap::new();
     for targets in session_targets(sessions) {
+        // The repo picks the ticket's PR in the session's own repo (presentation.rs).
+        if let Some(cwd) = targets.cwd.as_deref() {
+            refresh_work_repo(cwd);
+        }
         if let Some(key) = targets.linear_key {
             wanted_issues
                 .entry(key)
                 .or_default()
                 .extend(targets.linear_issues.iter().cloned());
+            if targets.pull_request.is_none() {
+                awaiting_pull_request
+                    .entry(key)
+                    .or_default()
+                    .extend(targets.linear_issues.iter().cloned());
+            }
         }
     }
     for (fingerprint, identifiers) in &wanted_issues {
@@ -100,6 +112,10 @@ pub(crate) fn refresh_work_caches(paths: &GxserverPaths, projects: &[Value], ses
             linear_budget = linear_budget.saturating_sub(refresh_linear_issues(
                 key,
                 identifiers,
+                awaiting_pull_request
+                    .get(fingerprint)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default(),
                 linear_budget,
             ));
         }

@@ -13,9 +13,12 @@ use crate::team_sync::{
 };
 use crate::work_mode::{
     build_work_list, default_team_flow_steps, load_work_projects, read_work_item,
-    refresh_work_feeds, resolve_team_flow, store_team_flow, team_flow_rule_catalog,
-    validate_team_flow_steps, work_feed_plan, work_feeds_stale, TeamFlowScope, WorkItemRef,
+    refresh_work_feeds, resolve_team_flow, share_work_item_with_sidebar, store_team_flow,
+    team_flow_rule_catalog, validate_team_flow_steps, work_feed_plan, work_feeds_stale,
+    TeamFlowScope, WorkItemRef,
 };
+
+use super::super::work_mode_sync::spawn_work_mode_refresh;
 
 use super::*;
 
@@ -173,6 +176,7 @@ async fn read_work_item_route(
     let item_ref = WorkItemRef::from_params(&params).ok_or_else(|| {
         DomainStateError::bad_request("Pass linearIssue, githubIssue or pullRequest.")
     })?;
+    let refresh_state = state.clone();
     let task = tokio::task::spawn_blocking(move || {
         let project_id = params
             .get("projectId")
@@ -192,17 +196,26 @@ async fn read_work_item_route(
             .unwrap_or(false);
         let projects = load_work_projects(&state, wanted.as_deref())?;
         let plan = work_feed_plan(&projects);
-        Ok::<_, DomainStateError>(read_work_item(
+        let details = read_work_item(
             &state.paths,
             &projects,
             &plan,
             project_id.as_deref(),
             &item_ref,
             force,
-        ))
+        );
+        let shared = share_work_item_with_sidebar(&projects, &details);
+        Ok::<_, DomainStateError>((details, shared))
     });
     match tokio::time::timeout(WORK_ITEM_WAIT, task).await {
-        Ok(result) => result.map_err(task_error)?,
+        Ok(result) => {
+            let (details, shared) = result.map_err(task_error)??;
+            // The cards linking this ticket catch up with what the details just showed.
+            if shared {
+                spawn_work_mode_refresh(&refresh_state);
+            }
+            Ok(details)
+        }
         Err(_) => Err(DomainStateError::bad_request(
             "Linear or GitHub took too long to answer. Try again.",
         )),
