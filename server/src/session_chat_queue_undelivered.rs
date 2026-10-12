@@ -34,6 +34,17 @@ pub(crate) fn startup_send_retry_ms(waited_ms: i64) -> i64 {
     }
 }
 
+/// How long the scheduler waits between checks that a session holding a startup send is awake
+/// (CDXC:SessionChat 2026-10-12 in session_chat_send_wake.rs). The first check also waits, so a
+/// wake a client or the send itself just started is not raced.
+fn startup_send_wake_check_ms(waited_ms: i64) -> i64 {
+    match waited_ms {
+        ..120_000 => 10_000,
+        ..600_000 => 30_000,
+        _ => 60_000,
+    }
+}
+
 struct ComposerHold {
     prompt_id: String,
     since: DateTime<Utc>,
@@ -48,6 +59,8 @@ pub(crate) struct SessionChatQueueComposerHolds {
     /// When the scheduler next re-reads the screen of a session whose startup send waits for its
     /// input box, so a long wait does not capture the screen every second.
     screen_reads: Arc<Mutex<HashMap<String, ComposerHold>>>,
+    /// When the scheduler next checks that a session holding a startup send is awake.
+    wake_checks: Arc<Mutex<HashMap<String, ComposerHold>>>,
 }
 
 impl SessionChatQueueComposerHolds {
@@ -109,12 +122,39 @@ impl SessionChatQueueComposerHolds {
         due
     }
 
+    /// Whether the scheduler should check now that a session holding the startup send `prompt_id`
+    /// is awake; answering yes schedules the next check.
+    pub(crate) fn wake_check_due(&self, key: &str, prompt_id: &str, now: DateTime<Utc>) -> bool {
+        let Ok(mut checks) = self.wake_checks.lock() else {
+            return false;
+        };
+        let check = checks.get(key).filter(|check| check.prompt_id == prompt_id);
+        let since = check.map_or(now, |check| check.since);
+        if check.is_some_and(|check| now < check.retry_at) {
+            return false;
+        }
+        let first = check.is_none();
+        let waited_ms = now.signed_duration_since(since).num_milliseconds();
+        checks.insert(
+            key.to_string(),
+            ComposerHold {
+                prompt_id: prompt_id.to_string(),
+                since,
+                retry_at: now + Duration::milliseconds(startup_send_wake_check_ms(waited_ms)),
+            },
+        );
+        !first
+    }
+
     pub(crate) fn clear(&self, key: &str) {
         if let Ok(mut holds) = self.holds.lock() {
             holds.remove(key);
         }
         if let Ok(mut reads) = self.screen_reads.lock() {
             reads.remove(key);
+        }
+        if let Ok(mut checks) = self.wake_checks.lock() {
+            checks.remove(key);
         }
     }
 
@@ -124,6 +164,9 @@ impl SessionChatQueueComposerHolds {
         }
         if let Ok(mut reads) = self.screen_reads.lock() {
             reads.retain(|key, _| live(key));
+        }
+        if let Ok(mut checks) = self.wake_checks.lock() {
+            checks.retain(|key, _| live(key));
         }
     }
 }

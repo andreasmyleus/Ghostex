@@ -36,7 +36,7 @@ use crate::{
     session_chat_queue_runtime::{
         session_chat_queue_compacting_refresher, session_chat_queue_composer_reader,
         session_chat_queue_notice_reader, session_chat_queue_publisher_factory,
-        session_chat_queue_sender_factory,
+        session_chat_queue_sender_factory, session_chat_queue_waker,
     },
     storage::{
         create_gxserver_migration_status, initialize_gxserver_storage, open_gxserver_database,
@@ -317,6 +317,7 @@ pub async fn run_gxserver_foreground(
         session_chat_queue_notice_reader(&state),
         session_chat_queue_composer_reader(&state),
         session_chat_queue_compacting_refresher(&state),
+        session_chat_queue_waker(&state),
     )
     .start(shutdown_tx.subscribe());
     /*

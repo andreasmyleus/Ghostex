@@ -94,6 +94,20 @@ pub(crate) fn session_chat_queue_composer_reader(
     })
 }
 
+pub(crate) fn session_chat_queue_waker(
+    state: &Arc<AppState>,
+) -> crate::session_chat_queue_runtime::SessionChatQueueWaker {
+    let state = state.clone();
+    Arc::new(move |project_id: &str, session_id: &str, prompt_id: &str| {
+        crate::session_chat_send_wake::wake_session_holding_startup_send(
+            &state,
+            project_id,
+            session_id,
+            Some(prompt_id.to_string()),
+        );
+    })
+}
+
 pub(crate) fn session_chat_queue_compacting_refresher(
     state: &Arc<AppState>,
 ) -> SessionChatQueueCompactingRefresher {

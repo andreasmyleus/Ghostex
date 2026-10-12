@@ -1,5 +1,8 @@
 //! A chat message sent to a session whose agent is asleep or still starting.
 
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
+
 use axum::http::StatusCode;
 use serde_json::{json, Map, Value};
 
@@ -26,9 +29,20 @@ pub(crate) async fn starting_session_refusal(
     target: &SessionChatSendTarget,
     detection: &SessionChatTerminalDetection,
 ) -> Option<DomainStateError> {
+    // No screen could be read: find out whether the daemon is gone before waking anything. A held
+    // message too old to wake for is marked Not sent first, so this wake never types it.
+    let missing = !detection.captured
+        && provider_missing(state, &target.project_id, &target.session_id).await;
+    if missing {
+        retire_stale_startup_sends(state, &target.project_id, &target.session_id);
+    }
     // A message already held for this session goes first; typing the next one now would put it
-    // ahead of the one the user sent earlier.
+    // ahead of the one the user sent earlier. A session that is not up (an earlier wake that did
+    // not stick) is woken again by this send.
     if startup_send_pending(state, target) {
+        if missing {
+            wake_session_holding_startup_send(state, &target.project_id, &target.session_id, None);
+        }
         return Some(starting(
             "An earlier message is waiting for the agent to start.",
         ));
@@ -51,44 +65,238 @@ pub(crate) async fn starting_session_refusal(
         );
         return Some(starting("The agent is still starting."));
     }
-    // No screen could be read: find out whether the daemon is gone before waking anything.
-    if !provider_missing(state, target).await {
+    if !missing {
         return None;
     }
-    let body = json!({
-        "params": { "projectId": target.project_id, "sessionId": target.session_id }
-    });
-    let woke = crate::server::handle_zmx_lifecycle_http(
+    let outcome = wake_session(state, &target.project_id, &target.session_id).await;
+    record_wake(
+        state,
+        &target.project_id,
+        &target.session_id,
+        &outcome,
+        "The session's zmx daemon was not running when the message was sent.",
+    );
+    // A wake that failed for a reason time can fix holds the message like a starting agent: the
+    // queue scheduler wakes the session again until it is up (`wake_session_holding_startup_send`).
+    Some(match outcome {
+        WakeOutcome::Blocked(reason) => DomainStateError {
+            code: "dependencyUnavailable",
+            message: format!(
+                "The session is asleep and cannot be woken ({reason}), so nothing was sent."
+            ),
+        },
+        WakeOutcome::Woke => starting("The session was asleep and is starting now."),
+        WakeOutcome::AlreadyWaking | WakeOutcome::Failed(_) => {
+            starting("The session is asleep; Ghostex keeps waking it until it starts.")
+        }
+    })
+}
+
+/// What one `/api/wakeSession` from this module came to.
+enum WakeOutcome {
+    Woke,
+    /// Another wake of the same session from this module is still running.
+    AlreadyWaking,
+    /// The session cannot be restored until something changes (its folder is gone).
+    Blocked(String),
+    /// Anything else; worth trying again later.
+    Failed(String),
+}
+
+/// Sessions this module is waking right now, so the send, the queue scheduler's retry and a
+/// queued command never start the same session's daemon twice at once.
+static WAKING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+async fn wake_session(state: &AppState, project_id: &str, session_id: &str) -> WakeOutcome {
+    let key = format!("{project_id}\u{1f}{session_id}");
+    if !WAKING
+        .lock()
+        .map(|mut waking| waking.insert(key.clone()))
+        .unwrap_or(false)
+    {
+        return WakeOutcome::AlreadyWaking;
+    }
+    let body = json!({ "params": { "projectId": project_id, "sessionId": session_id } });
+    let routed = crate::server::handle_zmx_lifecycle_http(
         state,
         "/api/wakeSession".to_string(),
         uuid::Uuid::new_v4().to_string(),
         &body,
     )
-    .await
-    .response
-    .status()
-    .is_success();
+    .await;
+    let success = routed.response.status().is_success();
+    let bytes = axum::body::to_bytes(routed.response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_default();
+    if let Ok(mut waking) = WAKING.lock() {
+        waking.remove(&key);
+    }
+    let reply: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    if !success {
+        let message = reply
+            .pointer("/error/message")
+            .or_else(|| reply.get("message"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| String::from_utf8_lossy(&bytes).chars().take(300).collect());
+        return WakeOutcome::Failed(message);
+    }
+    match reply.pointer("/result/attach/restoreBlocked") {
+        Some(blocked) => WakeOutcome::Blocked(match blocked.get("cwd").and_then(Value::as_str) {
+            Some(cwd) => format!("its folder {cwd} no longer exists"),
+            None => "its folder no longer exists".to_string(),
+        }),
+        None => WakeOutcome::Woke,
+    }
+}
+
+fn record_wake(
+    state: &AppState,
+    project_id: &str,
+    session_id: &str,
+    outcome: &WakeOutcome,
+    reason: &str,
+) {
+    let (event, detail) = match outcome {
+        WakeOutcome::Woke => ("sessionChatSendWokeSession", None),
+        WakeOutcome::AlreadyWaking => return,
+        WakeOutcome::Blocked(why) | WakeOutcome::Failed(why) => {
+            ("sessionChatSendWakeFailed", Some(why.as_str()))
+        }
+    };
+    let reason = match detail {
+        Some(detail) => format!("{reason} Wake failed: {detail}"),
+        None => reason.to_string(),
+    };
     crate::session_chat_send_diagnostics::record_send_recovery(
         state,
-        if woke {
-            "sessionChatSendWokeSession"
-        } else {
-            "sessionChatSendWakeFailed"
-        },
-        &target.project_id,
-        &target.session_id,
-        "The session's zmx daemon was not running when the message was sent.",
+        event,
+        project_id,
+        session_id,
+        &reason,
         &[],
     );
-    Some(if woke {
-        starting("The session was asleep and is starting now.")
-    } else {
-        DomainStateError {
-            code: "dependencyUnavailable",
-            message: "The session is asleep and could not be woken, so nothing was sent."
-                .to_string(),
+}
+
+/// CDXC:SessionChat 2026-10-12 WHY:
+/// A message sent to a sleeping session is held as a startup send and the send wakes the session once (2026-09-25 decision above), but nothing checked afterwards that it stayed up: on 2026-10-12 an orchestrator's message to a sleeping Windows thread was held, that one wake did not leave a running agent behind, the queue scheduler skipped the row for as long as the session was not running, and the next send only queued behind it, so the message waited over an hour until someone ran `ghostex wake` by hand. Now, while a session holds a startup send and its daemon is gone, the queue scheduler calls this on a backoff (every 10 s, settling at every 60 s, for as long as the row waits) and it wakes the session the way `ghostex wake` does; a session whose daemon is up is never woken. A wake that cannot succeed until something changes (the session's folder is gone) marks the row Not sent with that reason instead, which tells an agent sender through the queue's undelivered report.
+/// SEE-ALSO: session_chat_queue_runtime/scheduler.rs (when it is called); server/src/ghostex_cli/coordinator/threads.rs (`orchestrator reopen` wakes a sleeping thread too).
+pub(crate) fn wake_session_holding_startup_send(
+    state: &AppState,
+    project_id: &str,
+    session_id: &str,
+    prompt_id: Option<String>,
+) {
+    let state = state.clone();
+    let project_id = project_id.to_string();
+    let session_id = session_id.to_string();
+    tokio::spawn(async move {
+        if !provider_missing(&state, &project_id, &session_id).await {
+            return;
         }
+        // The scheduler's call is for a held message: once the stale ones are retired, wake only
+        // if one is left. The send's own call (no prompt id) is for the message it is sending.
+        retire_stale_startup_sends(&state, &project_id, &session_id);
+        if prompt_id.is_some() && !startup_send_held(&state, &project_id, &session_id) {
+            return;
+        }
+        let outcome = wake_session(&state, &project_id, &session_id).await;
+        record_wake(
+            &state,
+            &project_id,
+            &session_id,
+            &outcome,
+            "A message was held for the session while its zmx daemon was not running.",
+        );
+        let (WakeOutcome::Blocked(reason), Some(prompt_id)) = (outcome, prompt_id) else {
+            return;
+        };
+        fail_held_message(
+            &state,
+            &project_id,
+            &session_id,
+            &prompt_id,
+            &format!("The session cannot be woken: {reason}."),
+        );
+    });
+}
+
+/// CDXC:SessionChat 2026-10-12 WHY:
+/// A held message wakes its session only while it is younger than this. On the day the wake retry above was added, the user's machine held 6 messages on closed sessions, 58 to 666 hours old (test pings, briefs to threads long since finished), and the first gxserver start would have woken all six agents and typed each stale message into them. A day still covers a machine that was off overnight; an older message is marked Not sent with the reason below, which tells an agent sender through the queue's undelivered report, and the user can still Retry it from the chat. This only gates waking: a held message in a session that is already up keeps waiting for its input box (2026-10-11 decision above).
+const STARTUP_SEND_WAKE_MAX_AGE_HOURS: i64 = 24;
+
+/// Marks Not sent every held startup send of this session too old to wake for.
+fn retire_stale_startup_sends(state: &AppState, project_id: &str, session_id: &str) {
+    let Ok(db) = open_gxserver_database(&state.paths) else {
+        return;
+    };
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(STARTUP_SEND_WAKE_MAX_AGE_HOURS);
+    let stale: Vec<String> = crate::session_chat_queue::read_session_chat_queue_snapshot_with(
+        &db, project_id, session_id,
+    )
+    .queue
+    .into_iter()
+    .filter(|prompt| {
+        prompt.startup_send
+            && prompt.state == crate::session_chat_queue::SESSION_CHAT_QUEUE_STATE_QUEUED
+            && chrono::DateTime::parse_from_rfc3339(&prompt.created_at)
+                .is_ok_and(|created| created < cutoff)
     })
+    .map(|prompt| prompt.id)
+    .collect();
+    drop(db);
+    for prompt_id in stale {
+        fail_held_message(
+            state,
+            project_id,
+            session_id,
+            &prompt_id,
+            &format!(
+                "It waited more than {STARTUP_SEND_WAKE_MAX_AGE_HOURS} hours for the session to wake, so Ghostex stopped waking the session for it. Send it again if it is still needed."
+            ),
+        );
+    }
+}
+
+/// Marks a held message Not sent with `reason` and tells its sender when another agent sent it.
+fn fail_held_message(
+    state: &AppState,
+    project_id: &str,
+    session_id: &str,
+    prompt_id: &str,
+    reason: &str,
+) {
+    let Ok(snapshot) = crate::session_chat_queue::fail_session_chat_queued_prompt(
+        &state.paths,
+        project_id,
+        session_id,
+        prompt_id,
+        reason,
+    ) else {
+        return;
+    };
+    crate::session_chat_queue_runtime::broadcast_session_chat_queue_state(
+        state, project_id, session_id,
+    );
+    let Some(prompt) = snapshot.queue.iter().find(|prompt| prompt.id == prompt_id) else {
+        return;
+    };
+    if let Some((sender_project, sender_session)) =
+        crate::session_chat_queue_undelivered::notify_sender_of_undelivered_agent_message(
+            &state.paths,
+            state.metadata.server_id.as_str(),
+            project_id,
+            session_id,
+            &prompt.text,
+            reason,
+        )
+    {
+        crate::session_chat_queue_runtime::broadcast_session_chat_queue_state(
+            state,
+            &sender_project,
+            &sender_session,
+        );
+    }
 }
 
 /// CDXC:SessionChat 2026-10-11 WHY:
@@ -106,11 +314,13 @@ pub(crate) fn holds_until_agent_takes_input(error: &DomainStateError) -> bool {
 }
 
 fn startup_send_pending(state: &AppState, target: &SessionChatSendTarget) -> bool {
+    startup_send_held(state, &target.project_id, &target.session_id)
+}
+
+fn startup_send_held(state: &AppState, project_id: &str, session_id: &str) -> bool {
     open_gxserver_database(&state.paths).is_ok_and(|db| {
         crate::session_chat_queue::read_session_chat_queue_snapshot_with(
-            &db,
-            &target.project_id,
-            &target.session_id,
+            &db, project_id, session_id,
         )
         .queue
         .iter()
@@ -125,12 +335,12 @@ fn starting(message: &str) -> DomainStateError {
     }
 }
 
-async fn provider_missing(state: &AppState, target: &SessionChatSendTarget) -> bool {
+async fn provider_missing(state: &AppState, project_id: &str, session_id: &str) -> bool {
     let paths = state.paths.clone();
     let server_id = state.metadata.server_id.clone();
     let lifecycle = crate::zmx::LifecycleParams {
-        project_id: target.project_id.clone(),
-        session_id: target.session_id.clone(),
+        project_id: project_id.to_string(),
+        session_id: session_id.to_string(),
     };
     tokio::task::spawn_blocking(move || {
         let db = open_gxserver_database(&paths).ok()?;
@@ -171,28 +381,13 @@ pub(crate) fn queue_startup_command_and_wake(
     let project_id = project_id.to_string();
     let session_id = session_id.to_string();
     tokio::spawn(async move {
-        let body = json!({ "params": { "projectId": project_id, "sessionId": session_id } });
-        let woke = crate::server::handle_zmx_lifecycle_http(
+        let outcome = wake_session(&state, &project_id, &session_id).await;
+        record_wake(
             &state,
-            "/api/wakeSession".to_string(),
-            uuid::Uuid::new_v4().to_string(),
-            &body,
-        )
-        .await
-        .response
-        .status()
-        .is_success();
-        crate::session_chat_send_diagnostics::record_send_recovery(
-            &state,
-            if woke {
-                "sessionChatSendWokeSession"
-            } else {
-                "sessionChatSendWakeFailed"
-            },
             &project_id,
             &session_id,
+            &outcome,
             "The session's zmx daemon was not running when a command was queued for it.",
-            &[],
         );
     });
     Ok(())
@@ -209,33 +404,16 @@ pub(crate) fn start_draft_agent_if_missing(state: &AppState, target: &SessionCha
         session: Value::Null,
     };
     tokio::spawn(async move {
-        if !provider_missing(&state, &target).await {
+        if !provider_missing(&state, &target.project_id, &target.session_id).await {
             return;
         }
-        let body = json!({
-            "params": { "projectId": target.project_id, "sessionId": target.session_id }
-        });
-        let woke = crate::server::handle_zmx_lifecycle_http(
+        let outcome = wake_session(&state, &target.project_id, &target.session_id).await;
+        record_wake(
             &state,
-            "/api/wakeSession".to_string(),
-            uuid::Uuid::new_v4().to_string(),
-            &body,
-        )
-        .await
-        .response
-        .status()
-        .is_success();
-        crate::session_chat_send_diagnostics::record_send_recovery(
-            &state,
-            if woke {
-                "sessionChatSendWokeSession"
-            } else {
-                "sessionChatSendWakeFailed"
-            },
             &target.project_id,
             &target.session_id,
+            &outcome,
             "The draft's agent was not running when its first message was queued.",
-            &[],
         );
     });
 }

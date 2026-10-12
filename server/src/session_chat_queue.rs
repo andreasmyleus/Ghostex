@@ -198,9 +198,14 @@ impl SessionChatQueueSnapshot {
 
     /// The row the scheduler would deliver next, or `None` when the queue is
     /// empty or blocked behind a `failed`/`sending` head.
+    ///
+    /// CDXC:SessionChat 2026-10-12 WHY: a startup send marked Not sent (a message the chat already shows as sent, which waited too long for its session to wake or whose session cannot be woken) is passed over instead of blocking the rows behind it; otherwise every later message to that session waited behind it until someone pressed Remove. Retry puts it back in its old place, ahead of them. A failed row queued for the next stop still blocks the queue.
     pub fn deliverable_head(&self) -> Option<&SessionChatQueuedPrompt> {
         self.queue
-            .first()
+            .iter()
+            .find(|prompt| {
+                !(prompt.startup_send && prompt.state == SESSION_CHAT_QUEUE_STATE_FAILED)
+            })
             .filter(|prompt| prompt.state == SESSION_CHAT_QUEUE_STATE_QUEUED)
     }
 }

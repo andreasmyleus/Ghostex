@@ -36,6 +36,10 @@ This keeps queued delivery progressing even after the chat client disconnects.
 */
 pub type SessionChatQueueCompactingRefresher = Arc<dyn Fn(&str, &str, Option<&str>) + Send + Sync>;
 
+/// Wakes a session holding the startup send `(project, session, prompt)` when its daemon is gone
+/// (`wake_session_holding_startup_send` in session_chat_send_wake.rs); a no-op for a live daemon.
+pub type SessionChatQueueWaker = Arc<dyn Fn(&str, &str, &str) + Send + Sync>;
+
 #[derive(Default)]
 struct SessionQueueGate {
     /// First moment this session looked stopped without looking busy since.
@@ -138,6 +142,7 @@ pub struct SessionChatQueueRuntime {
     notice_reader: SessionChatQueueNoticeReader,
     composer_reader: SessionChatQueueComposerReader,
     compacting_refresher: SessionChatQueueCompactingRefresher,
+    waker: SessionChatQueueWaker,
     gates: Arc<Mutex<HashMap<String, SessionQueueGate>>>,
     composer_holds: crate::session_chat_queue_undelivered::SessionChatQueueComposerHolds,
     /// Sessions with a delivery in flight. The claim in
@@ -157,6 +162,7 @@ impl SessionChatQueueRuntime {
         notice_reader: SessionChatQueueNoticeReader,
         composer_reader: SessionChatQueueComposerReader,
         compacting_refresher: SessionChatQueueCompactingRefresher,
+        waker: SessionChatQueueWaker,
     ) -> Self {
         Self {
             paths,
@@ -167,6 +173,7 @@ impl SessionChatQueueRuntime {
             notice_reader,
             composer_reader,
             compacting_refresher,
+            waker,
             gates: Arc::new(Mutex::new(HashMap::new())),
             composer_holds: Default::default(),
             delivering: Arc::new(Mutex::new(HashSet::new())),
@@ -250,10 +257,18 @@ impl SessionChatQueueRuntime {
             /*
             A sleeping or stopped session keeps its queue rather than failing it:
             the rows drain once it is awake again. Writing into a dead provider
-            would lose the text with nothing to show for it.
+            would lose the text with nothing to show for it. A message the user already sent (a
+            startup send) wakes it instead (CDXC:SessionChat 2026-10-12 in
+            session_chat_send_wake.rs); a row queued for the next stop keeps waiting.
             */
             if session_text(&session, "lifecycleState").as_deref() != Some("running") {
                 self.reset_gate(&key);
+                let snapshot = read_session_chat_queue_snapshot_with(&db, &project_id, &session_id);
+                if let Some(head) = snapshot.deliverable_head().filter(|head| head.startup_send) {
+                    if self.composer_holds.wake_check_due(&key, &head.id, now) {
+                        (self.waker)(&project_id, &session_id, &head.id);
+                    }
+                }
                 continue;
             }
             // CDXC:SessionChat 2026-09-05 DECISION:
@@ -299,6 +314,16 @@ impl SessionChatQueueRuntime {
             // first queued prompt starts the box (agents/draft_run_location.rs).
             let pending_box = crate::agentbox::pending_session_agentbox(&session).is_some();
             let awaiting_startup = awaiting_startup && !pending_box;
+            // A "running" row whose daemon died before its agent took the message is woken too.
+            if awaiting_startup
+                && composer.state != crate::session_chat_composer::SessionChatComposerState::Ready
+            {
+                if let Some(head) = snapshot.deliverable_head() {
+                    if self.composer_holds.wake_check_due(&key, &head.id, now) {
+                        (self.waker)(&project_id, &session_id, &head.id);
+                    }
+                }
+            }
             if awaiting_startup
                 && crate::session_chat_composer::has_session_chat_composer_signature(
                     composer_agent.as_deref(),
