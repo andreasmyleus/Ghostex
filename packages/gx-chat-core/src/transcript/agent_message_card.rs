@@ -4,7 +4,7 @@
 //! system card) that the renderers lay out as is.
 //!
 //! CDXC:SessionChat 2026-10-12 DECISION:
-//! User: the morning's "proposed" agent message cards (a 240px card with a quote box and a footer) were "too large now ... make them smaller like before. i dont like the new style". From the mockup page (docs/2026-10-11/agent-message-cards/smaller-received-cards.html) the user picked D, one line: every message between agents (received, sent, and a subagent's reply alike) is a single row with the agent's own logo (a small arrow badge: prose grey coming in, sky going out), its name, one line of text, then the time, the status and a chevron; clicking the row opens the whole message under it. Go to session shows on hover (on the phone, inside the opened message). Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour. Kept from the first round: "please show the icons of the different agents", "instead of Open api refactor just say 'Go to session'", and no purple for incoming messages ("use color usually used for incoming chat messages"). "keep the text when the message from x agent the same when it's collapsed as the one we show when it's expanded": `line` is the one text the row shows in both states, the message's first line. Supersedes the same day's "Claude · from <session title>" naming, from a questions form: the row is named after the other session's title only, since the logo already says which agent it is ("<session title>" received, "To <session title>" sent); one command that messages several sessions (a loop, or several sends of the same message in one call) is ONE row, "To 2 sessions", whose opened message lists each recipient; a session that cannot be found reads "Another agent" / "To another agent", never the raw reference. Without a title the agent's name stands in ("Codex"); a subagent's reply stays "<type> subagent".
+//! User: the morning's "proposed" agent message cards (a 240px card with a quote box and a footer) were "too large now ... make them smaller like before. i dont like the new style". From the mockup page (docs/2026-10-11/agent-message-cards/smaller-received-cards.html) the user picked D, one line: every message between agents (received, sent, and a subagent's reply alike) is a single row with the agent's own logo (a small arrow badge: prose grey coming in, sky going out), its sentence, then the time, the status and a chevron; clicking the row opens the whole message under it. Go to session shows on hover (on the phone, inside the opened message). Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour. Kept from the first round: "please show the icons of the different agents", "instead of Open api refactor just say 'Go to session'", and no purple for incoming messages ("use color usually used for incoming chat messages"). The row reads the same collapsed and expanded ("keep the text when the message from x agent the same when it's collapsed as the one we show when it's expanded"). Supersedes the same day's "<session title> + first line" rows: "This should say: Message from "Section labels wrap and link" and remove the "Ghostex thread report: finished its turn. Its fin..." part (summary of message) do same thing for Message to "Xyz" also please". So the row is one sentence with no preview: `Message from "<session title>"` / `Message to "<session title>"`, the title quoted; with no title the agent's name, unquoted (`Message from Codex`); nothing known reads `Message from another agent` / `Message to another agent`, never the raw reference; one command that sends the same message to several sessions (a loop, or several sends in one call) is ONE row, `Message to 2 sessions`, whose opened message lists each recipient; a subagent's reply is `Message from Explore subagent` (`Message from a subagent` untyped). The title is the other session's, from the host's session list first.
 //! SEE-ALSO: agent_message.rs and sent_message.rs read the messages and name the other session (the host's session list first, `Event::SessionDirectoryChanged`); apps/desktop/src/app/native_chat/inter_agent_message.rs and apps/mobile/app/src/chat/native/transcript/AgentMessageCards.tsx draw the card.
 
 use serde_json::{json, Value};
@@ -63,26 +63,20 @@ fn session_target(reference: &str) -> Value {
     json!({ "projectId": parts[1], "sessionId": parts[2], "label": GO_TO_SESSION })
 }
 
-/// The body's first line of text, which the row shows after the name.
-fn first_line(body: &str) -> String {
-    let line = body
-        .lines()
-        .map(|line| line.trim().trim_start_matches(['#', '>', '-', '*']).trim())
-        .find(|line| !line.is_empty())
-        .unwrap_or_default();
-    line.split_whitespace().collect::<Vec<_>>().join(" ")
+/// A session title in a row's sentence, quoted so it reads as a name (`Message from "Fix login"`).
+fn quoted(title: &str) -> String {
+    format!("\"{title}\"")
 }
 
-/// One card. `name` heads the row and `title` is the sentence an assistive reader hears; `line`
-/// is the body's first line, the one text the row shows after the name, collapsed and opened
-/// alike. `recipients` lists each session of a message sent to several (empty otherwise).
+/// One card. `name` is the row's whole sentence, the same collapsed and opened, and `title` what
+/// an assistive reader hears. `recipients` lists each session of a message sent to several (empty
+/// otherwise).
 #[allow(clippy::too_many_arguments)]
 fn card(
     direction: &str,
     agent_icon: Value,
     name: String,
     title: String,
-    body: &str,
     time: &str,
     status: Value,
     failure: &str,
@@ -95,7 +89,6 @@ fn card(
         "agentIcon": agent_icon,
         "name": name,
         "title": title,
-        "line": first_line(body),
         "time": time,
         "status": status,
         "failure": failure,
@@ -105,25 +98,24 @@ fn card(
     })
 }
 
-/// A subagent's name as its cards say it: "Explore subagent", or "Subagent" for an untyped one.
+/// A subagent's name as its cards say it: "Explore subagent", or "a subagent" for an untyped one.
 pub fn subagent_label(name: &str) -> String {
     let name = js_trim(name);
     if name.is_empty() || name.eq_ignore_ascii_case("subagent") {
-        "Subagent".to_string()
+        "a subagent".to_string()
     } else {
         format!("{name} subagent")
     }
 }
 
 /// A subagent's reply: the sparkle in place of a logo.
-pub fn subagent_card(name: &str, body: &str) -> Value {
-    let label = subagent_label(name);
+pub fn subagent_card(name: &str) -> Value {
+    let sentence = format!("Message from {}", subagent_label(name));
     card(
         "subagent",
         Value::Null,
-        label.clone(),
-        format!("Reply from {label}"),
-        body,
+        sentence.clone(),
+        sentence,
         "",
         Value::Null,
         "",
@@ -141,15 +133,15 @@ pub fn dress_received(message: &mut Value) {
         return;
     }
     if inter["subagent"] == true {
-        let card = subagent_card(text(inter, "agentName"), text(inter, "body"));
+        let card = subagent_card(text(inter, "agentName"));
         message["interAgentMessage"]["card"] = card;
         return;
     }
     let agent = agent_display_name(text(inter, "agentId"), text(inter, "agentName"));
     let name = match (text(inter, "sessionTitle"), agent.as_str()) {
-        ("", "") => "Another agent".to_string(),
-        ("", agent) => agent.to_string(),
-        (session, _) => session.to_string(),
+        ("", "") => "Message from another agent".to_string(),
+        ("", agent) => format!("Message from {agent}"),
+        (session, _) => format!("Message from {}", quoted(session)),
     };
     let delivery = &message["startupDelivery"];
     let failed = delivery.is_object() && delivery["state"] == "failed";
@@ -174,8 +166,7 @@ pub fn dress_received(message: &mut Value) {
         "received",
         agent_icon(text(inter, "agentId"), &agent),
         name.clone(),
-        format!("Message from {name}"),
-        text(inter, "body"),
+        name,
         text(&message["time"], "label"),
         status,
         failure,
@@ -265,14 +256,23 @@ fn recipient_label(recipient: &Value) -> String {
     }
 }
 
-/// Writes a sent message's `card` from its `recipients`, once each one is named: "To <session>",
-/// or "To N sessions" with each recipient listed inside.
+/// A recipient in the row's sentence: its title quoted, an agent's name as it is.
+fn recipient_phrase(recipient: &Value) -> String {
+    let label = recipient_label(recipient);
+    if recipient["titled"] == true {
+        quoted(&label)
+    } else {
+        label
+    }
+}
+
+/// Writes a sent message's `card` from its `recipients`, once each one is named:
+/// `Message to "<session>"`, or `Message to N sessions` with each recipient listed inside.
 pub fn dress_sent(sent: &mut Value) {
     let recipients = sent["recipients"].as_array().cloned().unwrap_or_default();
-    let body = text(sent, "body").to_string();
     if recipients.len() <= 1 {
         let recipient = recipients.first().unwrap_or(sent);
-        let label = recipient_label(recipient);
+        let sentence = format!("Message to {}", recipient_phrase(recipient));
         let failure = if recipient["failed"] == true {
             text(recipient, "failure")
         } else {
@@ -282,9 +282,8 @@ pub fn dress_sent(sent: &mut Value) {
         sent["card"] = card(
             "sent",
             recipient_icon(recipient),
-            format!("To {label}"),
-            format!("Message to {label}"),
-            &body,
+            sentence.clone(),
+            sentence,
             "",
             delivery_status(recipient),
             &failure,
@@ -316,13 +315,12 @@ pub fn dress_sent(sent: &mut Value) {
             })
         })
         .collect();
-    let name = format!("To {count} sessions");
+    let sentence = format!("Message to {count} sessions");
     sent["card"] = card(
         "sent",
         icon,
-        name,
-        format!("Message to {count} sessions"),
-        &body,
+        sentence.clone(),
+        sentence,
         "",
         combined_status(&statuses),
         "",

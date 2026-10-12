@@ -1805,13 +1805,13 @@ still starting, and fails with the reason when the agent did not take it. If Gho
 a queued message, the row stays in the recipient's queue marked Not delivered
 with Retry and Delete, and the sending agent gets a note saying so. `agents close
 <session-ref>` ends that session, including any unfinished work. `ghostex read-session-chat` and `ghostex read-text` read replies.
-In the chat, a message between agents is one line named after the other
-session's title, with that agent's logo and the message's first line: a message
-another agent sent reads "<session title>", one this session's agent sent reads
-"To <session title>". Click the line to read the whole message. One command that
-sends the same message to several sessions is a single "To 2 sessions" line
-that lists each recipient when opened. A session Ghostex cannot find any more
-reads "Another agent".
+In the chat, a message between agents is one line with that agent's logo,
+named after the other session's title: Message from "<session title>" for one
+another agent sent, Message to "<session title>" for one this session's agent
+sent. Click the line to read the whole message. One command that sends the same
+message to several sessions is a single "Message to 2 sessions" line that lists
+each recipient when opened. A session Ghostex cannot find any more reads
+"Message from another agent".
 An agent can also read or search any other thread, including a sleeping one:
 `ghostex read-session-chat <session> --all --format text` prints the whole
 conversation, and `--grep "<words>" --context 1` finds where a topic came up.

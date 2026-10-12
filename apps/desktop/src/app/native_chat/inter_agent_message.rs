@@ -1,6 +1,7 @@
 //! The cards for messages between agents: one another agent sent this session, one this session's
-//! agent sent another, and a subagent's reply. Each is one 40px row (the agent's logo, its name,
-//! one line of text, the time, the status and a chevron) that opens to the whole message; a message
+//! agent sent another, and a subagent's reply. Each is one 40px row (the agent's logo, one sentence
+//! such as `Message from "<session>"`, the time, the status and a chevron) that opens to the whole
+//! message; a message
 //! sent to several sessions at once lists each of them above it.
 //! Which rows these are, whom a message went to, and everything a card says comes from the core's
 //! `card` object (packages/gx-chat-core/src/transcript/agent_message_card.rs, where the user's pick
@@ -193,8 +194,8 @@ impl NativeChatView {
             .into_any_element()
     }
 
-    /// The logo, the name, the card's line (the same text collapsed and opened), then Go to session
-    /// on hover, the time, the status and the chevron. The row opens and closes the message.
+    /// The logo, the core's sentence (the same collapsed and opened), then Go to session on hover,
+    /// the time, the status and the chevron. The row opens and closes the message.
     fn agent_card_row(
         &self,
         key: &str,
@@ -208,8 +209,6 @@ impl NativeChatView {
         let session = &card["session"];
         let status = &card["status"];
         let time = text(card, "time");
-        // The core's `line` reads the same collapsed and opened.
-        let line = text(card, "line");
         let group = SharedString::from(format!("agent-card:{key}"));
         let row = div()
             .id(SharedString::from(format!("{key}:row")))
@@ -223,19 +222,12 @@ impl NativeChatView {
             .child(self.agent_card_mark(card, p))
             .child(
                 div()
-                    .flex_shrink_0()
-                    .whitespace_nowrap()
-                    .text_color(p.foreground)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(text(card, "name")),
-            )
-            .child(
-                div()
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_color(if expanded { p.muted } else { p.card_muted })
-                    .child(line),
+                    .text_color(p.foreground)
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(text(card, "name")),
             )
             .when(
                 session.is_object() && text(card, "failure").is_empty(),

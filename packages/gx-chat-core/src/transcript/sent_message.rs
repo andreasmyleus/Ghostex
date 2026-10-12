@@ -454,6 +454,7 @@ fn recipient(sent: &SentAgentMessage) -> Value {
         "failure": sent.failure,
         "byName": sent.by_name,
         "name": "",
+        "titled": false,
     })
 }
 
@@ -653,6 +654,7 @@ fn name_recipient(directory: &Directory, hosts: &HostDirectory, recipient: &mut 
     let host = hosts.find(global_ref).or_else(|| hosts.find(target));
     if known.subagent && host.is_none() {
         recipient["name"] = subagent_label(&known.agent).into();
+        recipient["titled"] = false.into();
         return;
     }
     let mut agent_id = text(recipient, "agentId").to_string();
@@ -686,6 +688,8 @@ fn name_recipient(directory: &Directory, hosts: &HostDirectory, recipient: &mut 
     if agent_name.is_empty() {
         agent_name = known.agent.clone();
     }
+    // A title is quoted on the card; an agent name or a teammate name is not.
+    recipient["titled"] = (!title.is_empty()).into();
     let name = if !title.is_empty() {
         title
     } else if recipient["byName"] == true && !target.is_empty() && !looks_like_reference(target) {

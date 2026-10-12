@@ -294,7 +294,7 @@ pub fn project_message(
                     .to_string();
                 card.insert(
                     "card".to_string(),
-                    crate::transcript::agent_message_card::subagent_card(&name, &body),
+                    crate::transcript::agent_message_card::subagent_card(&name),
                 );
                 Value::Object(card)
             }
