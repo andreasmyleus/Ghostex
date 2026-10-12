@@ -87,6 +87,8 @@ pub async fn run_gxserver_foreground(
                         return Ok(GxserverForegroundResult { reused: true });
                     }
                     ExistingGxserverState::Stopped => {}
+                    // An old build that answers but will not stop is ended, so the current migration code still runs.
+                    ExistingGxserverState::Running if end_stale_gxserver(existing.pid) => {}
                     ExistingGxserverState::Running => {
                         return Err(anyhow!(
                             "gxserver build identity changed, but the old control plane did not stop. Stop gxserver and launch Ghostex again so the current migration code can run."
@@ -227,13 +229,16 @@ pub async fn run_gxserver_foreground(
     let address: SocketAddr = format!("{local_host}:{local_port}")
         .parse()
         .expect("valid listener address");
-    let listener = TcpListener::bind(address).await.map_err(|error| {
-        if error.kind() == std::io::ErrorKind::AddrInUse {
-            anyhow!("Port {local_port} is already in use and did not respond as a compatible gxserver. Stop the conflicting process or update Ghostex/gxserver so their protocol versions match.")
-        } else {
-            anyhow!(error)
-        }
-    })?;
+    let Some(listener) = bind_local_listener_taking_over_stale_holder(
+        address,
+        &paths,
+        &state.build_identity,
+        &logger,
+    )
+    .await?
+    else {
+        return Ok(GxserverForegroundResult { reused: true });
+    };
     let loopback_v6_listener = match bind_loopback_ipv6_twin(address).await {
         Some(Ok(listener)) => Some(listener),
         Some(Err(error)) => {
@@ -349,6 +354,7 @@ pub async fn run_gxserver_foreground(
         crate::session_chat_async_questions::spawn_async_question_status_task(&state);
     let freebuff_activity_task = crate::freebuff_activity::spawn_freebuff_activity_task(&state);
     let team_sync_task = crate::team_sync::spawn_team_sync_task(&state);
+    let superseded_retire_task = spawn_superseded_retire_task(&state);
     /*
     CDXC:Telemetry 2026-08-26:
     Analytics exists only in the long-running daemon. Starting it here rather
@@ -393,6 +399,17 @@ pub async fn run_gxserver_foreground(
         task.abort();
     }
     let metadata_cleanup_result = metadata_cleanup_rx.await;
+    /*
+    CDXC:ServerDaemon 2026-10-12 WHY:
+    Daemons asked to stop on 2026-10-11 (13:47 and 22:08 starts) were still alive the next morning with their listeners closed: a teardown step or a blocking task waiting on a hung child or file (the failing M: drive hangs PowerShell and some file access for minutes) kept the process from exiting, and nothing bounded it. The listener is already closed here, so whatever the tail has not finished in 10 s is abandoned and the process exits.
+    */
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(10));
+        std::process::exit(0);
+    });
+    if let Some(task) = superseded_retire_task {
+        task.abort();
+    }
     /*
     CDXC:ServerDaemon 2026-09-16 WHY:
     Everything from here to the return runs after the listener has closed, while clients already see "connection refused" and may start a replacement daemon.

@@ -806,6 +806,30 @@ impl Start {
         .map(|dir| server_in(&dir))
         .filter(|path| !server_paths.contains(path))
         .collect();
+        /*
+        CDXC:ServerDaemon 2026-10-12 WHY:
+        QueryFullProcessImageNameW reports where a running image lives now, and refreshing the managed package or installing the app renames a running gxserver.exe into a `.retired-native` folder. The superseded daemon that held the port on 2026-10-12 was therefore matched by no path, the 04:11 start said "No running gxserver control plane found" and launched the app beside it. A gxserver running from one of those folders is always stopped: a newer build replaced it.
+        */
+        let retired_server_folders: Vec<String> = [
+            data_dir.join("gxserver").join("package"),
+            self.installed_app_path.clone(),
+            self.app_path.clone(),
+        ]
+        .iter()
+        .map(|dir| {
+            format!(
+                "{}{}",
+                dir.join(".retired-native").display().to_string().to_lowercase(),
+                std::path::MAIN_SEPARATOR
+            )
+        })
+        .collect();
+        let retired_server = |path: &str| {
+            path.ends_with("gxserver.exe")
+                && retired_server_folders
+                    .iter()
+                    .any(|folder| path.starts_with(folder.as_str()))
+        };
         #[cfg(windows)]
         {
             let listeners = super::windows_native::loopback_listeners().map_err(|error| {
@@ -817,7 +841,7 @@ impl Start {
                     let path = super::windows_native::process_image_path(pid)?.to_lowercase();
                     let keep_same_build = if server_paths.contains(&path) {
                         true
-                    } else if other_install_servers.contains(&path) {
+                    } else if other_install_servers.contains(&path) || retired_server(&path) {
                         false
                     } else {
                         return None;
@@ -832,7 +856,7 @@ impl Start {
         }
         #[cfg(not(windows))]
         {
-            let _ = (server_paths, other_install_servers);
+            let _ = (server_paths, other_install_servers, retired_server);
             bail!("gxserver listeners are inspected only by a native Windows start.")
         }
     }
