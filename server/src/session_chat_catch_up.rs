@@ -3,8 +3,10 @@
 //!
 //! CDXC:CatchMeUp 2026-10-11 DECISION:
 //! User: a "Catch me up" button at the composer's top right; clicking it has a smaller, cheaper agent read the last messages of the session and shows where the session is, in the marked handovers format (❓ Needs you, ✅ Done, ⚠️ Read this, 🛫 Kicked off, 🔄 In progress, 🧪 Untested, 🚀 Shipped, 🛑 Blocked, each title on its own line with bullets below), so the user can continue quickly after reading it. Off by default behind Settings > Chat (`chatCatchMeUp`): "disable this feature by default. add a toggle to enable it under chat".
+//! CDXC:CatchMeUp 2026-10-12 DECISION:
+//! User: "also please make catch me up just read last 30 agent messages". The summary reads everything from the 30th-newest agent message on (those agent replies, the user's messages between them and one line per tool call); a row of tool calls alone does not count as an agent message. This supersedes the 2026-10-11 window of the last 200 rows.
 //! CDXC:CatchMeUp 2026-10-11 WHY:
-//! gxserver owns it so every client (desktop, web, phone) gets the same summary: it reads the last 200 transcript rows (the detail pager's own cap; the same rows and text `ghostex read-session-chat --format text` prints), keeps the newest 40,000 characters of them, and runs the Title Generation Agent (`sessionTitleGenerationAgent`) with the prompt on stdin. The title job's heredoc is not used: PowerShell, the Windows command shell, has no heredoc, and stdin has no command-line length limit. Agents that only take the prompt as an argument (Cursor, Grok, Pi, Antigravity) get the newest 8,000 characters, which keeps a Windows command line under its limit.
+//! gxserver owns it so every client (desktop, web, phone) gets the same summary: it reads the transcript backwards in 200-row pages (the detail pager's own cap; the same rows and text `ghostex read-session-chat --format text` prints, at most 10 pages) until the window holds 30 agent messages, keeps the newest 40,000 characters of that window as a safety net, and runs the Title Generation Agent (`sessionTitleGenerationAgent`) with the prompt on stdin. The title job's heredoc is not used: PowerShell, the Windows command shell, has no heredoc, and stdin has no command-line length limit. Agents that only take the prompt as an argument (Cursor, Grok, Pi, Antigravity) get the newest 8,000 characters, which keeps a Windows command line under its limit.
 //! SEE-ALSO: server/src/server/title_generation/title_command.rs (the agent commands), packages/gx-chat-core/src/composer/catch_up.rs (the button, the card and its states), apps/desktop/src/app/native_chat/catch_up.rs and apps/mobile/app/src/chat/native/cards/CatchUpCard.tsx (drawing).
 
 use std::time::Duration;
@@ -26,8 +28,12 @@ use crate::storage::open_gxserver_database;
 
 /// The Settings > Chat switch.
 const SETTING_KEY: &str = "chatCatchMeUp";
-/// Transcript rows read, the detail pager's own cap (`session_chat_history.rs`).
-const TRANSCRIPT_ROWS: usize = 200;
+/// The window: everything from the 30th-newest agent message on (CDXC:CatchMeUp 2026-10-12 above).
+const AGENT_MESSAGES: usize = 30;
+/// Transcript rows per page read backwards, the detail pager's own cap (`session_chat_history.rs`).
+const PAGE_ROWS: usize = 200;
+/// Pages read at most (2,000 rows), for a thread that is almost all tool calls.
+const MAX_PAGES: usize = 10;
 /// The newest transcript text kept for an agent that reads the prompt from stdin (~10k tokens).
 const STDIN_BUDGET_CHARS: usize = 40_000;
 /// The same for an agent that takes the prompt as a command-line argument.
@@ -135,18 +141,45 @@ async fn catch_up(state: &AppState, body: &Value) -> Result<Value, DomainStateEr
     let family = family.unwrap_or("agent").to_string();
     let history_project = project_id.clone();
     let history_session = session_id.clone();
-    let page = tokio::task::spawn_blocking(move || {
-        let length = std::fs::metadata(&path)?.len();
-        crate::session_chat_history::read_history(
-            transcript_agent,
-            &path,
-            length,
-            TRANSCRIPT_ROWS,
-            true,
-            false,
-            &history_project,
-            &history_session,
-        )
+    let messages = tokio::task::spawn_blocking(move || -> std::io::Result<Vec<Value>> {
+        // Newest page first, until the window holds enough agent messages or the thread starts.
+        let mut before = std::fs::metadata(&path)?.len();
+        let mut messages: Vec<Value> = Vec::new();
+        for _ in 0..MAX_PAGES {
+            let page = crate::session_chat_history::read_history(
+                transcript_agent,
+                &path,
+                before,
+                PAGE_ROWS,
+                true,
+                false,
+                &history_project,
+                &history_session,
+            )?;
+            let mut older = page
+                .get("messages")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            older.extend(messages);
+            messages = older;
+            let next = page
+                .get("beforeOffset")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            if page.get("hasMore").and_then(Value::as_bool) != Some(true)
+                || next >= before
+                || messages
+                    .iter()
+                    .filter(|message| is_agent_message(message))
+                    .count()
+                    >= AGENT_MESSAGES
+            {
+                break;
+            }
+            before = next;
+        }
+        Ok(messages)
     })
     .await
     .map_err(|error| failure("internalError", error.to_string()))?
@@ -165,7 +198,7 @@ async fn catch_up(state: &AppState, body: &Value) -> Result<Value, DomainStateEr
     } else {
         ARGUMENT_BUDGET_CHARS
     };
-    let (transcript, rows) = transcript_text(&page, budget);
+    let (transcript, rows, agent_messages) = transcript_text(&messages, budget);
     if rows == 0 {
         return Err(failure(
             "unsupported",
@@ -177,6 +210,7 @@ async fn catch_up(state: &AppState, body: &Value) -> Result<Value, DomainStateEr
         &family,
         working,
         rows,
+        agent_messages,
         &transcript,
     );
     let (shell_command, stdin) = match stdin_command {
@@ -214,6 +248,7 @@ async fn catch_up(state: &AppState, body: &Value) -> Result<Value, DomainStateEr
     Ok(json!({
         "summary": summary,
         "rows": rows,
+        "agentMessages": agent_messages,
         "agent": agent,
         "agentLabel": agent_label(&agent),
         "generatedAt": chrono::Utc::now().timestamp_millis(),
@@ -268,18 +303,35 @@ fn agent_label(agent: &str) -> String {
     .to_string()
 }
 
-/// The transcript as readable text, oldest first, keeping the newest rows that fit `budget`
-/// characters; answers the text and how many rows it holds.
-fn transcript_text(page: &Value, budget: usize) -> (String, usize) {
+/// An agent reply with prose, which is what the window counts; a row of tool calls alone is not.
+fn is_agent_message(message: &Value) -> bool {
+    crate::ghostex_cli::session_chat_transcript::effective_role(message) == "assistant"
+        && message
+            .get("blocks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|block| {
+                block.get("type").and_then(Value::as_str) == Some("text")
+                    && block
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .is_some_and(|text| !text.trim().is_empty())
+            })
+}
+
+/// The transcript as readable text, oldest first: everything from the `AGENT_MESSAGES`th-newest
+/// agent message on, cut to the newest rows that fit `budget` characters. Answers the text, how
+/// many rows it holds, and how many of them are agent messages.
+fn transcript_text(messages: &[Value], budget: usize) -> (String, usize, usize) {
     use crate::ghostex_cli::session_chat_transcript::{effective_role, message_text};
-    let messages = page
-        .get("messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
     let mut kept: Vec<String> = Vec::new();
     let mut used = 0usize;
+    let mut agent_messages = 0usize;
     for message in messages.iter().rev() {
+        if agent_messages >= AGENT_MESSAGES {
+            break;
+        }
         let role = match effective_role(message) {
             "user" => "User",
             "assistant" => "Agent",
@@ -305,15 +357,17 @@ fn transcript_text(page: &Value, budget: usize) -> (String, usize) {
                     .rev()
                     .collect();
                 kept.push(format!("[{role}, cut]\n…{tail}"));
+                agent_messages += usize::from(is_agent_message(message));
             }
             break;
         }
         used += size;
+        agent_messages += usize::from(is_agent_message(message));
         kept.push(entry);
     }
     let rows = kept.len();
     kept.reverse();
-    (kept.join("\n\n"), rows)
+    (kept.join("\n\n"), rows, agent_messages)
 }
 
 fn catch_up_prompt(
@@ -321,6 +375,7 @@ fn catch_up_prompt(
     agent: &str,
     working: bool,
     rows: usize,
+    agent_messages: usize,
     transcript: &str,
 ) -> String {
     let title = title.map(str::trim).filter(|title| !title.is_empty());
@@ -336,7 +391,7 @@ fn catch_up_prompt(
                 "the agent is idle, waiting for the user"
             }
         ),
-        format!("Messages included: {rows}"),
+        format!("Messages included: {rows} ({agent_messages} from the agent)"),
         String::new(),
         "Write a short catch-up so the developer can continue in under a minute.".to_string(),
         "Start with one plain sentence, without a marker, saying what the session is working on and where it stands.".to_string(),

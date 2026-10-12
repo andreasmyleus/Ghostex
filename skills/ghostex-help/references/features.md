@@ -1283,10 +1283,12 @@ Settings: `markedHandovers`, `markedHandoversStyle` (`labels`, `rule`,
 `badge`), `markedHandoversEmoji`.
 
 Catch me up: turn on Catch me up button (Settings > Chat, off by default) and
-the chat box shows a Catch me up button at its top right, on the computer and
-on the phone. Clicking it has your Title Generation Agent (Settings > Agents, a
-small, cheap model such as Claude Haiku or Codex's mini model) read the
-session's last 200 messages and opens a card above the chat box that says what
+the chat box shows a Catch me up button at its top right while it is empty, on
+the computer and on the phone; it fades out as you start typing and back in
+when the box is empty again. Clicking it has your Title Generation Agent
+(Settings > Agents, a small, cheap model such as Claude Haiku or Codex's mini
+model) read the session's last 30 agent messages (and your messages between
+them) and opens a card above the chat box that says what
 the session is working on, then what needs you, what is blocked, in progress,
 done, untested, kicked off or shipped, coloured like marked handovers. It takes
 a few seconds; Refresh writes a fresh one, Copy copies it, and Close or the

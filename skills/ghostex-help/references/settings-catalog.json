@@ -1028,7 +1028,7 @@
     {
       "key": "chatCatchMeUp",
       "title": "Catch me up button",
-      "subtitle": "Show a Catch me up button at the top right of the chat box. It has your Title Generation Agent (a small, cheap model) read the session's recent messages and shows where the session stands: what needs you, what is done, in progress or untested.",
+      "subtitle": "Show a Catch me up button at the top right of the chat box while it is empty. It has your Title Generation Agent (a small, cheap model) read the session's last 30 agent messages and shows where the session stands: what needs you, what is done, in progress or untested.",
       "tab": "settings",
       "tabTitle": "General",
       "group": "chat",

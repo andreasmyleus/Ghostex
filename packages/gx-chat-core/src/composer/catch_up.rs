@@ -8,6 +8,8 @@
 //!
 //! CDXC:CatchMeUp 2026-10-11 DECISION:
 //! User: a "Catch me up" button in the composer itself, at its top right, that has a smaller, cheaper agent read the session's last messages and shows a popup explaining where the session is, in the coloured marked-handover format, so they can continue quickly after reading it. Off by default; Settings > Chat turns it on (`chatCatchMeUp`), and the button shows only while it is on.
+//! CDXC:CatchMeUp 2026-10-12 DECISION:
+//! User: "make catch me up only appear when the composer is empty please! otherwise when i type it should go away (also make it fade in/out when appearing/ disappearing)". The button (`button`) shows only while the chat box has no text and no picture still attaching, and the renderers fade it in and out; an open card stays open while the user types.
 //! CDXC:CatchMeUp 2026-10-11 WHY:
 //! The switch reaches the core two ways and the latest wins: the desktop host pushes it with the chat settings (so flipping it shows or hides the button within seconds), and gxserver puts it on every chat read (`catchUp`), which is the only way the phone, which has no settings file, learns it.
 //! SEE-ALSO: server/src/session_chat_catch_up.rs (the summary), apps/desktop/src/app/native_chat/catch_up.rs and apps/mobile/app/src/chat/native/cards/CatchUpCard.tsx (drawing), transcript/marked_sections.rs (the colouring).
@@ -33,16 +35,19 @@ pub struct CatchUpState {
     pub error: Option<String>,
     /// "Claude", "Codex": who wrote the summary.
     pub agent_label: Option<String>,
-    /// How many transcript messages it read.
-    pub rows: u64,
+    /// What the summary read, for the footer: "30 agent messages" (an older gxserver counts rows,
+    /// "120 messages").
+    pub read: Option<String>,
 }
 
 /// The document's `catchUp`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatchUp {
-    /// The composer shows the button.
+    /// The setting is on and the session has a conversation to read.
     pub enabled: bool,
+    /// The composer shows the button: `enabled` and the chat box is empty.
+    pub button: bool,
     /// The card is open.
     pub open: bool,
     /// The summary is being written.
@@ -104,6 +109,12 @@ fn available(state: &ChatState) -> bool {
     state.core.catch_up_enabled && state.session.agent_session_id.is_some()
 }
 
+/// Nothing typed and no picture still being attached. Pills and attached pictures are text in the
+/// draft (`@path`, `[Image #n]`), so an empty draft has none of them either.
+fn composer_empty(state: &ChatState) -> bool {
+    state.composer.text.trim().is_empty() && state.composer.pending_attachments == 0
+}
+
 /// The summary's answer: it fills the card, and a refusal is the card's, never the composer's
 /// error line.
 pub fn settle(state: &mut ChatState, request_id: u64, outcome: &RpcOutcome) -> Option<Vec<Effect>> {
@@ -128,7 +139,15 @@ pub fn settle(state: &mut ChatState, request_id: u64, outcome: &RpcOutcome) -> O
                     .get("agentLabel")
                     .and_then(Value::as_str)
                     .map(str::to_string);
-                catch_up.rows = result.get("rows").and_then(Value::as_u64).unwrap_or(0);
+                catch_up.read = match (
+                    result.get("agentMessages").and_then(Value::as_u64),
+                    result.get("rows").and_then(Value::as_u64),
+                ) {
+                    (Some(1), _) => Some("1 agent message".to_string()),
+                    (Some(count), _) if count > 0 => Some(format!("{count} agent messages")),
+                    (None, Some(rows)) if rows > 0 => Some(format!("{rows} messages")),
+                    _ => None,
+                };
             }
         }
         // An older gxserver has no `catchUpSession` and refuses it without a sentence (`{}`).
@@ -159,16 +178,18 @@ pub fn document(state: &ChatState) -> CatchUp {
         _ => (String::new(), Vec::new(), String::new()),
     };
     let caption = catch_up.summary.as_ref().filter(|_| open).map(|_| {
-        match (catch_up.agent_label.as_deref(), catch_up.rows) {
-            (Some(agent), rows) if rows > 0 => {
-                format!("Written by {agent} from the last {rows} messages")
-            }
-            (Some(agent), _) => format!("Written by {agent}"),
-            (None, _) => "Written by the title generation agent".to_string(),
+        let agent = catch_up
+            .agent_label
+            .as_deref()
+            .unwrap_or("the title generation agent");
+        match catch_up.read.as_deref() {
+            Some(read) => format!("Written by {agent} from the last {read}"),
+            None => format!("Written by {agent}"),
         }
     });
     CatchUp {
         enabled,
+        button: enabled && composer_empty(state),
         open,
         loading: open && catch_up.request.is_some(),
         markdown,

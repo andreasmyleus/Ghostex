@@ -548,6 +548,7 @@ impl NativeChatView {
                         ),
                     !collapsed && !maximized,
                     p,
+                    window,
                     cx,
                 ),
             )

@@ -6,24 +6,62 @@ use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text}
 use crate::app::native_chat::cursor::ChatCursor as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, px, svg,
+    Animation, AnimationExt as _, AnyElement, Context, Div, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Stateful, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px, svg,
 };
 use serde_json::json;
+use std::time::Duration;
+use web_time::Instant;
+
+/// How long the button takes to fade in or out.
+const BUTTON_FADE: Duration = Duration::from_millis(180);
+
+/// The button's last visibility, so a change fades instead of popping.
+#[derive(Clone, Copy)]
+struct ButtonFade {
+    visible: bool,
+    /// Bumped on every change, so each fade is a new animation rather than a finished one.
+    generation: u64,
+    changed_at: Option<Instant>,
+}
 
 impl NativeChatView {
     /// CDXC:CatchMeUp 2026-10-11 DECISION:
     /// User: the Catch me up button sits in the composer itself, at its top right. It shares the field's row (beside the field's first line) instead of overlapping it, and stays out of the one-line collapsed and the maximized composer.
+    /// The core's `button` says when it shows (an empty chat box, CDXC:CatchMeUp 2026-10-12 in
+    /// gx-chat-core); here it fades in, and fades out before it leaves the row.
     pub(super) fn with_catch_up_button(
         &self,
         editor: Stateful<Div>,
         shown: bool,
         p: &ChatAppearance,
-        cx: &Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> AnyElement {
         let catch_up = &self.snapshot["catchUp"];
-        if !shown || catch_up["enabled"] != true {
+        let visible = catch_up["button"] == true;
+        // Collapsing or maximizing the box drops the button without a fade.
+        let fade = window.use_keyed_state("catch-me-up-fade", cx, |_, _| ButtonFade {
+            visible: visible && shown,
+            generation: 0,
+            changed_at: None,
+        });
+        let fade = fade.update(cx, |fade, _| {
+            if fade.visible != (visible && shown) {
+                fade.visible = visible && shown;
+                fade.generation += 1;
+                fade.changed_at = shown.then(Instant::now);
+            }
+            *fade
+        });
+        let fading = fade.changed_at.is_some_and(|at| at.elapsed() < BUTTON_FADE);
+        if !shown || !(visible || fading) {
             return editor.into_any_element();
+        }
+        if !visible {
+            // The fade-out's last frame leaves the button at zero opacity; one more frame drops it.
+            window.request_animation_frame();
         }
         let s = p.scale;
         let open = catch_up["open"] == true;
@@ -64,7 +102,28 @@ impl NativeChatView {
                 )
                 .build(window, cx)
             })
-            .on_click(cx.listener(|this, _, _, cx| this.invoke(json!({"type":"catchUp"}), cx)));
+            // A button fading out is on its way out and takes no clicks.
+            .when(visible, |this| {
+                this.on_click(
+                    cx.listener(|this, _, _, cx| this.invoke(json!({"type":"catchUp"}), cx)),
+                )
+            });
+        let button = if !fading {
+            button.into_any_element()
+        } else {
+            let id = format!(
+                "catch-me-up-{}-{}",
+                if visible { "in" } else { "out" },
+                fade.generation
+            );
+            button
+                .with_animation(
+                    gpui::ElementId::Name(id.into()),
+                    Animation::new(BUTTON_FADE).with_easing(gpui::ease_out_quint()),
+                    move |button, delta| button.opacity(if visible { delta } else { 1.0 - delta }),
+                )
+                .into_any_element()
+        };
         div()
             .flex()
             .items_start()
