@@ -153,6 +153,10 @@ pub(crate) struct NativeChatView {
     pub(super) search_input: Option<Entity<InputState>>,
     pub(super) search_subscription: Option<Subscription>,
     pub(super) search_scrolled_revision: i64,
+    /// Files and links: the card's filter field, and the jump it last scrolled to (files_links.rs).
+    pub(super) files_links_input: Option<Entity<InputState>>,
+    pub(super) files_links_subscription: Option<Subscription>,
+    pub(super) files_links_jump_revision: u64,
     /// The find the row being drawn gives its text views, set only while a searched row is drawn
     /// (search.rs, `begin_row_find`).
     pub(super) row_find: Option<gpui_component::text::TextFind>,
@@ -398,6 +402,9 @@ impl NativeChatView {
             search_input: None,
             search_subscription: None,
             search_scrolled_revision: -1,
+            files_links_input: None,
+            files_links_subscription: None,
+            files_links_jump_revision: 0,
             row_find: None,
             issue_link_base: None,
             search_pending_open: None,

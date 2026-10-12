@@ -32,7 +32,7 @@ use crate::state::{ChatContext, ChatState};
 /// `queue.capabilities.supported` stays false until family a has folded a `queue` field, even an
 /// empty one: that presence is the daemon capability probe, and every control hides rather than
 /// calling an endpoint that would answer 404.
-pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) {
+pub fn document(state: &ChatState, context: &ChatContext, into: &mut Document) {
     let composer = &state.composer;
     let notice = TerminalNotice::parse(state.session.terminal_notice.as_ref());
 
@@ -94,12 +94,14 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
         stash: composer.actions.stash,
         attach: composer.actions.attach,
         terminal: composer.actions.terminal,
+        files: state.session.agent_session_id.is_some(),
     };
     into.composer_chrome = composer
         .chrome
         .projection(&composer.note, state.transcript_view.summary_mode);
     into.note = composer.note.document();
     into.catch_up = crate::composer::catch_up::document(state);
+    into.files_links = crate::composer::files_links::document(state, context);
 
     let card_visible = notice_visible(state);
     let choice_pending = terminal_choice_pending(state, notice.as_ref());

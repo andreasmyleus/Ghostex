@@ -204,6 +204,13 @@ action_kinds! {
     CatchUp => "catchUp",
     CatchUpRefresh => "catchUpRefresh",
     CatchUpClose => "catchUpClose",
+    // Files and links (`composer/files_links.rs`).
+    FilesLinks => "filesLinks",
+    FilesLinksRefresh => "filesLinksRefresh",
+    FilesLinksClose => "filesLinksClose",
+    FilesLinksFilter => "filesLinksFilter",
+    FilesLinksShowAll => "filesLinksShowAll",
+    FilesLinksJump => "filesLinksJump",
     MarkdownSaveOpen => "markdownSaveOpen",
     MarkdownSaveFolder => "markdownSaveFolder",
     MarkdownSaveName => "markdownSaveName",

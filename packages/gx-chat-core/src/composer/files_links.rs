@@ -1,0 +1,548 @@
+//! Files and links: the composer's button and the card that lists every attachment, file and link
+//! the session mentioned, so the user can go through them quickly.
+//!
+//! The button asks gxserver (`/api/readSessionFilesLinks`) for the list, which it gathers with the
+//! transcript's own detection (`transcript/files_links.rs`) from the session's whole transcript,
+//! and for a coordinator from each of its threads too. The card above the composer shows it in
+//! three sections (Attachments, Files, Links) with a count each, grouped by thread when the list
+//! spans several sessions, with a filter box once it is long. A row opens its item (a picture in
+//! the image viewer, a file the way a transcript pill opens it, a link in the browser); its jump
+//! buttons scroll the transcript to the message that first or last mentioned it, or open the
+//! thread that did.
+//!
+//! CDXC:FilesAndLinks 2026-10-12 DECISION:
+//! User: "i want to add a feature to see all the attachements and links that were mentioned in a session (and for coordinator threads should be that session and it's own sub sessions) should be a button, when i click it then it should show me a list that shows these files locations and links so i can go through them quick". The button sits in the composer's toolbar after Session note (it folds into More actions like the others when the row is narrow); the card lists Attachments, Files and Links, each item once with its first and last mention, and a coordinator's list covers its own chat and every thread, done ones included, grouped by thread title.
+//! CDXC:FilesAndLinks 2026-10-12 WHY:
+//! A row's jump finds the message among the rows the transcript has loaded; a message folded into a finished turn lands on that turn, and one older than the loaded history lands on the top row with a note to load earlier messages, because paging the history in from here would race the user's own scrolling.
+//! SEE-ALSO: server/src/session_files_links.rs (the list), apps/desktop/src/app/native_chat/files_links.rs and apps/mobile/app/src/chat/native/cards/FilesLinksCard.tsx (drawing).
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use crate::document::TranscriptItem;
+use crate::effect::Effect;
+use crate::state::{ChatContext, ChatState};
+use crate::transcript::files_links::{FilesLinksItem, FilesLinksMention, FilesLinksSection};
+use crate::wire::{ChatRpcMethod, RpcOutcome};
+
+/// Rows a section shows before "Show all".
+const SECTION_ROWS: usize = 40;
+/// The filter box shows once the list holds this many items.
+const FILTER_FROM: usize = 10;
+
+/// One session's part of the list, as gxserver sent it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesLinksSession {
+    pub project_id: String,
+    pub session_id: String,
+    #[serde(default)]
+    pub title: String,
+    /// The session the chat shows, whose rows jump in place.
+    #[serde(default)]
+    pub own: bool,
+    #[serde(default)]
+    pub items: Vec<FilesLinksItem>,
+}
+
+/// Where the transcript should scroll, once per click.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesLinksJump {
+    pub item: usize,
+    pub revision: u64,
+}
+
+/// What the card remembers between frames.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FilesLinksState {
+    pub open: bool,
+    /// The `readSessionFilesLinks` call in flight; an answer to any other id is dropped.
+    pub request: Option<u64>,
+    pub sessions: Option<Vec<FilesLinksSession>>,
+    pub error: Option<String>,
+    pub query: String,
+    /// Sections shown whole.
+    pub expanded: Vec<FilesLinksSection>,
+    pub jump: Option<FilesLinksJump>,
+}
+
+/// One row.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesLinksRow {
+    pub key: String,
+    pub label: String,
+    pub detail: String,
+    /// `photo`, `file`, `folder` or `link`.
+    pub icon: String,
+    /// "Attached", "New", "Edited" or "Deleted".
+    pub tag: Option<String>,
+    /// "3 mentions · first 10:02 · last 14:30".
+    pub meta: String,
+    /// The action a click runs; a picture opens `image` in the viewer instead.
+    pub open: Value,
+    pub image: Option<Value>,
+    /// "First" and "Last", or one "Show", or "Open thread": `{label, tooltip, command}` each.
+    pub jumps: Vec<Value>,
+}
+
+/// One session's rows inside a section.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesLinksGroup {
+    pub key: String,
+    /// The thread's title; empty when the list covers one session.
+    pub title: String,
+    pub rows: Vec<FilesLinksRow>,
+}
+
+/// One section.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesLinksSectionView {
+    /// `attachments`, `files` or `links`.
+    pub id: String,
+    pub label: String,
+    pub count: usize,
+    pub groups: Vec<FilesLinksGroup>,
+    /// "Show all 120" while capped, "Show fewer" while shown whole, else empty.
+    pub more_label: String,
+}
+
+/// The document's `filesLinks`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesLinks {
+    /// The session has a conversation to list.
+    pub enabled: bool,
+    pub open: bool,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub query: String,
+    /// The list is long enough for the filter box.
+    pub filter: bool,
+    pub sections: Vec<FilesLinksSectionView>,
+    /// "4 threads · 212 items"; empty while there is no list.
+    pub caption: String,
+    /// The quiet line when nothing is listed.
+    pub empty_label: String,
+    pub jump: Option<FilesLinksJump>,
+}
+
+/// The button: closes an open card, or opens it and reads the list.
+pub fn toggle(state: &mut ChatState) -> Vec<Effect> {
+    if state.composer.files_links.open {
+        return close(state);
+    }
+    if !available(state) {
+        return Vec::new();
+    }
+    run(state)
+}
+
+/// Refresh: reads the list again with the card open.
+pub fn run(state: &mut ChatState) -> Vec<Effect> {
+    if !available(state) {
+        return Vec::new();
+    }
+    let files_links = &mut state.composer.files_links;
+    files_links.open = true;
+    files_links.error = None;
+    state.core.request_publish();
+    let request_id = state.core.allocate_request_id();
+    state.composer.files_links.request = Some(request_id);
+    vec![Effect::SendRpc {
+        request_id,
+        method: ChatRpcMethod::ReadSessionFilesLinks,
+        params: Box::new(json!({})),
+    }]
+}
+
+/// Close: the card goes, and an answer still on its way is dropped.
+pub fn close(state: &mut ChatState) -> Vec<Effect> {
+    let files_links = &mut state.composer.files_links;
+    files_links.open = false;
+    files_links.request = None;
+    files_links.query.clear();
+    files_links.expanded.clear();
+    files_links.jump = None;
+    Vec::new()
+}
+
+pub fn set_query(state: &mut ChatState, query: &str) -> Vec<Effect> {
+    state.composer.files_links.query = query.to_string();
+    Vec::new()
+}
+
+/// "Show all" and "Show fewer" on one section.
+pub fn toggle_section(state: &mut ChatState, section: &str) -> Vec<Effect> {
+    let Some(section) = section_of(section) else {
+        return Vec::new();
+    };
+    let expanded = &mut state.composer.files_links.expanded;
+    match expanded.iter().position(|known| *known == section) {
+        Some(index) => {
+            expanded.remove(index);
+        }
+        None => expanded.push(section),
+    }
+    Vec::new()
+}
+
+/// A row's jump: scrolls the transcript to the message, or to the turn that holds it.
+pub fn jump(
+    state: &mut ChatState,
+    context: &ChatContext,
+    message_id: &str,
+    timestamp: Option<i64>,
+) -> Vec<Effect> {
+    let rows = crate::transcript::rows(state, context);
+    let (item, older) = match row_of(&rows, message_id, timestamp) {
+        Some(item) => (item, false),
+        None => (0, true),
+    };
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    let revision = state
+        .composer
+        .files_links
+        .jump
+        .map_or(1, |jump| jump.revision + 1);
+    state.composer.files_links.jump = Some(FilesLinksJump { item, revision });
+    if older && state.messages.has_more {
+        return vec![Effect::Toast {
+            level: "info".to_string(),
+            message: "That message is further up: load earlier messages, then jump again."
+                .to_string(),
+        }];
+    }
+    Vec::new()
+}
+
+/// The row that draws the message, else the last row that started before it.
+fn row_of(rows: &[TranscriptItem], message_id: &str, timestamp: Option<i64>) -> Option<usize> {
+    let id_of = |message: &Value| {
+        message
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let messages_of = |item: &TranscriptItem| -> Vec<Value> {
+        match item {
+            TranscriptItem::Message { message } => vec![message.clone()],
+            TranscriptItem::Summary {
+                user,
+                final_message,
+                earlier_replies,
+                work,
+                outcome,
+                ..
+            } => std::iter::once(user)
+                .chain(earlier_replies)
+                .chain(work)
+                .chain(outcome)
+                .chain(final_message)
+                .cloned()
+                .collect(),
+            TranscriptItem::CompletedWork {
+                work,
+                artifacts,
+                final_message,
+                ..
+            } => work
+                .iter()
+                .chain(artifacts)
+                .chain(final_message)
+                .cloned()
+                .collect(),
+            TranscriptItem::Unknown(_) => Vec::new(),
+        }
+    };
+    let mut before = None;
+    for (index, item) in rows.iter().enumerate() {
+        let item_id = match item {
+            TranscriptItem::Summary { id, .. } | TranscriptItem::CompletedWork { id, .. } => {
+                Some(id.clone())
+            }
+            _ => None,
+        };
+        let messages = messages_of(item);
+        if item_id.as_deref() == Some(message_id)
+            || messages
+                .iter()
+                .any(|message| id_of(message).as_deref() == Some(message_id))
+        {
+            return Some(index);
+        }
+        let started = messages
+            .iter()
+            .filter_map(|message| message.get("timestamp").and_then(Value::as_i64))
+            .min();
+        if let (Some(started), Some(timestamp)) = (started, timestamp) {
+            if started <= timestamp {
+                before = Some(index);
+            }
+        }
+    }
+    before
+}
+
+/// The session has a conversation to read.
+fn available(state: &ChatState) -> bool {
+    state.session.agent_session_id.is_some()
+}
+
+fn section_of(id: &str) -> Option<FilesLinksSection> {
+    match id {
+        "attachments" => Some(FilesLinksSection::Attachments),
+        "files" => Some(FilesLinksSection::Files),
+        "links" => Some(FilesLinksSection::Links),
+        _ => None,
+    }
+}
+
+/// The list's answer: it fills the card, and a refusal is the card's, never the composer's error
+/// line.
+pub fn settle(state: &mut ChatState, request_id: u64, outcome: &RpcOutcome) -> Option<Vec<Effect>> {
+    if state.composer.files_links.request != Some(request_id) {
+        return None;
+    }
+    state.core.claim_refusal();
+    let files_links = &mut state.composer.files_links;
+    files_links.request = None;
+    match outcome {
+        RpcOutcome::Ok { result } => {
+            let sessions = result
+                .get("sessions")
+                .cloned()
+                .and_then(|sessions| {
+                    serde_json::from_value::<Vec<FilesLinksSession>>(sessions).ok()
+                })
+                .unwrap_or_default();
+            files_links.sessions = Some(sessions);
+        }
+        // An older gxserver has no `readSessionFilesLinks` and refuses it without a sentence.
+        RpcOutcome::Err { message, .. } if !message.chars().any(char::is_alphabetic) => {
+            files_links.error = Some(
+                "Ghostex on this computer is too old for Files and links. Update it and try again."
+                    .to_string(),
+            );
+        }
+        RpcOutcome::Err { message, .. } => files_links.error = Some(message.clone()),
+    }
+    state.core.request_publish();
+    Some(Vec::new())
+}
+
+fn plural(count: usize, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+
+fn time_label(mention: &FilesLinksMention, context: &ChatContext) -> Option<String> {
+    crate::transcript::message_time::message_time(mention.timestamp, context)
+        .get("label")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn mention_jump(
+    session: &FilesLinksSession,
+    mention: &FilesLinksMention,
+    label: &str,
+    tooltip: &str,
+) -> Value {
+    json!({
+        "label": label,
+        "tooltip": tooltip,
+        "command": {
+            "type": "filesLinksJump",
+            "projectId": session.project_id,
+            "sessionId": session.session_id,
+            "messageId": mention.message_id,
+            "timestamp": mention.timestamp,
+        },
+    })
+}
+
+fn row(item: &FilesLinksItem, session: &FilesLinksSession, context: &ChatContext) -> FilesLinksRow {
+    let first = time_label(&item.first, context);
+    let last = time_label(&item.last, context);
+    let meta = match (item.mentions, first, last) {
+        (1, Some(at), _) => format!("Mentioned {at}"),
+        (1, None, _) => "Mentioned once".to_string(),
+        (count, Some(first), Some(last)) if first != last => {
+            format!("{count} mentions · first {first} · last {last}")
+        }
+        (count, _, Some(last)) => format!("{count} mentions · {last}"),
+        (count, _, None) => format!("{count} mentions"),
+    };
+    let jumps = if !session.own {
+        vec![json!({
+            "label": "Open thread",
+            "tooltip": format!("Open {} to read where it was mentioned", session.title),
+            "command": {
+                "type": "openCoordinatorThread",
+                "projectId": session.project_id,
+                "sessionId": session.session_id,
+            },
+        })]
+    } else if item.mentions > 1 && item.first.message_id != item.last.message_id {
+        vec![
+            mention_jump(
+                session,
+                &item.first,
+                "First",
+                "Scroll to the message that first mentioned it",
+            ),
+            mention_jump(
+                session,
+                &item.last,
+                "Last",
+                "Scroll to the message that last mentioned it",
+            ),
+        ]
+    } else {
+        vec![mention_jump(
+            session,
+            &item.last,
+            "Show",
+            "Scroll to the message that mentioned it",
+        )]
+    };
+    let href = item
+        .url
+        .clone()
+        .or_else(|| item.path.clone())
+        .unwrap_or_default();
+    FilesLinksRow {
+        key: format!("{}:{}:{}", session.project_id, session.session_id, item.key),
+        label: item.label.clone(),
+        detail: item.detail.clone(),
+        icon: match item.kind.as_str() {
+            "image" => "photo",
+            "folder" => "folder",
+            "url" => "link",
+            _ => "file",
+        }
+        .to_string(),
+        tag: match item.change.as_deref() {
+            Some("new") => Some("New".to_string()),
+            Some("edited") => Some("Edited".to_string()),
+            Some("deleted") => Some("Deleted".to_string()),
+            _ if item.attached => Some("Attached".to_string()),
+            _ => None,
+        },
+        meta,
+        open: json!({"type": "openMarkdownLink", "href": href}),
+        image: item.image.clone(),
+        jumps,
+    }
+}
+
+/// The document's `filesLinks`.
+pub fn document(state: &ChatState, context: &ChatContext) -> FilesLinks {
+    let files_links = &state.composer.files_links;
+    let enabled = available(state);
+    let open = enabled && files_links.open;
+    let mut document = FilesLinks {
+        enabled,
+        open,
+        loading: open && files_links.request.is_some(),
+        error: files_links.error.clone().filter(|_| open),
+        query: files_links.query.clone(),
+        jump: files_links.jump.filter(|_| open),
+        ..FilesLinks::default()
+    };
+    let Some(sessions) = files_links.sessions.as_ref().filter(|_| open) else {
+        return document;
+    };
+    let total: usize = sessions.iter().map(|session| session.items.len()).sum();
+    let several = sessions.len() > 1;
+    let needle = files_links.query.trim().to_lowercase();
+    let filtering = !needle.is_empty();
+    let matches = |item: &FilesLinksItem, session: &FilesLinksSession| {
+        !filtering
+            || item.label.to_lowercase().contains(&needle)
+            || item.detail.to_lowercase().contains(&needle)
+            || (several && session.title.to_lowercase().contains(&needle))
+    };
+    for (section, id, label) in [
+        (FilesLinksSection::Attachments, "attachments", "Attachments"),
+        (FilesLinksSection::Files, "files", "Files"),
+        (FilesLinksSection::Links, "links", "Links"),
+    ] {
+        let expanded = filtering || files_links.expanded.contains(&section);
+        let mut count = 0usize;
+        let mut shown = 0usize;
+        let mut groups = Vec::new();
+        for session in sessions {
+            let mut rows = Vec::new();
+            for item in session
+                .items
+                .iter()
+                .filter(|item| item.section == section && matches(item, session))
+            {
+                count += 1;
+                if expanded || shown < SECTION_ROWS {
+                    shown += 1;
+                    rows.push(row(item, session, context));
+                }
+            }
+            if !rows.is_empty() {
+                groups.push(FilesLinksGroup {
+                    key: format!("{}:{}", session.project_id, session.session_id),
+                    title: if !several {
+                        String::new()
+                    } else if session.own {
+                        format!("{} (this chat)", session.title)
+                    } else {
+                        session.title.clone()
+                    },
+                    rows,
+                });
+            }
+        }
+        if count == 0 {
+            continue;
+        }
+        let more_label = if filtering || count <= SECTION_ROWS {
+            String::new()
+        } else if expanded {
+            "Show fewer".to_string()
+        } else {
+            format!("Show all {count}")
+        };
+        document.sections.push(FilesLinksSectionView {
+            id: id.to_string(),
+            label: label.to_string(),
+            count,
+            groups,
+            more_label,
+        });
+    }
+    document.filter = total >= FILTER_FROM;
+    document.caption = if several {
+        format!(
+            "{} · {}",
+            plural(sessions.len(), "session", "sessions"),
+            plural(total, "item", "items")
+        )
+    } else {
+        plural(total, "item", "items")
+    };
+    if document.sections.is_empty() {
+        document.empty_label = if filtering {
+            format!(
+                "Nothing matches \u{201c}{}\u{201d}.",
+                files_links.query.trim()
+            )
+        } else if several {
+            "No attachments, files or links mentioned in this chat or its threads yet.".to_string()
+        } else {
+            "No attachments, files or links mentioned in this chat yet.".to_string()
+        };
+    }
+    document
+}

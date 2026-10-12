@@ -57,6 +57,9 @@ pub enum ChatRpcMethod {
     TakeBackSessionChatQueuedMessage,
     /// A short summary of where the session stands (`composer/catch_up.rs`).
     CatchUpSession,
+    /// Every attachment, file and link the session and its threads mentioned
+    /// (`composer/files_links.rs`).
+    ReadSessionFilesLinks,
     /// A method this build does not know; kept verbatim.
     Other(String),
 }
@@ -98,6 +101,7 @@ impl ChatRpcMethod {
             Self::OpenCoordinatorThread => "openCoordinatorThread",
             Self::TakeBackSessionChatQueuedMessage => "takeBackSessionChatQueuedMessage",
             Self::CatchUpSession => "catchUpSession",
+            Self::ReadSessionFilesLinks => "readSessionFilesLinks",
             Self::Other(name) => name.as_str(),
         }
     }
@@ -138,6 +142,7 @@ impl ChatRpcMethod {
             "openCoordinatorThread" => Self::OpenCoordinatorThread,
             "takeBackSessionChatQueuedMessage" => Self::TakeBackSessionChatQueuedMessage,
             "catchUpSession" => Self::CatchUpSession,
+            "readSessionFilesLinks" => Self::ReadSessionFilesLinks,
             other => Self::Other(other.to_string()),
         }
     }

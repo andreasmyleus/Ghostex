@@ -108,6 +108,7 @@ impl Render for NativeChatView {
         let s = p.scale;
         self.hold_text_width_while_sliding(&p);
         self.sync_search_scroll();
+        self.sync_files_links_jump();
         // A card above the composer that is opening or closing needs the next frame; the
         // transcript's rows ask for theirs as they are drawn.
         if self.disclosure_motion.borrow().running() {

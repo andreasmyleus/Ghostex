@@ -251,6 +251,7 @@ pub fn settle(state: &mut ChatState, event: &Event, context: &ChatContext) -> Ve
                 .or_else(|| settle_chrome_refresh(state, *request_id, outcome))
                 .or_else(|| settle_note_read(state, *request_id, outcome))
                 .or_else(|| crate::composer::catch_up::settle(state, *request_id, outcome))
+                .or_else(|| crate::composer::files_links::settle(state, *request_id, outcome))
                 .or_else(|| settle_attachment_import(state, *request_id, outcome))
                 .or_else(|| settle_draft_push(state, *request_id, outcome));
             match claimed {

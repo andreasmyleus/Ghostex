@@ -167,6 +167,11 @@ const GXSERVER_PATHSPECS = Object.freeze([
   { pathspec: ':(exclude)packages/find/target' },
   { pathspec: 'packages/settings-catalog/**' },
   { pathspec: ':(exclude)packages/settings-catalog/target' },
+  /* The chat core's Files and links rules, which `readSessionFilesLinks` runs. */
+  { pathspec: 'packages/gx-chat-core/**' },
+  { pathspec: ':(exclude)packages/gx-chat-core/target' },
+  { pathspec: 'packages/gx-protocol/**' },
+  { pathspec: ':(exclude)packages/gx-protocol/target' },
   { pathspec: '.dependencies/zmx' },
   /* server/package-remote-linux.mjs stages the bundled skills catalog into the package. */
   { pathspec: 'skills/**' },

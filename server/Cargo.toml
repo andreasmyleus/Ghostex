@@ -16,6 +16,10 @@ ghostex-paths = { path = "../packages/paths" }
 ghostex-docs = { path = "../packages/project-docs" }
 ghostex-find = { path = "../packages/find" }
 ghostex-settings-catalog = { path = "../packages/settings-catalog" }
+# CDXC:FilesAndLinks 2026-10-12 SEE-ALSO:
+# The chat core's own rules for what a message mentions (`transcript/files_links.rs`), which
+# `readSessionFilesLinks` runs over every transcript so the list and the transcript agree.
+ghostex-gx-chat-core = { path = "../packages/gx-chat-core" }
 # CDXC:SessionChat 2026-10-06 SEE-ALSO:
 # `ghostex visual check` draws a chat ```visual block with the same layout crate the chat
 # clients use, and paints it to a PNG with resvg (the renderer the desktop's diagrams use).

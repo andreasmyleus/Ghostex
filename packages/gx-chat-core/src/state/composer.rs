@@ -44,6 +44,8 @@ pub struct ComposerState {
     pub note: NoteState,
     /// The Catch me up card.
     pub catch_up: crate::composer::catch_up::CatchUpState,
+    /// The Files and links card.
+    pub files_links: crate::composer::files_links::FilesLinksState,
     /// The stash badge and the note dot.
     pub chrome: ComposerChromeState,
     /// Which toolbar controls the renderer could not fit.

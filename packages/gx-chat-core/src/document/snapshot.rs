@@ -114,6 +114,9 @@ pub struct Document {
     /// The Catch me up button and card. Family d.
     #[serde(default)]
     pub catch_up: crate::composer::catch_up::CatchUp,
+    /// The Files and links card. Family d.
+    #[serde(default)]
+    pub files_links: crate::composer::files_links::FilesLinks,
     pub interaction: Interaction,
     /// The toast in the scroll-to-bottom pill's place: "Press Escape again to interrupt" while a
     /// first Escape waits, then the red "Agent was interrupted". Family d.

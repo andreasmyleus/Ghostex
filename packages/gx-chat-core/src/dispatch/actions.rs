@@ -121,7 +121,13 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::SaveNote
         | ActionKind::CatchUp
         | ActionKind::CatchUpRefresh
-        | ActionKind::CatchUpClose => Family::Composer,
+        | ActionKind::CatchUpClose
+        | ActionKind::FilesLinks
+        | ActionKind::FilesLinksRefresh
+        | ActionKind::FilesLinksClose
+        | ActionKind::FilesLinksFilter
+        | ActionKind::FilesLinksShowAll
+        | ActionKind::FilesLinksJump => Family::Composer,
 
         ActionKind::SelectOption
         | ActionKind::ModelMenuView

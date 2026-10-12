@@ -144,6 +144,7 @@ impl NativeChatView {
             "maximizeComposer" => "Maximize",
             "summaryMode" => "Summary mode",
             "sessionNote" => "Session note",
+            "filesLinks" => "Files and links",
             "stashPrompt" => "Stash prompt",
             "attachPath" => "Attach a file or folder",
             "terminalView" => "Terminal View",
@@ -156,6 +157,7 @@ impl NativeChatView {
         let pressed = match action {
             "summaryMode" => chrome["summaryPressed"] == true,
             "sessionNote" => chrome["notePressed"] == true,
+            "filesLinks" => self.snapshot["filesLinks"]["open"] == true,
             "maximizeComposer" => self.maximized_window.is_some(),
             "moreActions" => self.chat_menu_is_open(super::actions::MORE_ACTIONS_TRIGGER),
             "dictate" => self.dictating(cx),
@@ -379,6 +381,9 @@ impl NativeChatView {
             footer = footer.child(note);
         }
         if let Some(card) = self.render_catch_up(p, window, cx) {
+            footer = footer.child(card);
+        }
+        if let Some(card) = self.render_files_links(p, window, cx) {
             footer = footer.child(card);
         }
         if maximized {

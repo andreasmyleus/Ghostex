@@ -727,6 +727,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghostex-gx-chat-core"
+version = "0.1.0"
+dependencies = [
+ "ghostex-gx-protocol",
+ "ghostex-gx-visual",
+ "markdown",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ghostex-gx-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ghostex-gx-visual"
 version = "0.1.0"
 dependencies = [
@@ -761,6 +780,7 @@ dependencies = [
  "ghostex-docs",
  "ghostex-editor-client",
  "ghostex-find",
+ "ghostex-gx-chat-core",
  "ghostex-gx-visual",
  "ghostex-paths",
  "ghostex-settings-catalog",

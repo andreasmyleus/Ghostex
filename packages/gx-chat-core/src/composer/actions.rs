@@ -190,6 +190,21 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
         ActionKind::CatchUp => crate::composer::catch_up::toggle(state),
         ActionKind::CatchUpRefresh => crate::composer::catch_up::run(state),
         ActionKind::CatchUpClose => crate::composer::catch_up::close(state),
+        ActionKind::FilesLinks => crate::composer::files_links::toggle(state),
+        ActionKind::FilesLinksRefresh => crate::composer::files_links::run(state),
+        ActionKind::FilesLinksClose => crate::composer::files_links::close(state),
+        ActionKind::FilesLinksFilter => {
+            crate::composer::files_links::set_query(state, text_param(action))
+        }
+        ActionKind::FilesLinksShowAll => {
+            crate::composer::files_links::toggle_section(state, string_param(action, "section"))
+        }
+        ActionKind::FilesLinksJump => crate::composer::files_links::jump(
+            state,
+            context,
+            string_param(action, "messageId"),
+            action.param("timestamp").and_then(Value::as_i64),
+        ),
         ActionKind::SendKey => {
             crate::composer::send::send_key(
                 state,

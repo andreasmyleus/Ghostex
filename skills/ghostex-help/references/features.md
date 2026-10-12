@@ -1296,6 +1296,23 @@ button again closes it. Nothing is sent to the session's own agent. If the
 Title Generation Agent is not installed, the card says so; pick another one in
 Settings > Agents. Setting: `chatCatchMeUp`.
 
+Files and links: the link button in the chat box's toolbar (after Session note;
+in More actions when the window is narrow) opens a list above the chat box of
+everything the session mentioned, on the computer and on the phone. Attachments
+holds every picture (pasted, attached, or shown by the agent) and every file
+you attached; Files holds every other file or folder you or the agent mentioned
+and every file the agent created, edited or deleted (tagged New, Edited or
+Deleted); Links holds every web address, with its link text. Each item is
+listed once, newest first, with how often and when it was first and last
+mentioned, and a filter box appears once the list is long. Click an item to
+open it: a picture in the image preview, a file the way a file link in the chat
+opens, a link in the browser. First and Last (or Show) scroll the chat to the
+message that mentioned it; on the phone, hold a row to see them. In an
+orchestrator's chat the list also covers every one of its threads, done ones
+included, grouped by thread title, and Open thread opens the thread that
+mentioned the item. Agents can read the same list with `ghostex
+read-session-files-links <session> --json`.
+
 Summary mode folds each turn down to your prompt and an "Agent reply" row; the
 newest reply stays open, and older ones open with a click. The row holds every
 reply the agent gave to that prompt, including the ones it wrote after a

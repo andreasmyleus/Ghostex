@@ -196,6 +196,9 @@ impl NativeChatView {
                 if id == "note" {
                     row["checked"] = self.snapshot["note"]["open"].clone();
                 }
+                if id == "files" {
+                    row["checked"] = self.snapshot["filesLinks"]["open"].clone();
+                }
                 rows.push(row);
             }
         }
