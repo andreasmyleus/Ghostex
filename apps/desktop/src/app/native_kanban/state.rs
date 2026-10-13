@@ -192,6 +192,8 @@ pub(crate) struct NativeKanbanState {
     pub(crate) drag_autoscroll: Option<Task<()>>,
     /// The board's own window while Open in New Window has it out of the panel (`window.rs`).
     pub(crate) detached: Option<super::window::KanbanDetachedWindow>,
+    /// Bumped by every `native_kanban_notify`; the board's own window redraws when it moves.
+    pub(crate) window_redraws: u64,
 }
 
 impl NativeKanbanState {
@@ -212,6 +214,7 @@ impl NativeKanbanState {
         let appearance_signature = self.appearance_signature;
         // The board's window stays open across a project switch and shows the new board.
         let detached = self.detached.take();
+        let window_redraws = self.window_redraws;
         *self = Self {
             project: Some(project),
             generation,
@@ -228,6 +231,7 @@ impl NativeKanbanState {
             palette,
             appearance_signature,
             detached,
+            window_redraws,
             ..Self::default()
         };
     }

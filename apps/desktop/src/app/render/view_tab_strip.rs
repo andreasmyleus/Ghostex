@@ -557,6 +557,8 @@ impl GhostexGpuiApp {
         })
     }
 
+    /// The strip's pop-out control: Open Externally for a page view, Open in New Window or Bring
+    /// Back to Panel for Kanban.
     fn render_view_tab_strip_pop_out_button(
         &self,
         active_mode: TitlebarMode,

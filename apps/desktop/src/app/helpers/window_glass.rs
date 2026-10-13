@@ -460,6 +460,7 @@ pub(crate) fn window_glass_active_for(window: Option<gpui::AnyWindowHandle>) -> 
 /// most, which draw the board on glass as the panel does.
 static DETACHED_BOARD_WINDOW_IDS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
 
+/// Adds `window` to the board windows that take glass, or removes it once the window closes.
 pub(crate) fn set_detached_board_glass_window(window: gpui::WindowId, glass: bool) {
     let id = window.as_u64();
     if let Ok(mut ids) = DETACHED_BOARD_WINDOW_IDS.lock() {
@@ -468,8 +469,17 @@ pub(crate) fn set_detached_board_glass_window(window: gpui::WindowId, glass: boo
             ids.push(id);
         }
     }
+    if !glass {
+        // The closed window's last glass record would otherwise stay in the map for good.
+        if let Ok(mut applied) = APPLIED_WINDOW_GLASS.lock() {
+            if let Some(applied) = applied.as_mut() {
+                applied.remove(&id);
+            }
+        }
+    }
 }
 
+/// Whether the window with `id` is one of the board's own windows.
 fn detached_board_glass_window(id: u64) -> bool {
     DETACHED_BOARD_WINDOW_IDS
         .lock()

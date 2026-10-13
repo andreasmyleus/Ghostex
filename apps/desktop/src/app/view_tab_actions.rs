@@ -56,6 +56,8 @@ impl GhostexGpuiApp {
             .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
     }
 
+    /// Runs the pop-out control for `mode`: Files opens its file externally, Kanban moves between
+    /// the panel and its own window, and the rest open their page in the browser.
     pub(crate) fn pop_out_view(&mut self, mode: TitlebarMode, cx: &mut gpui::Context<Self>) {
         if mode == TitlebarMode::Manage {
             if let Some(path) = self.native_docs_external_file() {

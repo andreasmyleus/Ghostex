@@ -10,8 +10,8 @@
 //! instead of building a second board: the window is light (no sidebar, sessions column or
 //! gxserver socket of its own), it can go to another screen, and the board keeps drag and drop,
 //! Start work and the ticket panel. Nothing is persisted: after a launch the board is in the
-//! panel again. A whole workspace window opened on the Kanban view was tried first (branch
-//! feat/kanban-board-window-and-scroll) and set aside for this lighter shape.
+//! panel again. A whole workspace window opened on the Kanban view was tried first and set
+//! aside for this lighter shape.
 
 use gpui::{
     AnyElement, AnyWindowHandle, AppContext as _, Bounds, Context, FontWeight,
@@ -21,6 +21,7 @@ use gpui::{
 };
 use gpui_component::Root;
 
+use super::state::KanbanProjectKey;
 use crate::GhostexGpuiApp;
 #[cfg(target_os = "macos")]
 use crate::app::consts::{WINDOW_CONTROLS_LEADING_RESERVE, WORKAREA_HEADER_HEIGHT};
@@ -45,10 +46,25 @@ pub(crate) struct KanbanDetachedWindow {
     pub(crate) window: AnyWindowHandle,
 }
 
-/// The window's root: it draws the app's board and redraws whenever the app does.
+/// The window's root: it draws the app's board and redraws when the board does.
 pub(crate) struct KanbanWindowRoot {
     app: WeakEntity<GhostexGpuiApp>,
+    /// What the window last drew from; see `kanban_window_signature`.
+    drawn: Option<KanbanWindowSignature>,
     _subscription: Subscription,
+}
+
+/// The board's redraw count and the project it shows: the window redraws only when one moves.
+type KanbanWindowSignature = (u64, Option<(KanbanProjectKey, String)>);
+
+/// CDXC:ProjectBoard 2026-10-13 WHY:
+/// The window observes the app entity, which notifies for terminal output, chat streaming and indicator animation; redrawing the board's window on each of those was wasted work. Every board change goes through `native_kanban_notify` (which bumps `window_redraws`), and a project switch or rename shows in the snapshot, so those two are all the window reacts to; text fields inside it redraw it on their own.
+fn kanban_window_signature(app: &GhostexGpuiApp) -> KanbanWindowSignature {
+    (
+        app.native_kanban.window_redraws,
+        app.native_kanban_project()
+            .map(|project| (project.key, project.display_name)),
+    )
 }
 
 impl Render for KanbanWindowRoot {
@@ -56,6 +72,11 @@ impl Render for KanbanWindowRoot {
         let Some(app) = self.app.upgrade() else {
             return div().into_any_element();
         };
+        // Between Bring Back and the window's removal the panel draws the board again; drawing it
+        // here too would make its search box in a window that is about to close.
+        if !app.read(cx).native_kanban_in_own_window(window) {
+            return div().into_any_element();
+        }
         sync_detached_board_window_glass(window);
         app.update(cx, |app, cx| {
             app.render_native_kanban_window_body(window, cx)
@@ -72,6 +93,7 @@ fn detached_board_window_bounds(main: Bounds<Pixels>) -> Bounds<Pixels> {
 }
 
 impl GhostexGpuiApp {
+    /// Whether the board is out in its own window.
     pub(crate) fn native_kanban_detached(&self) -> bool {
         self.native_kanban.detached.is_some()
     }
@@ -91,6 +113,7 @@ impl GhostexGpuiApp {
         self.titlebar_mode_available(TitlebarMode::Kanban) && self.native_kanban_project().is_some()
     }
 
+    /// The board window's title: "Kanban – <project>".
     fn native_kanban_window_title(&self) -> String {
         let name = self
             .native_kanban_project()
@@ -148,17 +171,39 @@ impl GhostexGpuiApp {
         let app = cx.entity();
         // Deferred: the click arrives inside a window update, where opening a window is refused.
         cx.defer(move |cx| {
+            // A second click before this ran would otherwise open a second window and orphan the
+            // first.
+            if let Some(detached) = &app.read(cx).native_kanban.detached {
+                let handle = detached.window;
+                let _ = handle.update(cx, |_, window, _| window.activate_window());
+                return;
+            }
             let observed = app.clone();
             let on_close = app.downgrade();
             let opened = cx.open_window(options, move |window, cx| {
                 window.set_window_title(&title);
-                let root = cx.new(|cx| KanbanWindowRoot {
+                let drawn = Some(kanban_window_signature(observed.read(cx)));
+                let root = cx.new(|cx: &mut Context<KanbanWindowRoot>| KanbanWindowRoot {
                     app: observed.downgrade(),
-                    _subscription: cx.observe(&observed, |_, _, cx| cx.notify()),
+                    drawn,
+                    _subscription: cx.observe(&observed, |root: &mut KanbanWindowRoot, app, cx| {
+                        let signature = Some(kanban_window_signature(app.read(cx)));
+                        if root.drawn != signature {
+                            root.drawn = signature;
+                            cx.notify();
+                        }
+                    }),
                 });
                 // The window's own close control puts the board back in the panel.
+                let window_id = window.window_handle().window_id();
                 window.on_window_should_close(cx, move |_, cx| {
-                    let _ = on_close.update(cx, |app, cx| app.native_kanban_window_closed(cx));
+                    set_detached_board_glass_window(window_id, false);
+                    let on_close = on_close.clone();
+                    // Deferred so the app is never updated from inside the platform's close.
+                    cx.defer(move |cx| {
+                        let _ = on_close
+                            .update(cx, |app, cx| app.native_kanban_window_closed(window_id, cx));
+                    });
                     true
                 });
                 cx.new(|cx| Root::new(root, window, cx).bg(gpui::transparent_black()))
@@ -210,10 +255,18 @@ impl GhostexGpuiApp {
         self.native_kanban.panel = None;
     }
 
-    /// The user closed the board's window: the board is back in the panel.
-    fn native_kanban_window_closed(&mut self, cx: &mut Context<Self>) {
-        let _ = self.native_kanban_take_detached_window();
-        self.native_kanban_notify(cx);
+    /// The user closed the board's window `closed`: the board is back in the panel. A window
+    /// already brought back or replaced by a newer one leaves the current state alone.
+    fn native_kanban_window_closed(&mut self, closed: gpui::WindowId, cx: &mut Context<Self>) {
+        let current = self
+            .native_kanban
+            .detached
+            .as_ref()
+            .is_some_and(|detached| detached.window.window_id() == closed);
+        if current {
+            let _ = self.native_kanban_take_detached_window();
+            self.native_kanban_notify(cx);
+        }
     }
 
     /// The window's title follows the project the board shows.
@@ -263,8 +316,8 @@ impl GhostexGpuiApp {
     /// room on the left, the window's title in the middle, and a drag of it moves the window as
     /// the work area header does.
     ///
-    /// CDXC:ProjectBoard 2026-10-10 DECISION:
-    /// User: the board's window keeps the same titlebar as the Ghostex window. So on macOS it takes the workspace windows' transparent titlebar, their traffic-light spot and app-owned titlebar drag (workspace_windows/open.rs), and this header row draws the title. Windows and Linux keep the system titlebar: the workspace windows' caption buttons are drawn by the work area header, which this window does not have.
+    /// CDXC:ProjectBoard 2026-10-10 WHY:
+    /// The board's window keeps the same titlebar as the Ghostex window. So on macOS it takes the workspace windows' transparent titlebar, their traffic-light spot and app-owned titlebar drag (workspace_windows/open.rs), and this header row draws the title. Windows and Linux keep the system titlebar: the workspace windows' caption buttons are drawn by the work area header, which this window does not have.
     #[cfg(target_os = "macos")]
     fn render_native_kanban_window_header(&self) -> Option<AnyElement> {
         Some(

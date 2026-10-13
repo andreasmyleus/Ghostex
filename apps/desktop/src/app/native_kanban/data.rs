@@ -139,6 +139,8 @@ impl GhostexGpuiApp {
         self.reclaim_gpui_root_for_chrome_input_focus();
     }
 
+    /// Whether the board is on screen: its panel tab is the active, awake view, or it is out in
+    /// its own window.
     pub(crate) fn native_kanban_visible(&self) -> bool {
         let in_panel = self.active_mode == TitlebarMode::Kanban
             && self

@@ -95,6 +95,7 @@ impl GhostexGpuiApp {
     /// Redraws the board: the cached lanes and the app, which draws the rest. Every board state
     /// change calls this instead of `cx.notify()`.
     pub(crate) fn native_kanban_notify(&mut self, cx: &mut Context<Self>) {
+        self.native_kanban.window_redraws = self.native_kanban.window_redraws.wrapping_add(1);
         if let Some(view) = self.native_kanban.board_view.as_ref() {
             App::notify(cx, view.entity_id());
         }
