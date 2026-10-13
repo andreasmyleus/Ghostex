@@ -24,7 +24,9 @@ pub(crate) use gh::{
     global_accounts, global_hosts, real_gh_for_shim, real_gh_path, token_env_key, token_for,
     GITHUB_HOST,
 };
-pub(crate) use identity::{fetch_identity, read_identity, write_identity, Identity};
+pub(crate) use identity::{
+    fetch_identity, read_identity, with_auto_signing, write_identity, Identity,
+};
 pub(crate) use presentation::{cached_project_github_account, refresh_project_github_accounts};
 pub(crate) use repo::repo_for_cwd;
 pub(crate) use resolve::{

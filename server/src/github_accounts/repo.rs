@@ -15,26 +15,54 @@ pub(crate) struct RemoteRef {
     pub(crate) ssh: bool,
 }
 
-/// The git checkout a folder belongs to and the GitHub repository its
-/// `origin` points at.
+/// The git checkout a folder belongs to and the GitHub repository its remote
+/// points at.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RepoInfo {
     /// The worktree's top folder (`git rev-parse --show-toplevel`).
     pub(crate) root: PathBuf,
+    /// The main checkout this worktree was added from; `None` for the main
+    /// checkout itself.
+    pub(crate) main_root: Option<PathBuf>,
     pub(crate) remote: RemoteRef,
 }
 
-/// `None` when `cwd` is not in a git checkout or `origin` is not on a GitHub
-/// host (github.com, or an Enterprise host gh is signed in to).
+/// `None` when `cwd` is not in a git checkout or none of its remotes is on a
+/// GitHub host (github.com, or an Enterprise host gh is signed in to). `origin`
+/// wins; a checkout whose GitHub remote has another name (`github`,
+/// `upstream`) uses the first such remote.
 pub(crate) fn repo_for_cwd(cwd: &str) -> Option<RepoInfo> {
     if cwd.trim().is_empty() || !std::path::Path::new(cwd).is_dir() {
         return None;
     }
-    let url = git(cwd, &["config", "--get", "remote.origin.url"])?;
-    let remote = parse_github_remote(&url)?;
-    let root = git(cwd, &["rev-parse", "--show-toplevel"])?;
+    let remote = git(cwd, &["config", "--get", "remote.origin.url"])
+        .and_then(|url| parse_github_remote(&url))
+        .or_else(|| {
+            git(cwd, &["config", "--get-regexp", r"^remote\..*\.url$"])?
+                .lines()
+                .filter_map(|line| line.split_once(char::is_whitespace))
+                .find_map(|(_, url)| parse_github_remote(url))
+        })?;
+    let dirs = git(cwd, &["rev-parse", "--show-toplevel", "--git-common-dir"])?;
+    let mut lines = dirs.lines().map(str::trim);
+    let root = PathBuf::from(lines.next().filter(|root| !root.is_empty())?);
+    let main_root = lines
+        .next()
+        .map(|common| {
+            let common = PathBuf::from(common);
+            if common.is_absolute() {
+                common
+            } else {
+                std::path::Path::new(cwd).join(common)
+            }
+        })
+        .filter(|common| common.file_name().is_some_and(|name| name == ".git"))
+        .and_then(|common| common.parent().map(std::path::Path::to_path_buf))
+        .and_then(|main| std::fs::canonicalize(&main).ok())
+        .filter(|main| std::fs::canonicalize(&root).map_or(true, |root| &root != main));
     Some(RepoInfo {
-        root: PathBuf::from(root),
+        root,
+        main_root,
         remote,
     })
 }

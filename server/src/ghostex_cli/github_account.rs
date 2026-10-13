@@ -22,8 +22,9 @@ Usage:
   ghostex github-account use [<login>] [--cwd <folder>] [--this-worktree]
       Switch the worktree to <login> (no login: the next account), and remember
       it for the repository's owner unless --this-worktree is given
-  ghostex github-account identity <login> [--name <name>] [--email <email>] [--host <host>]
-      Show or set the name and email commits made as <login> use
+  ghostex github-account identity <login> [--name <name>] [--email <email>]
+      [--signing-key <key id or SSH key file>] [--signing-format openpgp|ssh] [--host <host>]
+      Show or set the name, email and signing key commits made as <login> use
   ghostex github-account ssh-key <login> [<key file>] [--host <host>]
       Show or set the SSH key that signs in as <login>; with no key file and
       no key saved, Ghostex looks for it among your SSH keys";
@@ -276,22 +277,39 @@ fn switch_worktree(cwd: &str, login: Option<&str>, remember_owner: bool) -> CliR
 
 fn identity_command(args: &[String]) -> CliResult<()> {
     let host = host_from(args);
-    let login = positionals(args, &["--name", "--email", "--host"])
-        .into_iter()
-        .next()
-        .ok_or_else(|| CliError::Other(USAGE.to_string()))?;
+    let login = positionals(
+        args,
+        &[
+            "--name",
+            "--email",
+            "--host",
+            "--signing-key",
+            "--signing-format",
+        ],
+    )
+    .into_iter()
+    .next()
+    .ok_or_else(|| CliError::Other(USAGE.to_string()))?;
     let name = option_value(args, "--name");
     let email = option_value(args, "--email");
-    if name.is_none() && email.is_none() {
+    let signing_key = option_value(args, "--signing-key");
+    let signing_format = option_value(args, "--signing-format");
+    if name.is_none() && email.is_none() && signing_key.is_none() && signing_format.is_none() {
         match github_accounts::read_identity(&host, &login) {
             Some((identity, custom)) => println!(
-                "{login} commits as {} <{}>{}",
+                "{login} commits as {} <{}>{}{}",
                 identity.name,
                 identity.email,
+                identity
+                    .signing_key
+                    .as_deref()
+                    .map(|key| format!(", signed with {key}"))
+                    .unwrap_or_default(),
                 if custom { " (set by you)" } else { "" }
             ),
             None => match github_accounts::fetch_identity(&host, &login) {
                 Some(identity) => {
+                    let identity = github_accounts::with_auto_signing(&host, &login, identity);
                     let _ = github_accounts::write_identity(&host, &login, &identity, false);
                     println!("{login} commits as {} <{}>", identity.name, identity.email);
                 }
@@ -308,7 +326,22 @@ fn identity_command(args: &[String]) -> CliResult<()> {
         email: email
             .or_else(|| current.as_ref().map(|identity| identity.email.clone()))
             .ok_or_else(|| CliError::Other("Pass --email as well.".to_string()))?,
+        signing_key: signing_key
+            .filter(|key| !key.is_empty() && key != "none")
+            .or_else(|| {
+                current
+                    .as_ref()
+                    .and_then(|identity| identity.signing_key.clone())
+            }),
+        signing_format: signing_format
+            .filter(|format| !format.is_empty() && format != "none")
+            .or_else(|| {
+                current
+                    .as_ref()
+                    .and_then(|identity| identity.signing_format.clone())
+            }),
     };
+    let identity = github_accounts::with_auto_signing(&host, &login, identity);
     github_accounts::write_identity(&host, &login, &identity, true)
         .map_err(|error| CliError::Other(format!("Could not save the identity: {error}")))?;
     println!(

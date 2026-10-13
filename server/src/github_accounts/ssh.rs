@@ -84,7 +84,9 @@ pub(crate) fn set_account_key(host: &str, login: &str, key: &Path) -> std::io::R
     store::write_atomically(
         &store::ssh_key_file(host, login),
         format!("{}\n", key.to_string_lossy().replace('\\', "/")).as_bytes(),
-    )
+    )?;
+    super::identity::refresh_auto_signing(host, login);
+    Ok(())
 }
 
 /// Finds which of the user's SSH keys sign in as which account on `host`, in

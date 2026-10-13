@@ -22,6 +22,8 @@ const ACCESS_CHECK_RETRY: Duration = Duration::from_secs(10 * 60);
 pub(crate) enum AccountSource {
     /// Chosen for this worktree (`gh auth switch`, `ghostex github-account use`, the app, or an earlier pick).
     Worktree,
+    /// The main checkout this worktree was added from uses it.
+    MainCheckout,
     /// Remembered for the repository's owner.
     Owner,
     /// The account has the owner's name.
@@ -34,6 +36,7 @@ impl AccountSource {
     pub(crate) fn describe(self) -> &'static str {
         match self {
             Self::Worktree => "chosen for this worktree",
+            Self::MainCheckout => "the main checkout uses it",
             Self::Owner => "remembered for this owner",
             Self::OwnerName => "the account has the owner's name",
             Self::GhActive => {
@@ -45,6 +48,7 @@ impl AccountSource {
     pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::Worktree => "worktree",
+            Self::MainCheckout => "mainCheckout",
             Self::Owner => "owner",
             Self::OwnerName => "ownerName",
             Self::GhActive => "ghActive",
@@ -116,6 +120,9 @@ pub(crate) fn account_for_worktree(worktree: GithubWorktree) -> Option<WorktreeA
         .and_then(|record| accounts.find(&record.login).cloned());
     let (login, source) = if let Some(login) = chosen {
         (login, AccountSource::Worktree)
+    } else if let Some(login) = main_checkout_login(&repo, &accounts) {
+        let _ = store::write_worktree_login(&file, &remote.host, &login, &repo.root);
+        (login, AccountSource::MainCheckout)
     } else if let Some((login, source)) = remembered_or_named(&remote, &accounts) {
         let _ = store::write_worktree_login(&file, &remote.host, &login, &repo.root);
         (login, source)
@@ -136,6 +143,16 @@ pub(crate) fn account_for_worktree(worktree: GithubWorktree) -> Option<WorktreeA
         source,
         accounts,
     })
+}
+
+/// The account chosen for the main checkout a worktree was added from, so a
+/// new worktree starts on the account its checkout uses even when that choice
+/// was for that checkout only.
+fn main_checkout_login(repo: &RepoInfo, accounts: &GhAccounts) -> Option<String> {
+    let main_root = repo.main_root.as_ref()?;
+    store::read_worktree_record(&store::worktree_account_file(main_root))
+        .filter(|record| record.host == repo.remote.host)
+        .and_then(|record| accounts.find(&record.login).cloned())
 }
 
 fn remembered_or_named(

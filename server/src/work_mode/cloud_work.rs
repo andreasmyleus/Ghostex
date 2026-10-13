@@ -200,6 +200,11 @@ fn branch_on_remote(project_path: &str, branch: &str) -> bool {
         ])
         .arg(&reference)
         .env("GIT_TERMINAL_PROMPT", "0")
+        // A private repository only the worktree's own GitHub account can read (CDXC:GitHubAccounts).
+        .envs(crate::github_accounts::command_account_env(
+            project_path,
+            crate::github_accounts::AccountCommand::Git,
+        ))
         .output()
         .is_ok_and(|output| output.status.success())
 }
