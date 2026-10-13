@@ -67,6 +67,12 @@ pub(crate) fn is_codex_provisional_thread_name(
     !expected.is_empty() && (thread_name == expected || thread_name == expected.trim())
 }
 
+impl AgentMetadataTitle {
+    pub(crate) fn title(&self) -> &str {
+        &self.title
+    }
+}
+
 pub(crate) struct AgentTitleReconcileResult {
     pub(crate) changed: bool,
     pub(crate) metadata_title_found: bool,
@@ -180,9 +186,16 @@ pub(crate) fn reconcile_agent_metadata_title(
             session: Some(session),
         });
     }
+    // A rename already given up on stays failed until the agent confirms it or the user renames
+    // again, so its name is still offered by the next Rename.
+    let rename_failed = read_text_from_map(&runtime_settings, "pendingAgentTitleRequestStatus")
+        .as_deref()
+        == Some("failed");
     let pending_status = pending_title.as_deref().map(|pending_title| {
         if titles_match(pending_title, &metadata_title.title) {
             "confirmed"
+        } else if rename_failed {
+            "failed"
         } else {
             pending_mismatch_status
         }
@@ -300,6 +313,56 @@ pub(crate) fn reconcile_agent_metadata_title(
         reason: "metadata-title-applied".to_string(),
         session: Some(updated),
     })
+}
+
+/// Gives up on the user rename requested at `requested_at` when the agent still has not confirmed
+/// it: the request is marked `failed`, which drops the name from the title and publishes it as the
+/// attempt the next Rename offers. Returns whether it did; a newer or settled request is left alone.
+/// SEE-ALSO: `pending_session_rename_title` in server/src/presentation/session_attributes.rs.
+pub(crate) fn fail_pending_session_rename(
+    repository: &DomainRepository<'_>,
+    lifecycle: &LifecycleParams,
+    requested_at: &str,
+) -> Result<bool, DomainStateError> {
+    let db = repository.connection();
+    let transaction = db
+        .is_autocommit()
+        .then(|| rusqlite::Transaction::new_unchecked(db, rusqlite::TransactionBehavior::Immediate))
+        .transpose()
+        .map_err(sql_error)?;
+    let Some(session) = repository.get_session(&lifecycle.project_id, &lifecycle.session_id)?
+    else {
+        return Ok(false);
+    };
+    let runtime_settings = object_field(&session, "runtimeSettings");
+    let current = |key: &str| read_text_from_map(&runtime_settings, key);
+    if current("pendingAgentTitleRequestRequestedAt").as_deref() != Some(requested_at)
+        || matches!(
+            current("pendingAgentTitleRequestStatus").as_deref(),
+            Some("confirmed" | "failed")
+        )
+    {
+        return Ok(false);
+    }
+    let mut next_runtime_settings = runtime_settings.clone();
+    next_runtime_settings.insert(
+        "pendingAgentTitleRequestStatus".to_string(),
+        json!("failed"),
+    );
+    next_runtime_settings.insert(
+        "pendingAgentTitleRequestFailedAt".to_string(),
+        json!(now_iso()),
+    );
+    let mut update = lifecycle_update(lifecycle);
+    update.insert(
+        "runtimeSettings".to_string(),
+        Value::Object(next_runtime_settings),
+    );
+    repository.update_session(&update)?;
+    if let Some(transaction) = transaction {
+        transaction.commit().map_err(sql_error)?;
+    }
+    Ok(true)
 }
 
 /// What a title taken from agent metadata replaced, and which conversation it was read from.

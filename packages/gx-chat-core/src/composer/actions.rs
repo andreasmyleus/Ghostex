@@ -151,6 +151,7 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
             None,
         ),
         ActionKind::RemoveQueue => remove_queue(state, action),
+        ActionKind::TakeBackQueued => crate::composer::queue_take_back::begin(state, action),
         ActionKind::SendQueue => queue_rpc(
             state,
             ChatRpcMethod::SendSessionChatQueuedPrompt,
@@ -186,6 +187,24 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
             save_note(state)
         }
         ActionKind::SaveNote => save_note(state),
+        ActionKind::CatchUp => crate::composer::catch_up::toggle(state),
+        ActionKind::CatchUpRefresh => crate::composer::catch_up::run(state),
+        ActionKind::CatchUpClose => crate::composer::catch_up::close(state),
+        ActionKind::FilesLinks => crate::composer::files_links::toggle(state),
+        ActionKind::FilesLinksRefresh => crate::composer::files_links::run(state),
+        ActionKind::FilesLinksClose => crate::composer::files_links::close(state),
+        ActionKind::FilesLinksFilter => {
+            crate::composer::files_links::set_query(state, text_param(action))
+        }
+        ActionKind::FilesLinksShowAll => {
+            crate::composer::files_links::toggle_section(state, string_param(action, "section"))
+        }
+        ActionKind::FilesLinksJump => crate::composer::files_links::jump(
+            state,
+            context,
+            string_param(action, "messageId"),
+            action.param("timestamp").and_then(Value::as_i64),
+        ),
         ActionKind::SendKey => {
             crate::composer::send::send_key(
                 state,
@@ -223,6 +242,7 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
                         .collect()
                 })
                 .unwrap_or_default(),
+            action.param("interrupt").and_then(Value::as_bool) == Some(true),
         ),
         ActionKind::Handoff => crate::composer::send::handoff(
             state,
@@ -705,17 +725,49 @@ fn remove_queue(state: &mut ChatState, action: &UserAction) -> Vec<Effect> {
     let document = crate::composer::document::queue(state);
     let mut edit = None;
     if action.param("edit") == Some(&Value::Bool(true)) {
-        let Some(row) = document
+        // A startup send waiting for the agent is drawn in the transcript, not in the strip, so
+        // its Edit reads the row from the daemon's whole queue (CDXC:SessionChat 2026-10-11 in
+        // server/src/session_chat_send_wake.rs).
+        let row = document
             .prompts
             .iter()
             .find(|prompt| prompt.id == prompt_id)
-        else {
+            .map(|row| (row.state.clone(), row.text.clone()))
+            .or_else(|| {
+                let row = state
+                    .session
+                    .queue_prompts
+                    .as_deref()?
+                    .iter()
+                    .find(|row| row.get("id").and_then(Value::as_str) == Some(prompt_id))?;
+                let field = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or_default();
+                Some((field("state").to_string(), field("text").to_string()))
+            });
+        let Some((row_state, row_text)) = row else {
             return Vec::new();
         };
-        if !document.capabilities.can_edit || is_queue_row_busy(&row.state) {
+        if !document.capabilities.can_edit || is_queue_row_busy(&row_state) {
             return Vec::new();
         }
-        edit = Some(row.text.clone());
+        // The composer takes the text back, but the row's pictures are the queue's own copies,
+        // which the removal deletes.
+        let carries_images = state.session.queue_prompts.as_deref().is_some_and(|queue| {
+            queue.iter().any(|row| {
+                row.get("id").and_then(Value::as_str) == Some(prompt_id)
+                    && row
+                        .get("imagePaths")
+                        .and_then(Value::as_array)
+                        .is_some_and(|paths| !paths.is_empty())
+            })
+        });
+        if carries_images {
+            state.core.fail(
+                "A message with pictures cannot be edited while it waits. Delete it and send it again.",
+                None,
+            );
+            return Vec::new();
+        }
+        edit = Some(row_text);
     }
     let prompt_id = prompt_id.to_string();
     let effects = queue_rpc(

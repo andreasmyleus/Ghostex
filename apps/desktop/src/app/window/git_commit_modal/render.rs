@@ -538,7 +538,7 @@ impl GpuiGitCommitModalWindow {
     /// kit's `modal_text_area` wrapped the suggested body a word early and set it tighter than the
     /// React editor. The frame keeps 2px on the right (12px minus the editor's margin) and the
     /// editor gets the React line height.
-    fn render_message_editor(&self, window: &Window, cx: &App) -> AnyElement {
+    fn render_message_editor(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let focused = self.message.read(cx).focus_handle(cx).is_focused(window);
         div()
@@ -557,6 +557,14 @@ impl GpuiGitCommitModalWindow {
             .child(
                 div().flex_1().min_h_0().w_full().child(
                     Textarea::new(&self.message)
+                        .on_paste({
+                            let modal = cx.entity().downgrade();
+                            move |item, window, cx| {
+                                modal
+                                    .update(cx, |modal, cx| modal.paste_message(item, window, cx))
+                                    .unwrap_or(false)
+                            }
+                        })
                         .with_size(ComponentSize::Small)
                         .appearance(false)
                         .bordered(false)
@@ -994,7 +1002,6 @@ impl Render for GpuiGitCommitModalWindow {
             .text_color(hsla(p.foreground))
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
-            .capture_action(cx.listener(Self::on_paste))
             .capture_action(cx.listener(Self::on_escape_action))
             .capture_action(cx.listener(Self::on_indent_action))
             .capture_action(cx.listener(Self::on_outdent_action))

@@ -1,6 +1,6 @@
 //! A Work workspace's team-flow steps: the steps the Work page draws as a tracker on each ticket
-//! (server/src/work_mode/team_flow.rs). Reorder, rename, remove, add a step with one of the rules
-//! the daemon knows, then Save; Reset to default drops the workspace's own steps. Reads
+//! (server/src/work_mode/team_flow.rs). Reorder, rename, mark optional, remove, add a step with one
+//! of the rules the daemon knows, then Save; Reset to default drops the workspace's own steps. Reads
 //! `/api/readTeamFlow` and writes `/api/updateTeamFlow`, both scoped to the workspace. In a
 //! workspace connected to a team these are the team's steps, kept in its Convex project.
 //!
@@ -11,9 +11,11 @@
 //! CDXC:TeamSync 2026-10-09 DECISION:
 //! User: team flow settings are "Owners only". A team's steps are read-only for members
 //! (`canEdit` from the daemon), with one line saying only owners can change them.
+use super::super::super::super::native_modal_kit::hsla;
 use super::super::super::catalog::SettingOption;
 use super::super::super::fields::{
-    ButtonVariant, RowSpec, setting_row, settings_button, settings_icon_button, settings_select,
+    ButtonVariant, RowSpec, checkbox_control, setting_row, settings_button, settings_icon_button,
+    settings_select,
 };
 use super::super::super::store::store_gxserver_rpc;
 use super::*;
@@ -28,7 +30,7 @@ pub(crate) struct FlowStepsState {
     loading: bool,
     loaded: bool,
     error: Option<String>,
-    /// `{ id, label, rule }`, in order.
+    /// `{ id, label, optional?, rule }`, in order.
     steps: Vec<Value>,
     /// Where the saved steps come from: `team`, `workspace`, `default`, `builtIn` or `teamError`.
     source: String,
@@ -93,6 +95,12 @@ impl FlowStepsState {
         self.loaded = true;
         self.error = None;
     }
+}
+
+/// An optional step shows as unknown until it is done and never holds up the flow
+/// (`evaluate_team_flow`).
+fn step_is_optional(step: &Value) -> bool {
+    step.get("optional").and_then(Value::as_bool) == Some(true)
 }
 
 /// The extra value a rule needs: the PR label to look for, or the ticket states that count.
@@ -352,12 +360,17 @@ impl WorkspacesTab {
     ) -> AnyElement {
         let rule = step.get("rule").cloned().unwrap_or_default();
         let detail = self.flow_step_detail(workspace_id, &rule);
+        let optional = if step_is_optional(step) {
+            " Optional: a question mark until it is done, and the next step doesn't wait for it."
+        } else {
+            ""
+        };
         setting_row(
             p,
             format!("flow-step-read-{workspace_id}-{}", text(step, "id")),
             RowSpec::new(format!("{}. {}", index + 1, text(step, "label")))
                 .readout(detail.clone())
-                .description(format!("Done when this rule holds: {detail}.")),
+                .description(format!("Done when this rule holds: {detail}.{optional}")),
             None,
             div().into_any_element(),
             cx,
@@ -384,7 +397,10 @@ impl WorkspacesTab {
             .get(workspace_id)
             .is_some_and(|state| state.needs_data(&kind));
         let detail = self.flow_step_detail(workspace_id, &rule);
-        let note = if needs_data {
+        let optional = step_is_optional(step);
+        let note = if optional {
+            "Done when this rule holds. Optional: a question mark until it is done, and the next step doesn't wait for it."
+        } else if needs_data {
             "Done when this rule holds. Shows as unknown until that data reaches Ghostex from Slack."
         } else {
             "Done when this rule holds. The field is the step's name on the Work page."
@@ -432,6 +448,8 @@ impl WorkspacesTab {
         let up_workspace = workspace_id.to_string();
         let down_workspace = workspace_id.to_string();
         let remove_workspace = workspace_id.to_string();
+        let optional_workspace = workspace_id.to_string();
+        let optional_step = step_id.clone();
         let control = h_flex()
             .gap(px(4.0))
             .child(div().mr(px(4.0)).child(settings_text_input(
@@ -442,6 +460,44 @@ impl WorkspacesTab {
                 window,
                 cx,
             )))
+            .child(
+                div().mr(px(4.0)).child(checkbox_control(
+                    p,
+                    SharedString::from(format!("flow-step-optional-{workspace_id}-{step_id}")),
+                    optional,
+                    Some(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(hsla(p.muted))
+                            .child("Optional")
+                            .into_any_element(),
+                    ),
+                    6.0,
+                    move |page: &mut Self, next, _window, cx| {
+                        let step_id = optional_step.clone();
+                        page.edit_flow_steps(
+                            &optional_workspace,
+                            |state| {
+                                if let Some(step) = state.steps.iter_mut().find(|step| {
+                                    step.get("id").and_then(Value::as_str) == Some(&step_id)
+                                }) {
+                                    match step.as_object_mut() {
+                                        Some(step) if next => {
+                                            step.insert("optional".to_string(), json!(true));
+                                        }
+                                        Some(step) => {
+                                            step.remove("optional");
+                                        }
+                                        None => {}
+                                    }
+                                }
+                            },
+                            cx,
+                        );
+                    },
+                    cx,
+                )),
+            )
             .child(settings_icon_button(
                 p,
                 SharedString::from(format!("flow-step-up-{workspace_id}-{step_id}")),
@@ -706,7 +762,9 @@ impl WorkspacesTab {
         setting_row(
             p,
             format!("flow-steps-save-row-{workspace_id}"),
-            RowSpec::new("Steps in use").readout(readout).description(status),
+            RowSpec::new("Steps in use")
+                .readout(readout)
+                .description(status),
             None,
             control.into_any_element(),
             cx,

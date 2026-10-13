@@ -100,6 +100,7 @@ impl Render for NativeChatView {
         if self.maximized_window.is_none() && !self.transcript_only {
             self.ensure_input(window, cx);
         }
+        self.sync_form_inputs(window, cx);
         self.sync_chat_zoom_default();
         let p = ChatAppearance::current(&self.snapshot).on_window_glass(
             crate::app::helpers::window_glass_active_for(self.main_window),
@@ -107,6 +108,7 @@ impl Render for NativeChatView {
         let s = p.scale;
         self.hold_text_width_while_sliding(&p);
         self.sync_search_scroll();
+        self.sync_files_links_jump();
         // A card above the composer that is opening or closing needs the next frame; the
         // transcript's rows ask for theirs as they are drawn.
         if self.disclosure_motion.borrow().running() {
@@ -239,6 +241,7 @@ impl Render for NativeChatView {
             .capture_key_up(cx.listener(|chat, _, _, _| chat.composer_held_key = None))
             .capture_action(cx.listener(Self::composer_copy))
             .capture_action(cx.listener(Self::composer_cut))
+            .capture_action(cx.listener(Self::note_paste_started))
             .on_drop(cx.listener(|chat, paths: &gpui::ExternalPaths, _, cx| {
                 let paths = paths
                     .0

@@ -95,6 +95,61 @@ pub struct SessionChatTerminalActivity {
     /// `agent-stream` only, never serialized: the painted rows this value was
     /// rendered from, kept so the next probe can be stitched onto them.
     pub stream: Option<AgentStreamRows>,
+    /// `shells-running` only: what the footer counts, and the tasks the
+    /// transcript names for it.
+    pub background: Option<SessionChatBackgroundWork>,
+}
+
+/// The background work behind a `shells-running` row. `count` is the footer's
+/// and stays the authority for how much is running; `tasks` are the newest
+/// launches the transcript has not seen end, never more than `count`, so a
+/// task the transcript cannot name still shows up as a remainder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionChatBackgroundWork {
+    pub count: u64,
+    pub tasks: Vec<SessionChatBackgroundTask>,
+}
+
+/// One background shell or monitor the agent started and the transcript has
+/// not seen end.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionChatBackgroundTask {
+    /// Claude's task id (`b6kd29de5`).
+    pub id: String,
+    /// `shell` or `monitor`.
+    pub kind: &'static str,
+    /// The call's own description, or the command's first line without one.
+    pub title: String,
+    pub command: Option<String>,
+    /// RFC3339 millis of the launch, which the client's per-task clock counts from.
+    pub started_at: String,
+}
+
+impl SessionChatBackgroundWork {
+    fn to_value(&self) -> Value {
+        let mut map = Map::new();
+        map.insert("count".to_string(), json!(self.count));
+        map.insert(
+            "tasks".to_string(),
+            Value::Array(
+                self.tasks
+                    .iter()
+                    .map(|task| {
+                        let mut entry = Map::new();
+                        entry.insert("id".to_string(), json!(task.id));
+                        entry.insert("kind".to_string(), json!(task.kind));
+                        entry.insert("title".to_string(), json!(task.title));
+                        if let Some(command) = &task.command {
+                            entry.insert("command".to_string(), json!(command));
+                        }
+                        entry.insert("startedAt".to_string(), json!(task.started_at));
+                        Value::Object(entry)
+                    })
+                    .collect(),
+            ),
+        );
+        Value::Object(map)
+    }
 }
 
 /// One painted row of a Claude message block, layout kept (see `ScreenRow`).
@@ -130,6 +185,7 @@ impl SessionChatTerminalActivity {
             detail: None,
             text: None,
             stream: None,
+            background: None,
         }
     }
 
@@ -153,6 +209,7 @@ impl SessionChatTerminalActivity {
                 && self.tokens == other.tokens
                 && self.detail == other.detail
                 && self.text == other.text
+                && self.background == other.background
         })
     }
 
@@ -197,6 +254,9 @@ impl SessionChatTerminalActivity {
         }
         if let Some(text) = &self.text {
             map.insert("text".to_string(), json!(text));
+        }
+        if let Some(background) = &self.background {
+            map.insert("background".to_string(), background.to_value());
         }
         Value::Object(map)
     }

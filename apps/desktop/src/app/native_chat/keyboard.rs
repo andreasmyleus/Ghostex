@@ -44,6 +44,8 @@ pub(super) fn register(cx: &mut gpui::App) {
             ("enter", "enter"),
             ("shift-enter", "enter"),
             ("secondary-enter", "enter"),
+            // Interrupt and send; on Windows and Linux this is `secondary-enter` too.
+            ("ctrl-enter", "enter"),
             ("alt-enter", "enter"),
             ("up", "up"),
             ("shift-up", "up"),
@@ -121,6 +123,12 @@ impl NativeChatView {
         self.cancel_composer_reference_open();
         // The search field owns Enter, the arrows and Escape while it has focus.
         if self.search_key_down(event, window, cx) {
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
+        }
+        // An open `/resume` picker or pass-through screen takes the arrows, Enter and Escape.
+        if self.terminal_picker_key_down(event, window, cx) {
             cx.stop_propagation();
             window.prevent_default();
             return;
@@ -204,6 +212,7 @@ impl NativeChatView {
             .chain(this.async_answer_input.iter())
             .map(|(_, input)| input)
             .chain(this.note_input.iter())
+            .chain(this.form_inputs.values().map(|entry| &entry.input))
             .any(|input| input.read(cx).focus_handle(cx).is_focused(window))
         {
             cx.propagate();
@@ -354,6 +363,22 @@ impl NativeChatView {
                 return;
             }
         }
+        // The approval card's Allow and Deny carry these two keys as hints (approval.rs).
+        if this.snapshot["questionCard"]["visible"] == true
+            && this.snapshot["questionCard"]["loading"] != true
+            && this.snapshot["questionCard"]["busy"] != true
+            && this.snapshot["prompt"]["kind"] == "approval"
+            && (primary || secondary)
+            && !event.is_held
+        {
+            this.invoke(
+                json!({"type":"answer","answer":{"kind":"approval","approvalSend":if primary {"1"} else {""}}}),
+                cx,
+            );
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
+        }
         if key.key == "up"
             && key.modifiers.alt
             && !key.modifiers.shift
@@ -374,6 +399,25 @@ impl NativeChatView {
                 window.prevent_default();
                 return;
             }
+        }
+        // Claude Code's own key for its queue: Up in an empty composer takes the newest message the
+        // agent queued back into it (CDXC:SessionChat 2026-10-11 in
+        // packages/gx-chat-core/src/composer/queue_take_back.rs). History browsing keeps Up.
+        if key.key == "up"
+            && !key.modifiers.shift
+            && !key.modifiers.alt
+            && !key.modifiers.control
+            && !key.modifiers.platform
+            && this.draft.trim().is_empty()
+            && this.snapshot["historyActive"] != true
+            && this.snapshot["queueTakeBackIds"]
+                .as_array()
+                .is_some_and(|ids| !ids.is_empty())
+        {
+            this.invoke(json!({"type":"takeBackQueued"}), cx);
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
         }
         if (key.key == "up"
             && (this.draft.trim().is_empty() || this.snapshot["historyActive"] == true)
@@ -414,7 +458,12 @@ impl NativeChatView {
             cx.stop_propagation();
             window.prevent_default();
         } else if key.key == "enter" && !key.modifiers.shift {
-            this.send(false, window, cx);
+            // Ctrl+Enter is Claude Code's own "send now" key in the terminal, on every platform.
+            if key.modifiers.control && !key.modifiers.alt && !key.modifiers.platform {
+                this.submit("interrupt", window, cx);
+            } else {
+                this.send(false, window, cx);
+            }
             cx.stop_propagation();
             window.prevent_default();
         } else if key.key == "tab"

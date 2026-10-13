@@ -32,7 +32,19 @@ Every expensive step sits behind a content-hash stamp in `build/<arch>/build-cac
 - **Linux gxserver packages** stay in dev bundles because remote install reads them from there; they are rsynced instead of deleted and re-copied.
 - **Installs stay in place, never hand-made.** On 2026-09-21 macOS App Management blocked the sync into `/Applications/Ghostex.app` halfway. An agent then hand-installed every later build as `Ghostex-new.app` and moved the old app aside as `Ghostex.old-<time>.app`, leaving five 1.7GB copies in two days. The start now probes write access before closing the app and stops with the App Management fix if it is blocked. It deletes leftover copies that carry the app's bundle id and are not running. It does not install by swapping in a new bundle because a kept gxserver and live zmx sessions run from files inside the installed one.
 - **Incremental cache pruning** (`CDXC:Build 2026-09-23 DECISION` in `tooling/xtask/src/start/mod.rs`). Every build configuration gets its own rustc incremental cache and nothing removed old ones: 26GB across 387 caches on 2026-09-23. Each start keeps the newest cache per crate in every `incremental` folder of both targets and leaves anything touched in the last 30 minutes alone. The trade-off is that switching between configurations (for example `--optimized` and back) starts that configuration's cache from cold.
+- **Windows stale-artifact sweep** (`CDXC:Build 2026-10-11 DECISION` in `tooling/xtask/src/start/sweep.rs`). Cargo never deletes old units, and on Windows the release target folders kept every copy left by dependency, feature and flag changes (the desktop folder held 2,090 rlibs for 579 crates). `build-windows-app.ps1` records the units each release build used in `target/release/ghostex-build-units.jsonl`; after a successful build the start deletes, at most once a day per target folder and only while it holds cargo's lock there, every `deps/` file and `build/` folder whose unit that build did not use and nothing touched for three days.
 - Smaller items: the storage check and signing-identity probe run once, under the lock; app PIDs come from `lsappinfo` (~0.01s) instead of `osascript` + System Events (~0.27s) in the 100ms polls; the app icon is stamped; `reportCompressedSize` is off in `apps/desktop/vite.config.ts`.
+
+## Debug info (off by default)
+
+Every Rust build in the repository has no debug info and no symbol table, and on Windows the linker writes no `.pdb` (`CDXC:Build 2026-10-11 DECISION` in the root `.cargo/config.toml`; the phone's UniFFI libraries keep `strip = "debuginfo"`). A panic still logs its message and file:line; backtrace frames print as `<unknown>`.
+
+When the user asks for crash-debugging info, build with it for that one build:
+
+- `cargo xtask start --debug-info` (or `GHOSTEX_DEBUG_INFO=1 cargo xtask start`) gives function names and file:line in backtraces and symbols for crash dumps. `--debug-info=full` adds variables for a debugger.
+- Plain cargo commands take the same environment the flag sets: `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`, `CARGO_PROFILE_RELEASE_STRIP=none` (the `DEV` pair for dev builds), and on Windows `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-C link-arg=/DEBUG"` so the linker writes the `.pdb` again.
+
+Switching in either direction recompiles everything once (sccache helps); the next build without the flag goes back to no debug info.
 
 ## Rejected or deferred (checked 2026-09-22)
 

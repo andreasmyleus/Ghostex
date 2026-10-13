@@ -445,6 +445,21 @@ impl GhostexGpuiApp {
             );
             return;
         }
+        // A file change card's Review all. Ghostex has no Git view, so the changes are reviewed in
+        // the project's Code view, whose Source Control lists them.
+        if action == "reviewChanges" {
+            if self.set_active_mode(TitlebarMode::Source, window, cx) {
+                cx.notify();
+            } else {
+                self.dispatch_gpui_app_modal_toast(
+                    "info",
+                    "This project has no Code view to review the changes in",
+                    "",
+                    cx,
+                );
+            }
+            return;
+        }
         if action == "locateFile" {
             let Some(path) = message.get("path").and_then(serde_json::Value::as_str) else {
                 return;
@@ -590,7 +605,11 @@ impl GhostexGpuiApp {
             return;
         }
         // CDXC:Coordinators 2026-10-08 WHY: a row of a coordinator's Threads panel opens that thread the way a fork branch opens, by focusing and revealing it in the sidebar; gxserver already resumed it when it was closed (server/src/server/coordinator_open_http.rs), so the action carries no lifecycleState and nothing is woken here. Supersedes the 2026-09-30 note that this host woke it.
-        if action == "selectForkBranch" || action == "openCoordinatorThread" {
+        // An agent message card's Go to session focuses the other session the same way.
+        if action == "selectForkBranch"
+            || action == "openCoordinatorThread"
+            || action == "openAgentSession"
+        {
             self.select_session_chat_fork_branch(session_id, &message, cx);
             return;
         }

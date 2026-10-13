@@ -2,6 +2,7 @@
 
 mod close;
 mod install;
+mod sweep;
 mod windows;
 #[cfg(windows)]
 mod windows_native;
@@ -27,6 +28,8 @@ pub struct Options {
     pub install_only: bool,
     /// Windows: install to Program Files instead of the per-user release layout.
     pub machine: bool,
+    /// `--debug-info[=<level>]` or `GHOSTEX_DEBUG_INFO`: build with debug info and symbols for crash debugging (CDXC:Build 2026-10-11).
+    pub debug_info: Option<String>,
 }
 
 /// Everything one start resolves up front: the app identity, where it is staged and installed, and the build environment.
@@ -53,7 +56,7 @@ pub struct Start {
     pub code_server_store_root: PathBuf,
 }
 
-const USAGE: &str = "cargo xtask start [--verbose|-v] [--profile] [--optimized] [--build-only] [--install-only (Linux, Windows)] [--isolated[=<variant>]] [--prepare-only (Windows)] [--machine (Windows)]";
+const USAGE: &str = "cargo xtask start [--verbose|-v] [--profile] [--optimized] [--debug-info[=line-tables-only|limited|full]] [--build-only] [--install-only (Linux, Windows)] [--isolated[=<variant>]] [--prepare-only (Windows)] [--machine (Windows)]";
 
 pub fn run(args: &[String]) -> Res<i32> {
     if !(cfg!(target_os = "macos") || cfg!(target_os = "linux") || cfg!(windows)) {
@@ -283,6 +286,12 @@ impl Start {
             self.build_env
                 .push(("GHOSTEX_GPUI_ISOLATED_START".into(), "1".into()));
         }
+        if let Some(level) = &self.opts.debug_info {
+            self.log.detail(&format!(
+                "Building with debug info ({level}) and symbols for crash debugging."
+            ));
+            self.build_env.extend(util::debug_info_environment(level));
+        }
         if let Some(runtime) = &windows_runtime {
             self.build_env
                 .extend(runtime.build_environment(self.is_wsl, self.log.verbose));
@@ -386,12 +395,16 @@ impl Start {
                 "Compiling the Windows release binaries; this can take several minutes. Live output: build/local-start-logs/ (or rerun with --verbose).",
             );
         }
+        let build_started = std::time::SystemTime::now();
         self.log.run(
             &mut build,
             &format!("{} build", self.app_name),
             Summary::None,
         )?;
         self.log.detail("GPUI build completed.");
+        if self.is_windows {
+            self.sweep_stale_release_artifacts(build_started);
+        }
         if !self.app_path.exists() {
             bail!("Built GPUI app is missing at {}.", self.app_path.display());
         }
@@ -706,8 +719,18 @@ fn parse_options(args: &[String], targets_windows: bool) -> Res<Options> {
         build_only: false,
         install_only: false,
         machine: false,
+        debug_info: None,
     };
+    let mut debug_info_flag = None;
     for arg in args {
+        if arg == "--debug-info" {
+            debug_info_flag = Some(String::new());
+            continue;
+        }
+        if let Some(level) = arg.strip_prefix("--debug-info=") {
+            debug_info_flag = Some(level.to_string());
+            continue;
+        }
         match arg.as_str() {
             "--" => {}
             "--profile" => opts.profile = true,
@@ -722,6 +745,7 @@ fn parse_options(args: &[String], targets_windows: bool) -> Res<Options> {
             other => bail!("Unknown start argument: {other}. Usage: {USAGE}"),
         }
     }
+    opts.debug_info = util::debug_info_level(debug_info_flag.as_deref())?;
     if opts.install_only && (opts.build_only || opts.prepare_only) {
         bail!("--install-only installs an existing staged build; it cannot be combined with --build-only or --prepare-only.");
     }

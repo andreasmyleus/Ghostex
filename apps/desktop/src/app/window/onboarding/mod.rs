@@ -244,6 +244,9 @@ pub(crate) struct GpuiOnboardingWindow {
     /// `MoreMenu` open on the Workspace preview.
     menu_open: bool,
     workspace_menu_opened: Instant,
+    /// When a press outside the demo workspace's ⋯ menu closed it: that press's click on the ⋯
+    /// button is the closing half of a toggle and must not reopen it.
+    workspace_menu_dismissed: Option<Instant>,
     veil: FrameSet,
     nebula: FrameSet,
     vignette: Option<Arc<RenderImage>>,
@@ -323,6 +326,7 @@ impl GpuiOnboardingWindow {
             finished: FinishedState::new(now),
             menu_open: false,
             workspace_menu_opened: now,
+            workspace_menu_dismissed: None,
             veil: FrameSet::new(Duration::from_millis(1000 / 12)),
             nebula: FrameSet::new(Duration::from_millis(500)),
             vignette: pixels_to_image(vignette),

@@ -352,6 +352,7 @@ export interface GxserverAnswerSessionChatPromptParams {
     | "approval"
     | "terminalChoice"
     | "terminalDialog"
+    | "terminalKey"
     | "asyncQuestion"
     | "dismissAsyncQuestion"
     | "recoverCodexConversation"
@@ -374,6 +375,14 @@ export interface GxserverAnswerSessionChatPromptParams {
    * fails loudly instead of confirming whatever replaced it.
    */
   choiceIndex?: number;
+  /** For a `terminalDialog` resume picker: one key (`up`, `down`, `enter`, `escape`, `pageUp`, `pageDown`). */
+  pickerKey?: string;
+  /** For a resume picker: the row to walk to and pick, matched by title when the rows moved. */
+  pickerRow?: { index: number; title: string };
+  /** For a resume picker: the search text it should show. */
+  pickerQuery?: string;
+  /** For `terminalKey`: the key passed through to the agent's blocking screen. */
+  key?: string;
 }
 
 export interface GxserverAnswerSessionChatPromptResult {

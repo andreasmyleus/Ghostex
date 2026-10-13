@@ -8,7 +8,11 @@ use axum::{
 
 use crate::server::RoutedResponse;
 
-use super::{prepare::PAGE_CONTENT_SECURITY_POLICY, store::read_page};
+use super::{
+    prepare::PAGE_CONTENT_SECURITY_POLICY,
+    store::{is_page_id, read_page, read_record},
+    theme::PAGE_STATE_MARKER,
+};
 
 pub(crate) const VISUAL_PAGE_ROUTE_PREFIX: &str = "/visual/";
 
@@ -19,17 +23,26 @@ pub(crate) const VISUAL_PAGE_ROUTE_PREFIX: &str = "/visual/";
 ///
 /// CDXC:SessionChat 2026-10-06 DECISION:
 /// User: no JavaScript engine is added to the desktop. An HTML page runs only in a browser page (Ghostex's browser, the system browser, or the phone's WebView) that opens this URL, never inline in the GPUI chat.
-pub(crate) async fn serve(gxserver_state_dir: PathBuf, path: String) -> RoutedResponse {
+pub(crate) async fn serve(
+    gxserver_state_dir: PathBuf,
+    path: String,
+    host: Option<String>,
+) -> RoutedResponse {
     let Some(id) = path
         .strip_prefix(VISUAL_PAGE_ROUTE_PREFIX)
+        .filter(|id| is_page_id(id))
         .map(str::to_string)
     else {
         return status(StatusCode::NOT_FOUND);
     };
-    let page = tokio::task::spawn_blocking(move || read_page(&gxserver_state_dir, &id))
-        .await
-        .ok()
-        .flatten();
+    let page_id = id.clone();
+    let page = tokio::task::spawn_blocking(move || {
+        read_page(&gxserver_state_dir, &id)
+            .map(|page| with_page_state(page, read_record(&gxserver_state_dir, &id)))
+    })
+    .await
+    .ok()
+    .flatten();
     let Some(page) = page else {
         return status(StatusCode::NOT_FOUND);
     };
@@ -37,8 +50,10 @@ pub(crate) async fn serve(gxserver_state_dir: PathBuf, path: String) -> RoutedRe
         endpoint_path: None,
         response: Response::new(Body::from(page)),
     };
-    let content_security_policy =
-        format!("sandbox allow-scripts allow-forms allow-popups; {PAGE_CONTENT_SECURITY_POLICY}");
+    let content_security_policy = format!(
+        "sandbox allow-scripts allow-forms allow-popups; {}",
+        header_policy(&page_id, host.as_deref())
+    );
     for (name, value) in [
         (header::CONTENT_TYPE, "text/html; charset=utf-8"),
         (
@@ -61,4 +76,62 @@ fn status(code: StatusCode) -> RoutedResponse {
         endpoint_path: None,
         response: code.into_response(),
     }
+}
+
+/// The page's content policy for this response. The page's own copy allows it to reach its server
+/// (`'self'`), and a browser enforces both policies, so naming the page's own routes here (its
+/// answers and its draft, under `/visual/<id>/`) keeps the page off every other gxserver route.
+fn header_policy(id: &str, host: Option<&str>) -> String {
+    let host = host.filter(|host| {
+        !host.is_empty()
+            && host
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b".-:[]".contains(&byte))
+    });
+    match host {
+        Some(host) => PAGE_CONTENT_SECURITY_POLICY.replace(
+            "connect-src https: 'self'",
+            &format!("connect-src https: http://{host}{VISUAL_PAGE_ROUTE_PREFIX}{id}/"),
+        ),
+        None => {
+            PAGE_CONTENT_SECURITY_POLICY.replace("connect-src https: 'self'", "connect-src https:")
+        }
+    }
+}
+
+/// The page with its answered state where `PAGE_API` reads it: whether the reader already sent
+/// answers, what they were, and when, or else the draft they left. A page published before
+/// answering existed has no marker.
+fn with_page_state(page: Vec<u8>, record: Option<serde_json::Value>) -> Vec<u8> {
+    let html = match String::from_utf8(page) {
+        Ok(html) => html,
+        Err(error) => return error.into_bytes(),
+    };
+    let Some(at) = html.find(PAGE_STATE_MARKER) else {
+        return html.into_bytes();
+    };
+    let answered_at = record
+        .as_ref()
+        .and_then(|record| record.get("answeredAt"))
+        .and_then(serde_json::Value::as_str);
+    let state = match answered_at {
+        Some(answered_at) => serde_json::json!({
+            "answered": true,
+            "answeredAt": answered_at,
+            "answers": record.as_ref().and_then(|record| record.get("answers")).cloned(),
+        }),
+        None => serde_json::json!({
+            "answered": false,
+            "draft": record.as_ref().and_then(|record| record.get("draft")).cloned(),
+        }),
+    };
+    // `<` never appears raw inside the script, so no value can close it.
+    let state = state.to_string().replace('<', "\\u003c");
+    let mut out = String::with_capacity(html.len() + state.len() + 64);
+    out.push_str(&html[..at]);
+    out.push_str("<script>window.ghostex&&ghostex.__state(");
+    out.push_str(&state);
+    out.push_str(");</script>");
+    out.push_str(&html[at + PAGE_STATE_MARKER.len()..]);
+    out.into_bytes()
 }

@@ -144,7 +144,14 @@ fn fetch_local_json_with_body(
         read_selected_local_api_port()?
     );
     let timeout = Duration::from_millis(timeout_ms);
-    let Ok(mut stream) = TcpStream::connect(&address) else {
+    /*
+    CDXC:ServerDaemon 2026-10-12 WHY:
+    A daemon whose listener is bound but not served (still starting, hung, or on its way out) accepts nothing: the connect waited for Windows' full SYN retry and the read timeout came back as an error, so every gxserver the app started on 2026-10-12 printed "os error 10060" and exited at its first health check instead of taking the port over. Not answering in time reads as "no daemon here", like a refused connection.
+    */
+    let Ok(socket_address) = address.parse::<std::net::SocketAddr>() else {
+        return Ok(None);
+    };
+    let Ok(mut stream) = TcpStream::connect_timeout(&socket_address, timeout) else {
         return Ok(None);
     };
     stream.set_read_timeout(Some(timeout))?;
@@ -162,10 +169,24 @@ fn fetch_local_json_with_body(
     }
     request.push_str("\r\n");
     request.push_str(&body);
-    stream.write_all(request.as_bytes())?;
+    let unanswered = |error: &std::io::Error| {
+        matches!(
+            error.kind(),
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+        )
+    };
+    match stream.write_all(request.as_bytes()) {
+        Err(error) if unanswered(&error) => return Ok(None),
+        result => result?,
+    }
 
     let mut response = String::new();
-    stream.read_to_string(&mut response)?;
+    match stream.read_to_string(&mut response) {
+        Err(error) if unanswered(&error) => return Ok(None),
+        result => {
+            result?;
+        }
+    }
     let (headers, body) = match response.split_once("\r\n\r\n") {
         Some(parts) => parts,
         None => return Ok(None),

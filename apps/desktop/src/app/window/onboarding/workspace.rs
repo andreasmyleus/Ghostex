@@ -638,6 +638,13 @@ impl GpuiOnboardingWindow {
             interact::Keys::EnterSpace,
             cx,
             |this, _, cx| {
+                let same_press = this
+                    .workspace_menu_dismissed
+                    .take()
+                    .is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(400));
+                if !this.menu_open && same_press {
+                    return;
+                }
                 this.menu_open = !this.menu_open;
                 this.workspace_menu_opened = Instant::now();
                 cx.notify();
@@ -824,6 +831,7 @@ impl GpuiOnboardingWindow {
             .occlude()
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                 this.menu_open = false;
+                this.workspace_menu_dismissed = Some(Instant::now());
                 cx.notify();
             }))
             .children(

@@ -2,6 +2,101 @@
 
 ## Unreleased
 
+## 10.21.0 - 2026-10-12
+
+**Ghostex 10.21.0 is out.** A Catch me up button tells you where a session stands, a message an agent queued comes back to your chat box with ↑, renaming a session shows the new name at once, messages between agents name the other session, and on Windows a restart or update takes over in seconds instead of showing the startup dialog.
+
+### 💬 Chat
+- **Catch me up:** a button at the top right of the chat box has a small model read the session's recent conversation and shows a coloured handover (what needs you, what's done, what's in progress) in a card above the chat box, with Refresh, Copy and Close. Off by default: turn it on in Settings > Chat > Catch me up button.
+- **Back to composer:** a message Claude Code is still holding in its queue gets Back to composer in its actions, and ↑ in an empty chat box takes back the newest one, like ↑ in Claude's own input. Its text and pictures are added to your draft unsent, and any other queued messages stay queued.
+- **Messages between agents name the other session:** a row reads Message from "<session>" or Message to "<session>" and opens to the whole message; one command that sends the same message to several sessions is one "Message to 2 sessions" row listing each recipient, and a session that can't be found reads "another agent" instead of a raw code.
+- **Answered question forms fold to one line** with their title and Answered (click to open the form again), and your answers below read as plain text, each question with your answer under it; the agent's own question receipts look the same.
+- **Needs you is orange** in marked handovers, so it no longer looks like In progress.
+- **Section labels wrap and their links work:** a long marked label (for example a pull request title with its link) wraps like a paragraph and its link is clickable.
+- **A `!` command's copy button** floats outside the bubble on its left, like other messages, and the bubble no longer says Running.
+- **The Worked row** shows only its tool-call and file counts; a failed call still shows on its own row.
+- **The text caret is 1 pixel wide** in the chat box and every text field.
+
+### 📋 Sidebar
+- **Renaming a session shows the new name at once,** and the agent's confirmation reaches every computer and the phone within about a quarter second instead of 3–4 seconds. If the agent never takes the name, the old one comes back with a shake and Rename reopens with the name you tried.
+
+### 🧭 Orchestrators
+- **A message to a sleeping thread wakes it** and keeps retrying until it's delivered, and reopening a thread wakes it too; a message that waited more than a day is marked Not sent instead of waking an old session.
+- **Handovers list each thread once,** under Kicked off or In progress, and question numbers keep counting across the whole conversation.
+
+### 📱 On the phone
+- **Hold a message to see its actions:** copy, edit, Back to composer, rewind and the rest open on a long press, in the main chat and the subagent viewer, and nothing shows under a message until you do.
+
+### 🪟 Windows
+- **Restarts and updates take over in seconds:** a leftover gxserver of an older build is replaced right away, and startup checks only the sessions that need it, so Ghostex no longer waits minutes or shows the startup diagnostics dialog.
+- **Hovering a message while typing no longer blinks** its buttons and time.
+
+### 🩹 Fixes and polish
+- **Sending feedback says why GitHub refused it** instead of a generic "try again", and a refused send can be sent again right away.
+
+## 10.20.1 - 2026-10-11
+
+**Ghostex 10.20.1 is out.** Messages with pictures wait for a slow-starting agent too, sessions move to an account with room faster when they hit a usage limit, and chat cards sit darker.
+
+### 💬 Chat
+- **Messages with pictures wait for a slow-starting agent** instead of giving up after 40 seconds; Ghostex keeps its own copy of each picture until the message goes through.
+- **Chat cards sit darker** and question cards use a softer yellow, matching the question cards on agents' pages.
+- **A finished background task just says it completed;** "exit code 0" and the duration are gone, and a failed task still shows its exit code.
+
+### 🤖 Accounts
+- **A session that hits its usage limit moves to an account with room within about 30 seconds,** instead of waiting minutes for a fresh usage reading.
+- **A sleeping session wakes on an account with room** when its own account is already at its limit.
+- **When every account is full,** the chat shows a card saying which limit was hit and when work continues, and the bell gets one notification.
+
+## 10.20.0 - 2026-10-11
+
+**Ghostex 10.20.0 is out.** Agents ask you questions as a form right in the chat, a message you send while an agent is still starting waits and goes through on its own, chat cards get a new look (questions, notices, agent messages, file changes, page previews), `/resume` and Ctrl+Enter interrupt-and-send work from the chat view, Ctrl+V no longer freezes Ghostex on Windows, and Work Mode can start Claude Code in the cloud.
+
+⚠️ **Teams:** run `ghostex team deploy` once after updating, so teammates' cloud sessions show on the Work page (team functions version 5).
+
+### 💬 Chat
+- **Questions as a form in the chat:** agents ask several questions at once in one card: click to pick (nothing preselected), "Other / none of these" with a note, text answers, one Send (or Ctrl/Cmd+Enter). Your picks are kept until you send, answers wait while the agent is busy, and the card turns green once answered, with each answer under its question.
+- **Question pages for visual choices:** agents' HTML pages can ask about mockups, with a Pick button and a note box at each mockup and each question right under what it asks about. The page's question cards look like the chat's and fill the page width; drafts are kept if you close the popup, and it closes once you send.
+- **Messages wait for a slow-starting agent:** a message you send while the agent is still starting stays in the chat and goes through on its own as soon as the agent is ready, even if you close the app. You can edit or delete it while it waits.
+- **Agent messages are one-line rows:** a message from or to another agent shows the agent's logo, the first line and its status (a check once delivered); click it to read the whole message, and Go to session appears on hover.
+- **New notice and approval cards** with a coloured icon for info, warnings, errors and successes.
+- **Page previews:** a page card shows a picture of the page once you've opened it in the floating window, and the file name until then.
+- **File change cards:** a header with the files' folder, totals and a ratio bar, one row per file with a change bar (the icon's colour tells an edit, a new file and a deletion apart), opening to a diff with line numbers; Review all opens the Code view's Source Control.
+- **Finished turns:** "Worked 16s" with rounded chips for tool calls, files and failures on the right, and tool rows with icons, durations and a status mark.
+- **`/resume` from the chat:** Claude Code's and Codex's conversation picker shows as a card you drive with ↑/↓, typing, Enter or a click; other agents' pickers show live in a card that takes the keyboard until you hand it back.
+- **Interrupt & Send:** Ctrl+Enter (or right-click Send) stops the agent's turn and sends your message right away; on the phone, hold Send while the agent works.
+- **Background tasks:** each running task shows what it's doing with a timer (two or more fold into one row), the working indicator always comes first, and the finished row says how long the task ran.
+- **Marked handovers:** orchestrators and their threads mark each part of their handover with ❓ ✅ ⚠️ 🛫 🔄 🧪 🚀 🛑 (Settings > Chat > Marked handovers in every session extends it to all agents), and the chat colours those sections in the style you pick. Settings > Chat > Show marker emojis (off by default) keeps the emojis next to the coloured titles.
+- **The chat's scrollbar matches the Files view's:** inset from the edge, a little wider when you point at it.
+
+### 🧭 Orchestrators
+- **The Threads card lists working threads first;** Show recent adds the latest finished ones, then 30 more at a time.
+- **Orchestrators ask you their questions as a form in the chat** (or a page when there's something to look at), bring their threads' questions and pages to you, and list every running thread in their handover.
+
+### 🪟 Windows
+- **Ctrl+V no longer freezes Ghostex** when the app you copied from is slow to hand over its data (Office, Remote Desktop, screenshot tools), in the chat, terminals, dialogs and Kanban.
+- **Codex and Antigravity hooks run on Windows again,** so their activity and transcripts reach Ghostex.
+
+### 🤖 Agents
+- **Antigravity chat no longer stalls** while it has a background task running.
+- **An agent started inside a session can no longer take that session over.**
+- **The Claude usage card says when its numbers are old** ("Last known", "Last updated 3 days ago") instead of claiming live limits.
+
+### 🧩 Workspaces and Work Mode
+- **Start in cloud (Claude Code), Link to current session and Open in terminal** for cloud sessions on the Work page.
+- **Linear pages stay in a workspace's browser,** and a site's question is a bar on its page instead of a dialog; Settings > Workspaces > Site permissions can forget your answers.
+- **Assigned to me keeps all your tickets, Clean up works on Windows,** and work-card buttons never shrink.
+
+### 🎨 Look and setup
+- **The sidebar's bottom bar holds the workspace switcher and Send Feedback** on the left, and Commands (a lightning button) and Settings on the right; the Spaces row sits centred without a background.
+- **Menus close when you click their button again,** and sidebar menus open 3px below their row (the workspace menu opens above its button).
+- **Your views can be deleted** from the view editor, with a confirmation.
+- **Setup's last page sets Agent approvals** (Keep default / Skip permissions).
+- **The blue attention outline's top line shows** at any display scale, and an orchestrator's thread count lines up with the time.
+
+### 📱 Phone
+- **The phone chat matches:** question forms, agent message rows, notice and approval cards, page previews, file change cards, the new turn look, the `/resume` card, background task rows, Interrupt & Send on a held Send, coloured handovers and the marker emoji switch.
+
 ## 10.19.0 - 2026-10-10
 
 **Ghostex 10.19.0 is out.** A new Skills menu shows Ghostex's skills in the chat and terminal, the Work page gets two-line rows, Group by and a one-row filter bar, each workspace window keeps to its own sessions, browser sign-ins in workspaces stay saved, and Colourfulness gets finer steps.

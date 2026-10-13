@@ -1,0 +1,1 @@
+../../../../desktop/src/app/helpers/clipboard_read.rs

@@ -37,6 +37,9 @@ pub fn rpc_settled(
     request_id: u64,
     outcome: &RpcOutcome,
 ) -> Option<Vec<Effect>> {
+    if let Some(effects) = crate::questions::forms::rpc_settled(state, request_id, outcome) {
+        return Some(effects);
+    }
     if state
         .questions
         .answer_request
@@ -44,6 +47,40 @@ pub fn rpc_settled(
         .is_some_and(|request| request.request_id == request_id)
     {
         return Some(answer_settled(state, outcome));
+    }
+    let query = state.questions.picker_query_request == Some(request_id);
+    if let Some(position) = state
+        .questions
+        .picker_requests
+        .iter()
+        .position(|id| *id == request_id)
+        .or(query.then_some(usize::MAX))
+    {
+        if query {
+            state.questions.picker_query_request = None;
+        } else {
+            state.questions.picker_requests.remove(position);
+        }
+        // A refused key means the list closed or changed under it; the card says so.
+        if let RpcOutcome::Err { message, .. } = outcome {
+            state.questions.notice_error = Some(message.clone());
+            state.core.claim_refusal();
+        }
+        let effects = match state.questions.pending_picker_query.take() {
+            // Search text waiting for a list that has since closed is dropped with it.
+            Some(next)
+                if query
+                    && TerminalNotice::parse(state.session.terminal_notice.as_ref())
+                        .and_then(|notice| notice.dialog)
+                        .is_some_and(|dialog| dialog.picker.is_some()) =>
+            {
+                crate::questions::actions::send_navigation(state, &next)
+            }
+            _ => Vec::new(),
+        };
+        refresh_gates(state);
+        state.core.publish_after(&effects);
+        return Some(effects);
     }
     if state.questions.cancel_request == Some(request_id) {
         state.questions.cancel_request = None;
@@ -188,6 +225,12 @@ pub fn storage_loaded(state: &mut ChatState, key: &StorageKey, value: Option<&st
             refresh_gates(state);
             true
         }
+        DRAFTS_STORE if crate::questions::forms::form_of_key(key).is_some() => {
+            if let Some(id) = crate::questions::forms::form_of_key(key) {
+                crate::questions::forms::storage_loaded(state, &id, value);
+            }
+            true
+        }
         DRAFTS_STORE if is_async_drafts_key(key) => {
             state.questions.async_questions.drafts = value.map(decode_drafts).unwrap_or_default();
             async_controller::read_answered(&mut state.questions.async_questions);
@@ -220,6 +263,8 @@ pub fn storage_written(
     error: Option<&str>,
 ) -> Option<Vec<Effect>> {
     match key.store.as_str() {
+        // A question form's picks are saved as they change; nothing waits on the write.
+        DRAFTS_STORE if crate::questions::forms::form_of_key(key).is_some() => Some(Vec::new()),
         DRAFTS_STORE if is_async_drafts_key(key) => {
             async_controller::write_settled(&mut state.questions.async_questions, error);
             // `save()`'s own `changed()` on the write settling, which is what clears or raises the

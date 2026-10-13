@@ -32,20 +32,37 @@ pub fn settle_working_word(word: &mut WorkingWordState, working: bool, context: 
 
 /// `computeSessionChatWorkingStrip` plus the `presentation` field `publish` adds to it.
 ///
-/// The word is only shown when nothing more specific is: a live terminal activity (compaction, a
-/// running shell) replaces it, because it says what is actually happening.
+/// The word is only shown when nothing more specific is: a live terminal activity (compaction)
+/// replaces it, because it says what is actually happening.
+///
+/// CDXC:SessionChat 2026-10-11 DECISION:
+/// User: while a turn runs and background tasks are running too, the chat must still show the working indicator; the background-task card is an extra row, not a replacement. Background tasks say nothing about the turn, so they never take the word's place; once the turn ends the card stands alone.
 pub fn working_strip(state: &ChatState, context: &ChatContext, working: bool) -> WorkingStrip {
     let activity = state.session.terminal_activity.clone();
+    let background = activity
+        .as_ref()
+        .and_then(|activity| activity.get("kind"))
+        .and_then(serde_json::Value::as_str)
+        == Some("shells-running");
+    let mut presentation = compute_activity_at(
+        activity.as_ref(),
+        state.extras.activity_now_ms.unwrap_or(context.now_ms),
+        context,
+    );
+    if let Some(tasks) = presentation
+        .as_mut()
+        .and_then(|presentation| presentation.get_mut("backgroundTasks"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        tasks.insert(
+            "open".to_string(),
+            state.extras.panels.background_tasks_open.into(),
+        );
+    }
     WorkingStrip {
-        label: match (&activity, working) {
-            (None, true) => Some(format!("{}\u{2026}", state.extras.working_word.word)),
-            _ => None,
-        },
-        presentation: compute_activity_at(
-            activity.as_ref(),
-            state.extras.activity_now_ms.unwrap_or(context.now_ms),
-            context,
-        ),
+        label: (working && (activity.is_none() || background))
+            .then(|| format!("{}\u{2026}", state.extras.working_word.word)),
+        presentation,
         activity,
         extra: serde_json::Map::new(),
     }

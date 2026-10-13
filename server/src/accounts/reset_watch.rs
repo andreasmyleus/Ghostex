@@ -234,6 +234,7 @@ fn simulate(account: &mut DiscoveredAccount, simulation: &Simulation, now: DateT
         }
         account.usage_updated_at = Some(now.to_rfc3339());
         account.usage_error = None;
+        account.usage_stale = false;
     }
 }
 

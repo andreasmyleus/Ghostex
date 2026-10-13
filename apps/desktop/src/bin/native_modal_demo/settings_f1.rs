@@ -11,7 +11,8 @@
 //! extension's page), `extensions-store-detail` (a Store page with its README), `extensions-consent`
 //! (the install consent over the Store page), `extensions-view-editor` (the Configure view deep
 //! link), `extensions-templates` (Add view), `extensions-scope` (the Choose where it's shown deep
-//! link), `extensions-scope-menu` (its picker open), `extensions-arrange` (Arrange views),
+//! link), `extensions-scope-menu` (its picker open), `extensions-arrange` (Arrange views), `extensions-delete-view` (Delete
+//! confirmation over the Configure view deep link),
 //! `extensions-select` (the type filter open), `extensions-offline` (no gxserver); `accounts`,
 //! `accounts-editor`, `accounts-editor-actions` (scrolled to its buttons), `accounts-defaults`, `accounts-add`, `accounts-guide`, `accounts-connect`
 //! (a sign-in in progress), `accounts-uninstall`, `accounts-error`, `accounts-loading`,
@@ -86,7 +87,7 @@ pub(super) fn extend_sidebar_state(message: &mut Value) {
 /// The `open` message of a state.
 pub(super) fn open_message(state: &str) -> Option<Value> {
     match state {
-        "extensions-view-editor" => Some(json!({
+        "extensions-view-editor" | "extensions-delete-view" => Some(json!({
             "initialTab": "extensions",
             "initialCustomViewId": "custom-view-tasks",
         })),

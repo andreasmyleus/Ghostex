@@ -5,7 +5,8 @@
 //! `terminal` (Show Advanced on, scrolled to Terminal), `pick-color` (a custom terminal background
 //! with its Pick Color dialog open), `select` (the Command Pane Side dropdown open), `tags`
 //! (Sidebar Tags with the New tag form, from the sidebar's New tag deep link), `hotkeys` (the
-//! Hotkeys entry point). Saves are applied back to the modal the way the app rehydrates it.
+//! Hotkeys entry point), `marked-preview` (the Marked sections style Preview dialog open). Saves are
+//! applied back to the modal the way the app rehydrates it.
 //! `GHOSTEX_NATIVE_MODAL_DEMO_GLASS=1` previews the frosted palette.
 //! `GHOSTEX_NATIVE_MODAL_DEMO_SETTINGS='{"actionsHidden":false}'` merges saved settings over the
 //! state's (a built-in extension switched on or off, for example).

@@ -265,6 +265,8 @@ async function buildInlineCefEntryScript(
     conditions: ['production'],
     define: {
       'process.env.NODE_ENV': '"production"',
+      // React Native's dev flag, read by react-native-enriched-markdown's web build (the Work page's Markdown).
+      __DEV__: 'false',
     },
     entryPoints: [entryPoint],
     format: 'esm',
@@ -298,6 +300,29 @@ async function buildInlineCefEntryScript(
   return script.text;
 }
 
+/** react-native-enriched-markdown's web build imports `react-native`; the Work page answers that one import with a tiny shim (see the file's comment). */
+const enrichedMarkdownImporter = /[\\/]node_modules[\\/]react-native-enriched-markdown[\\/]/;
+const enrichedMarkdownReactNativeShim = path.resolve(gpuiRoot, 'views/work/react-native-shim.ts');
+
+function resolveEnrichedMarkdownImport(source: string, importer: string | undefined): string | undefined {
+  return source === 'react-native' && importer && enrichedMarkdownImporter.test(importer)
+    ? enrichedMarkdownReactNativeShim
+    : undefined;
+}
+
+function enrichedMarkdownShims(): Plugin {
+  return {
+    name: 'ghostex-enriched-markdown-shims',
+    enforce: 'pre',
+    resolveId: {
+      filter: { id: /^react-native$/ },
+      handler(source, importer) {
+        return resolveEnrichedMarkdownImport(source, importer);
+      },
+    },
+  };
+}
+
 /**
  * CDXC:Build 2026-09-26 WHY:
  * esbuild can load thousands of icon modules at once. Synchronous reads close each file before the next loader runs, avoiding Windows EMFILE errors from unbounded asynchronous opens.
@@ -306,6 +331,20 @@ function createCefSingleFileEsbuildPlugin(stagedImages: CefStagedImages): esbuil
   return {
     name: 'ghostex-gpui-cef-single-file',
     setup(build) {
+      build.onResolve({ filter: /^react-native$/ }, (args) => {
+        const shim = resolveEnrichedMarkdownImport(args.path, args.importer);
+        return shim ? { path: shim } : undefined;
+      });
+      // The Work page turns LaTeX off, so the package's optional `require('katex')` (KaTeX is installed for mermaid) stays out of the bundle.
+      build.onResolve({ filter: /^katex$/ }, (args) =>
+        enrichedMarkdownImporter.test(args.importer) ? { path: 'katex', namespace: 'enriched-markdown-empty' } : undefined
+      );
+      build.onLoad({ filter: /.*/, namespace: 'enriched-markdown-empty' }, () => ({ contents: '', loader: 'js' }));
+      // The package's md4c parser loader is Emscripten CommonJS (`module.exports`) inside a `"type": "module"` folder, so esbuild loads it as ESM and the export never runs; give it the ES export its importer asks for.
+      build.onLoad({ filter: /[\\/]react-native-enriched-markdown[\\/]lib[\\/]module[\\/]web[\\/]wasm[\\/]md4c\.js$/ }, (args) => ({
+        contents: `${fs.readFileSync(args.path, 'utf8')}\nexport default createMd4cModule;\n`,
+        loader: 'js',
+      }));
       /*
        * CDXC:CefRuntime 2026-09-05 WHY:
        * Vite owns the inlined CSS, so skip CSS when loading resolved files in the JavaScript-only bundle; bare package imports such as @fontsource-variable/inter resolve to CSS without a .css import suffix.
@@ -340,7 +379,7 @@ function createCefSingleFileEsbuildPlugin(stagedImages: CefStagedImages): esbuil
 export default defineConfig({
   base: './',
   root: gpuiRoot,
-  plugins: [inlineCefHtmlAssets()],
+  plugins: [enrichedMarkdownShims(), inlineCefHtmlAssets()],
   build: {
     emptyOutDir: true,
     outDir: sidebarOutDir,

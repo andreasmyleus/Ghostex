@@ -159,7 +159,8 @@ fn file_stem(path: &Path) -> String {
 }
 
 /// The session this runs in, from the environment every Ghostex pane exports; kept with the page
-/// so it can be traced back to the conversation that made it.
+/// so it can be traced back to the conversation that made it, and so the reader's answers
+/// (`ghostex.submit`) reach that session.
 fn calling_session_ref() -> Option<String> {
     ["GHOSTEX_GLOBAL_SESSION_REF", "GHOSTEX_NATIVE_SESSION_ID"]
         .iter()

@@ -80,6 +80,7 @@ pub fn refresh(state: &mut ChatState, context: &ChatContext) {
         queue: state.session.queue_prompts.clone(),
         line_breaks: presentation::line_breaks(state),
         live_side_question: crate::transcript::side_question::live_side_question(state),
+        session_directory_revision: state.transcript_view.session_directory_revision,
     };
     if state.transcript_view.projection_inputs.as_ref() == Some(&inputs) {
         return;
@@ -99,6 +100,9 @@ pub fn refresh(state: &mut ChatState, context: &ChatContext) {
     let view = &mut state.transcript_view;
     view.items = projection.items;
     view.final_ids = projection.final_ids;
+    view.answered_pages = projection.answered_pages;
+    view.question_forms = projection.question_forms;
+    view.page_answers = projection.page_answers;
     view.backfill = projection.backfill;
     view.projection_inputs = Some(inputs);
     // `update` runs INSIDE `publish` in the TypeScript, so a rebuild only becomes a new array the

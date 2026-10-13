@@ -40,6 +40,45 @@ pub fn truthy(value: Option<String>) -> bool {
     )
 }
 
+/// The cargo debug-info level `--debug-info[=<level>]` or `GHOSTEX_DEBUG_INFO` asks for: `line-tables-only` (function names and file:line in backtraces) for a bare flag or a truthy value, otherwise the level given (`limited`, `full`).
+pub fn debug_info_level(flag: Option<&str>) -> Res<Option<String>> {
+    let requested = match flag {
+        Some(level) => Some(level.to_string()),
+        None => env_trimmed("GHOSTEX_DEBUG_INFO"),
+    };
+    let Some(requested) = requested else {
+        return Ok(None);
+    };
+    let level = requested.to_ascii_lowercase();
+    match level.as_str() {
+        "" | "1" | "true" | "yes" | "on" | "line-tables-only" => {
+            Ok(Some("line-tables-only".into()))
+        }
+        "limited" | "full" => Ok(Some(level)),
+        "0" | "false" | "no" | "off" => Ok(None),
+        other => crate::bail!(
+            "Unknown debug-info level: {other}. Use line-tables-only (the default), limited or full."
+        ),
+    }
+}
+
+/// Environment that turns debug info and symbols back on for every cargo build a command runs.
+/// It undoes the root `.cargo/config.toml` (CDXC:Build 2026-10-11): the profile keys for dev and release, and a later `/DEBUG` that overrides its `/DEBUG:NONE` so the MSVC linker writes a .pdb again.
+pub fn debug_info_environment(level: &str) -> Vec<(String, String)> {
+    let mut environment = Vec::new();
+    for profile in ["DEV", "RELEASE"] {
+        environment.push((format!("CARGO_PROFILE_{profile}_DEBUG"), level.to_string()));
+        environment.push((format!("CARGO_PROFILE_{profile}_STRIP"), "none".to_string()));
+    }
+    for triple in ["X86_64_PC_WINDOWS_MSVC", "AARCH64_PC_WINDOWS_MSVC"] {
+        environment.push((
+            format!("CARGO_TARGET_{triple}_RUSTFLAGS"),
+            "-C link-arg=/DEBUG".to_string(),
+        ));
+    }
+    environment
+}
+
 pub fn home_dir() -> PathBuf {
     let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     PathBuf::from(env_var(key).unwrap_or_default())

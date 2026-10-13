@@ -10,7 +10,6 @@ use gpui_component::tooltip::ManagedTooltipPlacement;
 use serde_json::json;
 
 use super::appearance::SidebarAppearance;
-use super::menu_state::SidebarMenuState;
 use crate::app::consts::*;
 use crate::app::helpers::*;
 use crate::app::render::window_drag_region::window_drag_region;
@@ -40,7 +39,7 @@ impl GhostexGpuiApp {
         } else {
             &snapshot.search_shortcut
         };
-        let mut more_menu = snapshot.more_menu.clone();
+        let more_menu = snapshot.more_menu.clone();
         /*
         CDXC:Sidebar 2026-09-20 DECISION:
         User: with the titlebar row deleted, the sidebar's Search row is what sits in the window's
@@ -61,25 +60,24 @@ impl GhostexGpuiApp {
         let owns_window_corner = !footer && !self.sidebar_collapsed;
         /*
         CDXC:Sidebar 2026-09-21 DECISION:
-        User: once the sidebar is narrower than its row's threshold (`SIDEBAR_COMPACT_COMMANDS_WIDTH`), the Search and the Commands rows drop their label and their shortcut hint and become icon-only buttons with the
-        same icon they already show, the label and shortcut move into the tooltip ("Search (⌘P)",
-        "Commands (⌘⇧P)"), and every button in both rows aligns right, against the sidebar's
-        trailing edge. This supersedes the 2026-09-20 rule that aligned them left.
-        CDXC:Sidebar 2026-09-28 DECISION:
-        User: the Search button is always icon-only, at every sidebar width, with the label and
-        shortcut in its tooltip. Only the Commands row still switches at its width threshold.
+        User: the Search and the Commands buttons are icon-only buttons with the icon they already
+        show, the label and shortcut in the tooltip ("Search (⌘P)", "Commands (⌘⇧P)"), and the
+        buttons of both rows align right, against the sidebar's trailing edge. This supersedes the
+        2026-09-20 rule that aligned them left.
+        CDXC:Sidebar 2026-10-11 DECISION:
+        User: the bottom-left Commands item is always just the lightning icon button, aligned to the
+        right of the sidebar's bottom bar with its "Commands (Ctrl+Shift+P)" tooltip, and never
+        expands to the "Commands" label when the sidebar is wide. This supersedes the 2026-09-28
+        width threshold and its 2026-10-11 441px revision.
         */
-        let compact = !footer || self.sidebar_width < SIDEBAR_COMPACT_COMMANDS_WIDTH * scale;
         /*
-        CDXC:Sidebar 2026-10-05 DECISION:
+        CDXC:Sidebar 2026-10-11 DECISION:
         User: "i actually want search and notifications to be always shown, there's space for those
-        too in all cases, just hide feedback in case of a narrow sidebar". Search, the bell and the
-        menu button stay in the top row at every sidebar width; when the row has no room for the
-        Send Feedback button too, only that button leaves the row and becomes the top item of the
-        sidebar menu, with a separator below it. This supersedes the 2026-09-23 rule that moved
-        Search and Notifications into the menu together.
+        too in all cases" (2026-10-05). Search, the bell and the menu button stay in the top row at
+        every sidebar width, and nothing collapses into the sidebar menu any more now that Send
+        Feedback sits in the bottom bar. This supersedes the 2026-09-23 rule that moved Search and
+        Notifications into the menu together and the 2026-10-05 rule that moved Send Feedback there.
         */
-        let compact_button_slot = 38.0 * scale;
         /*
         CDXC:Sidebar 2026-09-21 DECISION:
         User: the Toggle sidebar button sits left of Search, so it stays in exactly the same spot
@@ -88,46 +86,11 @@ impl GhostexGpuiApp {
         workarea header draws it (`SIDEBAR_TOGGLE_LEADING_X`); the header only draws it while
         collapsed.
         */
-        // Two buttons of the same shape: Toggle sidebar and the Agents Panel toggle after it.
-        let sidebar_toggle_width = if owns_window_corner {
-            2.0 * (TITLEBAR_BUTTON_HORIZONTAL_PADDING * 2.0
-                + TITLEBAR_SIDEBAR_COLLAPSE_ICON_LEFT_OFFSET
-                + TITLEBAR_SIDEBAR_COLLAPSE_ICON_SIZE)
-                + 4.0
-        } else {
-            0.0
-        };
         // With Spaces on, the Hermes button is the Space row's last slot instead.
         let bots_toggle = (!footer && snapshot.bots_enabled && !snapshot.spaces_enabled)
             .then_some(snapshot.bots_mode);
-        let compact_room = self.sidebar_width
-            - if owns_window_corner {
-                SIDEBAR_TOGGLE_LEADING_X
-            } else {
-                5.0 * scale
-            }
-            - sidebar_toggle_width
-            - bots_toggle.map_or(0.0, |_| (super::bots::BOTS_TOGGLE_WIDTH + 4.0) * scale)
-            - 5.0 * scale;
         let bell_visible = !footer && self.titlebar_notification_bell_visible();
         let work_visible = !footer && !snapshot.work_mode_project_ids().is_empty();
-        // Search, Send Feedback and the menu button, plus the bell and the briefcase when they show.
-        let shown_buttons = 3.0 + f32::from(u8::from(bell_visible)) + f32::from(u8::from(work_visible));
-        let feedback_collapsed =
-            !footer && compact && compact_room < shown_buttons * compact_button_slot;
-        if feedback_collapsed && let Some(items) = more_menu.as_array_mut() {
-            items.splice(
-                0..0,
-                [
-                    json!({
-                        "label": "Send Feedback",
-                        "icon": "messageCircle",
-                        "command": {"type": "sidebarAction", "action": "feedback"},
-                    }),
-                    json!({"separator": true}),
-                ],
-            );
-        }
         let icon_path = if footer {
             "titlebar/bolt.svg"
         } else {
@@ -143,10 +106,9 @@ impl GhostexGpuiApp {
             .h(px((if footer { 36.0 } else { 35.0 }) * scale))
             .pt(px(5.0 * scale))
             .pb(px(3.0 * scale))
-            .when(!footer || compact, |row| {
-                row.px(px(5.0 * scale)).gap(px(4.0 * scale))
-            })
-            .when(compact, |row| row.justify_end())
+            .px(px(5.0 * scale))
+            .gap(px(4.0 * scale))
+            .justify_end()
             .when(owns_window_corner, |row| {
                 window_drag_region(row.pl(px(SIDEBAR_TOGGLE_LEADING_X)))
             })
@@ -169,7 +131,7 @@ impl GhostexGpuiApp {
             */
             .when(owns_window_corner, |row| {
                 // The row's unscaled leading padding puts the button on the header's x. The spacer
-                // keeps it left of a compact row, whose other buttons align right.
+                // keeps it left of the row's other buttons, which align right.
                 row.child(
                     div()
                         .flex_shrink_0()
@@ -182,11 +144,9 @@ impl GhostexGpuiApp {
                         self.render_workarea_header_agents_toggle(Some(appearance.muted), cx),
                     ),
                 )
-                .when(compact, |row| {
-                    // The negative margin cancels the row gap this zero-width spacer adds, so the
-                    // buttons right of it take exactly the 38px slots `compact_room` counts.
-                    row.child(div().flex_1().mr(px(-4.0 * scale)))
-                })
+                // The negative margin cancels the row gap this zero-width spacer adds, so the
+                // buttons right of it keep their even 38px slots.
+                .child(div().flex_1().mr(px(-4.0 * scale)))
             })
             .when_some(bots_toggle, |row, bots_mode| {
                 row.child(self.render_native_sidebar_bots_toggle(bots_mode, appearance, cx))
@@ -232,16 +192,49 @@ impl GhostexGpuiApp {
                         ),
                 )
             })
-            /*
-            CDXC:Sidebar 2026-09-20 WHY:
-            The sidebar can be dragged down to `SIDEBAR_MIN_WIDTH`, and this row now carries more
-            than it used to: the macOS traffic-light reserve, the notification bell and the Settings
-            gear. Without a clip and without fixed-size trailing controls the glyphs simply painted
-            over each other there, so the label is the one thing that shrinks and is clipped, and
-            everything beside it keeps its own box. Below the compact width the label stops being
-            drawn at all rather than being clipped to nothing.
-            */
-            .child(if compact {
+            // CDXC:Workspaces 2026-10-11 DECISION: User: move the workspace picker out of the Spaces row to the bottom left of the app, in the sidebar's bottom bar, with 5px more margin from the sidebar's left side than the bar's own padding so it lines up with the account row above it. The bar's other buttons sit right of the spacer.
+            .when(footer, |row| {
+                let tile = self.render_native_sidebar_footer_workspace_tile(appearance, cx);
+                let tile_shown = tile.is_some();
+                row.children(tile.map(|tile| div().flex_shrink_0().ml(px(5.0 * scale)).child(tile)))
+                    // CDXC:Feedback 2026-10-11 DECISION:
+                    // User: "move the feedback button to be to the right of the workspace switcher button please". The chat-bubble Send Feedback button sits in the sidebar's bottom bar, directly right of the workspace switcher, and still opens the Send Feedback pop-up (window/feedback_modal/). This supersedes the 2026-10-04 rule that put it at the top of the sidebar after Search ("add a button at the top of the sidebar. It should be a chat bubble icon") and the 2026-10-05 rule that moved it into the sidebar menu when that row was narrow.
+                    .child(
+                        div()
+                            .id("native-sidebar-feedback")
+                            .role(gpui::Role::Button)
+                            .aria_label("Send Feedback")
+                            .when(!tile_shown, |button| button.ml(px(5.0 * scale)))
+                            .h(px(28.0 * scale))
+                            .w(px(34.0 * scale))
+                            .rounded(px(5.0 * scale))
+                            .flex()
+                            .flex_shrink_0()
+                            .items_center()
+                            .justify_center()
+                            .cursor_default()
+                            .hover(|row| row.bg(appearance.hover))
+                            .child(titlebar_svg_icon(
+                                "titlebar/message-circle.svg",
+                                15.0 * scale,
+                                appearance.muted,
+                            ))
+                            .on_click(cx.listener(move |app, _, _, cx| {
+                                cx.stop_propagation();
+                                app.dispatch_native_sidebar_ui(
+                                    json!({"type": "sidebarAction", "action": "feedback"}),
+                                    cx,
+                                );
+                            }))
+                            .managed_discrete_tooltip_with_placement(
+                                ManagedTooltipPlacement::Right,
+                                tooltip_delay,
+                                |window, cx| titlebar_tooltip("Send Feedback", window, cx),
+                            ),
+                    )
+                    .child(div().flex_1())
+            })
+            .child(
                 div()
                     .id(format!("native-sidebar-{label}"))
                     .role(gpui::Role::Button)
@@ -272,95 +265,8 @@ impl GhostexGpuiApp {
                         ManagedTooltipPlacement::Right,
                         tooltip_delay,
                         move |window, cx| titlebar_tooltip(tooltip_label.clone(), window, cx),
-                    )
-                    .into_any_element()
-            } else {
-                h_flex()
-                    .id(format!("native-sidebar-{label}"))
-                    .role(gpui::Role::Button)
-                    .aria_label(tooltip_label.clone())
-                    .when(cfg!(target_os = "windows"), |button| button.occlude())
-                    .flex_1()
-                    .h(px((if footer { 28.0 } else { 27.0 }) * scale))
-                    .min_w_0()
-                    .overflow_hidden()
-                    .pl(px((if footer { 12.0 } else { 7.0 }) * scale))
-                    .pr(px(15.0 * scale))
-                    .gap(px(11.0 * scale))
-                    .cursor_default()
-                    .hover(|row| row.text_color(titlebar_active_text_color()))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_shrink_0()
-                            .items_center()
-                            .child(titlebar_svg_icon(
-                                icon_path,
-                                15.0 * scale,
-                                titlebar_active_text_color().opacity(0.52),
-                            )),
-                    )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .child(label),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_color(titlebar_active_text_color().opacity(0.38))
-                            .text_size(px(11.0 * scale))
-                            .child(shortcut.clone().unwrap_or_default()),
-                    )
-                    .on_click(cx.listener(move |app, _, _, cx| {
-                        cx.stop_propagation();
-                        app.dispatch_native_sidebar_ui(
-                            json!({"type": "sidebarAction", "action": action_id}),
-                            cx,
-                        );
-                    }))
-                    .into_any_element()
-            })
-            // CDXC:Feedback 2026-10-04 DECISION:
-            // User: "add a button at the top of the sidebar. It should be a chat bubble icon" that opens the Send Feedback pop-up (window/feedback_modal/). It sits after Search, and moves into the sidebar menu when the row has no room; Search and Notifications never leave the row (CDXC:Sidebar 2026-10-05).
-            .when(!footer && !feedback_collapsed, |row| {
-                row.child(
-                    div()
-                        .id("native-sidebar-feedback")
-                        .role(gpui::Role::Button)
-                        .aria_label("Send Feedback")
-                        .when(cfg!(target_os = "windows"), |button| button.occlude())
-                        .h(px(28.0 * scale))
-                        .w(px(34.0 * scale))
-                        .rounded(px(5.0 * scale))
-                        .flex()
-                        .flex_shrink_0()
-                        .items_center()
-                        .justify_center()
-                        .cursor_default()
-                        .hover(|row| row.bg(appearance.hover))
-                        .child(titlebar_svg_icon(
-                            "titlebar/message-circle.svg",
-                            15.0 * scale,
-                            appearance.muted,
-                        ))
-                        .on_click(cx.listener(move |app, _, _, cx| {
-                            cx.stop_propagation();
-                            app.dispatch_native_sidebar_ui(
-                                json!({"type": "sidebarAction", "action": "feedback"}),
-                                cx,
-                            );
-                        }))
-                        .managed_discrete_tooltip_with_placement(
-                            ManagedTooltipPlacement::Right,
-                            tooltip_delay,
-                            |window, cx| titlebar_tooltip("Send Feedback", window, cx),
-                        ),
-                )
-            })
+                    ),
+            )
             // CDXC:Notifications 2026-09-20 DECISION:
             // User: the notification bell sits in the sidebar's top row, before the sidebar menu button.
             .when(bell_visible, |row| {
@@ -371,7 +277,7 @@ impl GhostexGpuiApp {
                     .native_sidebar
                     .menu
                     .as_ref()
-                    .is_some_and(SidebarMenuState::dropped_from_trigger);
+                    .is_some_and(|menu| menu.opened_by(super::menus::SIDEBAR_MORE_TRIGGER));
                 row.child(
                     div()
                         .id("native-sidebar-more")
@@ -380,7 +286,7 @@ impl GhostexGpuiApp {
                         .aria_expanded(more_open)
                         .when(cfg!(target_os = "windows"), |button| button.occlude())
                         .h_full()
-                        .w(px((if compact { 34.0 } else { 40.0 }) * scale))
+                        .w(px(34.0 * scale))
                         .rounded(px(5.0 * scale))
                         .flex()
                         .flex_shrink_0()
@@ -400,26 +306,29 @@ impl GhostexGpuiApp {
                         })
                         .on_mouse_down(MouseButton::Left, {
                             let bounds = self.native_sidebar.more_button_bounds.clone();
-                            cx.listener(move |app, event: &gpui::MouseDownEvent, window, cx| {
+                            move |event: &gpui::MouseDownEvent, window, cx| {
                                 window.prevent_default();
                                 cx.stop_propagation();
                                 let trigger = bounds.get().unwrap_or_else(|| gpui::Bounds {
                                     origin: event.position,
                                     size: gpui::size(gpui::px(1.0), gpui::px(1.0)),
                                 });
-                                app.toggle_native_sidebar_more_menu(
-                                    &more_menu, trigger, scale, window, cx,
+                                Self::toggle_native_sidebar_more_menu(
+                                    &more_menu,
+                                    trigger,
+                                    event.position,
+                                    scale,
+                                    window,
+                                    cx,
                                 );
-                            })
+                            }
                         }),
                 )
             })
             /*
             CDXC:Sidebar 2026-09-21 DECISION:
             User: Settings gets a one-click gear immediately to the right of the Commands
-            row, and the Commands row keeps its full-width shape and its shortcut hint
-            rather than shrinking to an icon while the sidebar is wide enough. The gear is
-            now the sidebar's only Settings entry: the sidebar menu no longer carries
+            button. The gear is now the sidebar's only Settings entry: the sidebar menu no longer carries
             Settings or Hotkeys (packages/gx-core/src/sidebar_menu/navigation.rs). This
             supersedes the 2026-09-20 rule that kept both entries in the menu as a
             deliberate duplicate.
@@ -435,8 +344,6 @@ impl GhostexGpuiApp {
                         .aria_label("Settings")
                         .h(px(28.0 * scale))
                         .w(px(34.0 * scale))
-                        // The compact row already insets its trailing edge like the Search row.
-                        .mr(px((if compact { 0.0 } else { 6.0 }) * scale))
                         .rounded(px(5.0 * scale))
                         .flex()
                         .flex_shrink_0()

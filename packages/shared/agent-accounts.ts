@@ -58,6 +58,8 @@ export interface AgentAccount {
   showInTitlebar?: boolean;
   usageUpdatedAt?: string;
   usageError?: string;
+  /** The usage shown is the last reading that refreshed successfully, taken at `usageUpdatedAt`; refreshing has failed since. */
+  usageStale?: boolean;
   sessionCount: number;
 }
 export interface AccountHelper {

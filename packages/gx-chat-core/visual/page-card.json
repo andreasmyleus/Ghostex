@@ -1,0 +1,15 @@
+{
+  "radius": 14,
+  "barHeight": 34,
+  "dotSize": 9,
+  "dotGap": 6,
+  "previewHeight": 148,
+  "fadeHeight": 60,
+  "footerPaddingX": 14,
+  "footerPaddingY": 11,
+  "titleSize": 14,
+  "detailSize": 12,
+  "thumbnailWidth": 800,
+  "thumbnailHeight": 500,
+  "retryDelaysMs": [5000, 15000, 30000, 60000]
+}

@@ -175,9 +175,18 @@ pub(crate) enum PageKeepAwake {
     Release,
 }
 
+/// A screenshot on its way (`shell/page_screenshot.rs`); never made here.
+pub struct PageScreenshot {
+    pub picture: futures::channel::oneshot::Receiver<Option<String>>,
+}
+
 pub struct CefBrowser;
 
 impl CefBrowser {
+    pub fn capture_page_top(&self, _width: f64, _height: f64, _scale: f64) -> Option<PageScreenshot> {
+        None
+    }
+
     pub fn new(
         _parent_native_view: *mut std::ffi::c_void,
         _url: &str,

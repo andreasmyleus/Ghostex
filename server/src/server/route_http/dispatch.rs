@@ -54,7 +54,20 @@ pub(in crate::server) async fn route_http(
     }
 
     if method == Method::GET && path.starts_with(crate::visual_pages::VISUAL_PAGE_ROUTE_PREFIX) {
-        return crate::visual_pages::serve(state.paths.root_dir.clone(), path).await;
+        let host = parts
+            .headers
+            .get(axum::http::header::HOST)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        return crate::visual_pages::serve(state.paths.root_dir.clone(), path, host).await;
+    }
+
+    if method == Method::POST && crate::visual_pages::is_answers_route(&path) {
+        return crate::visual_pages::submit_answers(state.clone(), path, body).await;
+    }
+
+    if method == Method::POST && crate::visual_pages::is_draft_route(&path) {
+        return crate::visual_pages::save_draft(state.clone(), path, body).await;
     }
 
     let endpoint = endpoint_for(&path);

@@ -9,6 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use ghostex_gx_protocol::{LifecycleState, PresentationSession, SessionActivity};
 use serde::{Deserialize, Serialize};
 
+/// How long a renamed session shows its new name before the daemon has to have published it.
+pub const RENAME_PATCH_TTL_MS: u64 = 8_000;
+
 /// An optimistic patch of one session. Only the fields that are `Some` are overlaid.
 ///
 /// A patch always expires: the request it anticipates can fail silently, and an overlay that
@@ -28,6 +31,9 @@ pub struct SessionPatch {
     /// and what a presentation row then models as an ABSENT field. Collapsing the two made a
     /// clear look like a no-op.
     pub session_tag: Option<Option<String>>,
+    /// The name the user just gave the session, shown until the daemon publishes it (a gxserver
+    /// that shows a pending rename does so within one round trip) or the patch expires.
+    pub title: Option<String>,
     /// Host time after which the patch is dropped, checked on every tick against `now_ms`.
     pub expires_at_ms: u64,
 }
@@ -51,6 +57,7 @@ impl SessionPatch {
             is_parked: None,
             is_favorite: None,
             session_tag: None,
+            title: None,
             expires_at_ms,
         }
     }
@@ -88,6 +95,18 @@ impl SessionPatch {
         self
     }
 
+    /// CDXC:SessionTitles 2026-10-12 DECISION:
+    /// User: "when i rename a session please apply the name optimistically for 8 seconds while the cli itself updates the name". The row shows the new name the moment Rename is confirmed; a gxserver with the pending-rename rule publishes it within one round trip and takes over (it owns the 8-second deadline, the revert and the failed attempt), and on an older daemon the patch itself ends after the same 8 seconds.
+    /// SEE-ALSO: server/src/presentation/session_attributes.rs `pending_session_rename_title`.
+    pub fn rename(title: String, now_ms: u64) -> Self {
+        Self::empty(now_ms.saturating_add(RENAME_PATCH_TTL_MS)).with_title(title)
+    }
+
+    pub fn with_title(mut self, title: String) -> Self {
+        self.title = Some(title);
+        self
+    }
+
     /// `None` clears the tag, which is the `null` `/api/updateSession` takes.
     pub fn with_session_tag(mut self, session_tag: Option<String>) -> Self {
         self.session_tag = Some(session_tag);
@@ -101,6 +120,7 @@ impl SessionPatch {
             && self.is_parked.is_none()
             && self.is_favorite.is_none()
             && self.session_tag.is_none()
+            && self.title.is_none()
     }
 
     /// The session as the UI should show it.
@@ -128,6 +148,13 @@ impl SessionPatch {
         }
         if let Some(session_tag) = &self.session_tag {
             session.session_tag = session_tag.clone();
+        }
+        if let Some(title) = &self.title {
+            session.title = title.clone();
+            session.display_title = Some(title.clone());
+            session.display_title_tooltip = Some(title.clone());
+            session.primary_title = Some(title.clone());
+            session.terminal_title = None;
         }
         session
     }
@@ -159,6 +186,7 @@ pub(crate) struct StoredPatch {
     base_is_parked: bool,
     base_is_favorite: bool,
     base_session_tag: Option<String>,
+    base_title: String,
 }
 
 fn attention_event_id(session: &PresentationSession) -> Option<&str> {
@@ -179,6 +207,7 @@ impl StoredPatch {
             base_is_parked: server.is_parked,
             base_is_favorite: server.is_favorite,
             base_session_tag: server.session_tag.clone(),
+            base_title: server.title.clone(),
         }
     }
 
@@ -228,6 +257,14 @@ impl StoredPatch {
         if let Some(session_tag) = &self.patch.session_tag {
             if *session_tag != server.session_tag {
                 if server.session_tag != self.base_session_tag {
+                    return PatchVerdict::ServerMovedOn;
+                }
+                pending = true;
+            }
+        }
+        if let Some(title) = &self.patch.title {
+            if *title != server.title {
+                if server.title != self.base_title {
                     return PatchVerdict::ServerMovedOn;
                 }
                 pending = true;

@@ -12,6 +12,8 @@ use crate::session_git_status::{parse_gh_pull_request_state, run_gh_command, Pul
 /// Checks finish within minutes, so a linked PR is re-read every two.
 const PULL_REQUEST_TTL: Duration = Duration::from_secs(120);
 const ISSUE_TTL: Duration = Duration::from_secs(5 * 60);
+/// A checkout's `origin` rarely changes.
+const REPO_TTL: Duration = Duration::from_secs(60 * 60);
 /// `gh` calls one background pass may make.
 pub(crate) const MAX_GH_CALLS_PER_PASS: usize = 12;
 
@@ -42,6 +44,8 @@ struct Cached<T> {
 struct GithubCache {
     pull_requests: HashMap<String, Cached<Option<WorkPullRequestInfo>>>,
     issues: HashMap<String, Cached<Option<WorkGithubIssueInfo>>>,
+    /// `owner/repo` (lowercase) of each checkout's `origin`.
+    repos: HashMap<String, Cached<Option<String>>>,
 }
 
 fn cache() -> &'static Mutex<GithubCache> {
@@ -72,6 +76,60 @@ pub(crate) fn cached_work_github_issue(cwd: &str, number: u64) -> Option<WorkGit
         .issues
         .get(&cache_key(cwd, &number.to_string()))
         .and_then(|cached| cached.value.clone())
+}
+
+/// `owner/repo` (lowercase) of a checkout, as the background pass last read it.
+pub(crate) fn cached_work_repo(cwd: &str) -> Option<String> {
+    let cache = cache().lock().ok()?;
+    cache.repos.get(cwd).and_then(|cached| cached.value.clone())
+}
+
+/// Re-reads a checkout's repo when stale (a local `git remote`, no network).
+pub(crate) fn refresh_work_repo(cwd: &str) {
+    if cache().lock().ok().is_some_and(|cache| {
+        cache
+            .repos
+            .get(cwd)
+            .is_some_and(|cached| cached.fetched_at.elapsed() < REPO_TTL)
+    }) {
+        return;
+    }
+    let repo = super::work_repo_of(cwd);
+    if let Ok(mut cache) = cache().lock() {
+        cache.repos.insert(
+            cwd.to_string(),
+            Cached {
+                value: repo,
+                fetched_at: Instant::now(),
+            },
+        );
+    }
+}
+
+/// Stores a PR the Work details just read (by URL), unless the cache already knows it, so a card
+/// that newly links it shows it without another `gh` call. Returns whether it was stored.
+pub(crate) fn remember_work_pull_request(info: WorkPullRequestInfo) -> bool {
+    let Some(url) = info.url.clone().filter(|url| url.starts_with("http")) else {
+        return false;
+    };
+    let Ok(mut cache) = cache().lock() else {
+        return false;
+    };
+    if cache
+        .pull_requests
+        .get(&url)
+        .is_some_and(|cached| cached.value.is_some())
+    {
+        return false;
+    }
+    cache.pull_requests.insert(
+        url,
+        Cached {
+            value: Some(info),
+            fetched_at: Instant::now(),
+        },
+    );
+    true
 }
 
 /// Re-reads a PR when stale. Returns whether `gh` ran.

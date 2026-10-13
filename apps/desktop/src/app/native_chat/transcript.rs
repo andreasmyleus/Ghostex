@@ -347,6 +347,13 @@ impl NativeChatView {
                 .child(self.inter_agent_message_card(&id, message, p, cx))
                 .into_any_element();
         }
+        if message["role"] == "user" && message["pageAnswers"].is_object() {
+            row = row.child(self.page_answers_card(&message["pageAnswers"], p));
+            // The user's own words besides the answers follow as their ordinary message.
+            if message["pageAnswers"]["withText"] != true {
+                return row.into_any_element();
+            }
+        }
         if message["terminalTool"].is_object() {
             let activity = message["terminalTool"].clone();
             return row

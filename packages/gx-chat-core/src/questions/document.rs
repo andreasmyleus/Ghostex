@@ -13,6 +13,7 @@ use crate::questions::gates;
 use crate::questions::interactive::question_answer_controls;
 use crate::questions::model::{InteractivePrompt, TerminalNotice};
 use crate::questions::notice_choices::{collapsed_choice_label, COLLAPSED_CHOICE_COUNT};
+use crate::questions::notice_tone;
 use crate::questions::terminal_prompts::{
     terminal_dialog_presentation, terminal_notice_action_answer, terminal_notice_choice_answer,
 };
@@ -24,7 +25,7 @@ use crate::state::{ChatContext, ChatState};
 /// is where they are projected for drawing. `prompt` goes out exactly as it was folded, and
 /// `terminalNotice` is the folded value plus the decorations the card draws, added onto the
 /// original object so a field this build does not model still reaches the renderer.
-pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) {
+pub fn document(state: &ChatState, context: &ChatContext, into: &mut Document) {
     let questions = &state.questions;
     let prompt = InteractivePrompt::parse(state.session.prompt.as_ref());
     let notice = TerminalNotice::parse(state.session.terminal_notice.as_ref());
@@ -34,7 +35,18 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
         None => Tri::Null,
     };
     into.terminal_notice = match (state.session.terminal_notice.as_ref(), notice.as_ref()) {
-        (Some(raw), Some(notice)) => Tri::Value(decorate_notice(raw, notice)),
+        (Some(raw), Some(notice)) => {
+            let mut decorated = decorate_notice(raw, notice);
+            if let Some(object) = decorated.as_object_mut() {
+                crate::questions::account_wait::decorate(
+                    object,
+                    state.core.hide_account_emails,
+                    context.now_ms,
+                    context.utc_offset_minutes,
+                );
+            }
+            Tri::Value(decorated)
+        }
         _ => Tri::Null,
     };
     into.notice_visible = gates::notice_visible(state);
@@ -65,7 +77,22 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
             Some(InteractivePrompt::Approval { tool, .. }) => approval_ask(tool).to_string(),
             _ => String::new(),
         },
+        approval_title: match prompt.as_ref() {
+            Some(InteractivePrompt::Approval { tool, .. }) => {
+                notice_tone::approval_title(state.session.agent.as_deref(), tool)
+            }
+            _ => String::new(),
+        },
+        approval_detail: match prompt.as_ref() {
+            Some(InteractivePrompt::Approval { tool, .. }) => notice_tone::approval_detail(
+                tool,
+                state.transcript_view.working_directory.as_deref(),
+            ),
+            _ => String::new(),
+        },
     };
+
+    into.question_forms = crate::questions::forms::project(state);
 
     into.async_questions = async_controller::project(
         &questions.async_questions,
@@ -91,6 +118,7 @@ fn approval_ask(tool: &str) -> &'static str {
 /// presentation, and the answer each row and each action sends.
 fn decorate_notice(raw: &Value, notice: &TerminalNotice) -> Value {
     let mut object = raw.as_object().cloned().unwrap_or_default();
+    object.insert("tone".to_string(), json!(notice_tone::notice_tone(notice)));
     object.insert(
         "collapsedChoiceCount".to_string(),
         json!(COLLAPSED_CHOICE_COUNT),
@@ -116,6 +144,14 @@ fn decorate_notice(raw: &Value, notice: &TerminalNotice) -> Value {
         object.remove("collapsedDetail");
     } else {
         object.insert("collapsedDetail".to_string(), json!(commands.join("\n")));
+    }
+    match crate::questions::terminal_picker::passthrough_presentation(notice) {
+        Some(passthrough) => {
+            object.insert("passthrough".to_string(), passthrough);
+        }
+        None => {
+            object.remove("passthrough");
+        }
     }
     match notice.dialog.as_ref() {
         Some(dialog) => {

@@ -4,13 +4,18 @@ use serde_json::Value;
 /// Where a panel sits relative to its anchor point.
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) enum SidebarMenuPlacement {
-    /// Centred across the sidebar at the anchor's height: context menus and the menus that open
-    /// where the pointer is.
+    /// Centred across the sidebar at the anchor's height: submenus, and menus with nothing to hang
+    /// from (a right-click on the list's empty space).
     #[default]
     Pointer,
-    /// The anchor is a point just below a trigger's bottom-right corner: the panel's right edge
-    /// lines up with the trigger's right edge and its top sits on the anchor.
-    BelowTrigger,
+    /// Hung from what opened it, a sidebar row or a button (`owner`): `gap` below it with its left
+    /// edge (or, with `align_right`, its right edge) on the owner's, and above it instead when the
+    /// sidebar has no room below.
+    Attached {
+        owner: Bounds<Pixels>,
+        align_right: bool,
+        gap: Pixels,
+    },
 }
 
 #[derive(Clone)]
@@ -33,6 +38,8 @@ pub(crate) struct SidebarMenuState {
     pub(crate) panels: Vec<SidebarMenuPanel>,
     pub(crate) focus: FocusHandle,
     pub(crate) previous_focus: Option<FocusHandle>,
+    /// The button that opened the menu, when a button did: pressing it again closes the menu.
+    pub(crate) trigger: Option<String>,
     pub(crate) scale: f32,
     /// Keeps `window`'s tooltips hidden while the menu is up (`Root::suppress_tooltips`).
     pub(crate) _tooltips: gpui::TooltipSuppression,
@@ -145,16 +152,41 @@ impl SidebarMenuPanel {
             .measured_height
             .unwrap_or(estimate)
             .min((sidebar.size.height - margin * 2.0).max(gpui::px(0.0)));
+        if let SidebarMenuPlacement::Attached {
+            owner,
+            align_right,
+            gap,
+        } = self.placement
+        {
+            // No margin against the sidebar's sides: the owner sits inside them, and the panel's
+            // edge has to meet the owner's exactly.
+            let left = if align_right {
+                owner.right() - width
+            } else {
+                owner.left()
+            }
+            .min(sidebar.right() - width)
+            .max(sidebar.left());
+            let below = owner.bottom() + gap;
+            let above = owner.top() - gap - height;
+            let top = if below + height <= sidebar.bottom() - margin {
+                below
+            } else if above >= sidebar.top() + margin {
+                above
+            } else if sidebar.bottom() - owner.bottom() >= owner.top() - sidebar.top() {
+                below.min(sidebar.bottom() - height - margin)
+            } else {
+                above.max(sidebar.top() + margin)
+            };
+            return Bounds {
+                origin: Point::new(left, top),
+                size: gpui::size(width, height),
+            };
+        }
         // The React launcher sits right-aligned under its chevron; other sidebar menus are centered in the sidebar.
         let left = if launcher {
             (self.anchor.x - width)
                 .min(sidebar.right() - width - margin)
-                .max(sidebar.left() + margin)
-        } else if self.placement == SidebarMenuPlacement::BelowTrigger {
-            // No margin on the right: the trigger itself sits inside the sidebar's edge, and the
-            // panel's right edge has to meet it exactly.
-            (self.anchor.x - width)
-                .min(sidebar.right() - width)
                 .max(sidebar.left() + margin)
         } else {
             sidebar.left() + (sidebar.size.width - width) / 2.0
@@ -203,10 +235,9 @@ impl SidebarMenuPanel {
 }
 
 impl SidebarMenuState {
-    pub(crate) fn dropped_from_trigger(&self) -> bool {
-        self.panels
-            .first()
-            .is_some_and(|panel| panel.placement == SidebarMenuPlacement::BelowTrigger)
+    /// Whether the button `trigger` opened this menu.
+    pub(crate) fn opened_by(&self, trigger: &str) -> bool {
+        self.trigger.as_deref() == Some(trigger)
     }
 
     pub(crate) fn refresh(&mut self, snapshot: &super::model::NativeSidebarSnapshot) {

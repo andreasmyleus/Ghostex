@@ -2,10 +2,11 @@
 name: ghostex-visuals
 description: >-
   Show charts, stat tiles, tables and text layouts inline in the Ghostex chat
-  with a fenced ```visual block, and publish self-contained HTML pages (UI
-  mockups, small interactive tools) with `ghostex show` so the chat shows them
-  as a card that opens the page. Use only when the user asks for
-  $ghostex-visuals.
+  with a fenced ```visual block, ask the reader questions as a form in the
+  chat with a ```questions block, and publish self-contained HTML pages (UI
+  mockups, small interactive tools, questions that need a picture) with
+  `ghostex show` so the chat shows them as a card that opens the page. Use
+  only when the user asks for $ghostex-visuals.
 disable-model-invocation: true
 ---
 
@@ -15,8 +16,10 @@ Ghostex draws a fenced ```visual block in your reply natively, inline in the
 chat, on desktop, web and phone.
 
 - Prefer a block for charts, tables, stats and text layouts.
-- Use an HTML page only for what a block cannot express: UI mockups and small
-  interactive tools.
+- Ask questions in a ```questions block: the chat shows them as a form.
+- Use an HTML page only for what a block cannot express: UI mockups, small
+  interactive tools, and questions the reader can only answer by seeing a
+  picture.
 - Don't restate in prose what the visual already shows. Add only what it
   doesn't: the conclusion, a caveat, the next step.
 
@@ -147,6 +150,68 @@ Stats above a table:
 }
 ```
 
+## Questions
+
+When you need the reader's decisions, put the questions in a ```questions
+block in your reply. The chat draws it as a form under your message, on
+desktop, web and phone: every question at once, choices picked with a click,
+a note box per question, and one Send button. Use it instead of asking in
+prose or as a numbered list, and instead of your agent's own question tool
+(AskUserQuestion and the like), which shows one question at a time. Only when
+the reader has to see something to answer (a UI mockup, a layout, a diagram)
+use a question page instead (see "Question pages" below).
+
+First run `ghostex visual --help`: if it doesn't mention ```questions, this
+Ghostex can't show the form, so ask in prose instead.
+
+```questions
+{
+  "title": "Settings redesign",
+  "questions": [
+    {"tag": "Q1", "title": "Which layout should I build?",
+     "detail": "Why it matters, in a sentence or two.",
+     "choices": [
+       {"label": "Tabs", "detail": "One page per area.", "value": "tabs", "recommended": true},
+       {"label": "One long page", "value": "one page"}
+     ]},
+    {"title": "Which platforms first?", "multiple": true, "choices": ["macOS", "Windows", "Phone"]},
+    {"title": "Anything else?", "type": "text"}
+  ]
+}
+```
+
+- `title` heads the form ("Questions" when left out); `submit` renames the
+  button ("Send answers").
+- Each question: `title`; `detail`, a short explanation; `tag`, an optional
+  short label such as an issue id; `name`, the answer's key (the title when
+  there is none); `multiple` for several picks; `type: "text"` for a text box
+  instead of choices (`placeholder` sets its hint). At most 20 questions.
+- Each choice is its text, or `{"label", "detail", "value", "recommended"}`:
+  `value` is what you receive (the label when there is none) and
+  `recommended` adds a Recommended badge. At most 26 choices.
+- Write only the questions. The chat letters the choices, ends every choice
+  question with "Other / none of these" and a note box, and adds the Send
+  button. Nothing is ever preselected (a pick clicked again clears), and a
+  question left blank arrives as `null`. Don't add your own "Other" choice.
+- Check the block before replying: `ghostex visual check /tmp/questions.json`
+  lists the questions and their answer keys, or names the problem.
+- Put one form in a reply and end your turn. Don't poll or wait in a loop: the
+  answers arrive as the next user message, in the same envelope a question
+  page uses, and the form then reads Answered. A note arrives under the
+  question's key plus ` (note)`:
+
+  ```text
+  <ghostex-page-answers page="5f0c…" title="Settings redesign">
+  {
+    "Which layout should I build?": "tabs",
+    "Which layout should I build? (note)": "keep search at the top",
+    "Which platforms first?": ["macOS", "Other / none of these"],
+    "Which platforms first? (note)": "Linux too",
+    "Anything else?": null
+  }
+  </ghostex-page-answers>
+  ```
+
 ## HTML pages
 
 For a mockup or a small interactive tool:
@@ -163,7 +228,7 @@ For a mockup or a small interactive tool:
    and font.
 3. The page runs in a sandbox with no origin of its own: `localStorage`,
    cookies and requests to `http://` or `localhost` don't work. Keep state in
-   memory.
+   memory. The one way back to you is the reader's answers (below).
 4. Publish it:
 
    ```bash
@@ -182,3 +247,100 @@ For a mockup or a small interactive tool:
 
 If `ghostex show` is an unknown command, say this Ghostex is too old to show
 pages and give the HTML file's path instead.
+
+### Question pages
+
+Only for questions the reader can answer by seeing something: two layouts to
+choose between, a mockup to react to, a diagram to mark up. Plain questions go
+in a ```questions block (above). Write the page with the question kit every
+page has. First run `ghostex show help`: if it doesn't mention
+`gx-questions`, this Ghostex can't take answers from a page, so ask in the
+chat instead.
+
+```html
+<gx-questions submit="Send to the agent">
+  <h1>Settings redesign</h1>
+  <gx-wide>
+    <!-- layouts A and B, side by side -->
+  </gx-wide>
+  <gx-question tag="Q1" title="Which layout should I build?">
+    <p>Why it matters, in a sentence or two.</p>
+    <gx-choice value="tabs" recommended>Layout A: tabs<small>One page per area.</small></gx-choice>
+    <gx-choice value="one page">Layout B: one long page</gx-choice>
+  </gx-question>
+  <gx-wide>
+    <!-- the two header styles, side by side -->
+  </gx-wide>
+  <gx-question tag="Q2" title="Which header style?">
+    <gx-choice>Compact</gx-choice>
+    <gx-choice>Large title</gx-choice>
+  </gx-question>
+  <gx-question title="Anything else?" type="text"></gx-question>
+</gx-questions>
+```
+
+- Put the whole page in one `<gx-questions>`. Its children sit in a centered
+  720px column. A `<gx-wide>` child spans the page's full width: put mockups
+  there and refer to them from the questions ("Layout A above"). Never put a
+  mockup inside a question.
+- Each question sits directly below the visual it asks about: a mockup, then
+  its question, then the next mockup and its question, so the reader answers
+  while the picture is still on screen instead of scrolling back up. When one
+  question compares several variants, put them side by side (or stacked)
+  immediately above that question, with nothing in between, and keep them
+  compact enough to be seen together with it: show one theme with a
+  dark/light switch rather than every variant twice. Never collect all the
+  mockups first and all the questions at the end.
+- Tie each variant to its choice so the reader can pick it right there: wrap
+  the variant's title and its mockup in one element with `data-question`
+  (the question's `name`, title or tag) and `data-choice` (the choice's
+  value, label or letter), for example
+  `<section data-question="Q1" data-choice="tabs"><h3>A. Tabs</h3>…</section>`.
+  The kit puts a Pick button by that title, shows the variant picked there
+  and in the question (clicking either clears both), and adds a note box
+  under the mockup whose text arrives as `"<question key> · <choice> (note)"`.
+  Older Ghostex versions ignore the attributes; the question still works.
+- `<gx-question>`: `title`; `tag`, an optional short label such as an issue
+  id; `name`, the answer's key (the title when there is none); `multiple`
+  for several picks; `type="text"` for a text box instead of choices. Content
+  before its choices, such as a `<p>`, explains the question.
+- `<gx-choice>`: its text is the choice and a `<small>` inside is a one-line
+  detail. `value` is what you receive (the text without the `<small>` when
+  there is none). `recommended` adds a Recommended badge.
+- Write only that markup. The kit letters the choices, ends every choice
+  question with "Other / none of these" and a note box, and adds the send
+  button. Nothing is ever preselected (the reader can also click a pick again
+  to clear it), and a question left blank arrives as `null`. Don't write your
+  own form, button, "Other" choice or note box.
+- Once sent, the page is locked; opening it again shows the answers and an
+  Answered note.
+- After pasting the card, end your turn. Don't poll or wait in a loop: the
+  answers arrive as the next user message, which the chat shows as an answers
+  card while the page's card reads Answered. A note arrives under the
+  question's key plus ` (note)`:
+
+  ```text
+  <ghostex-page-answers page="7ea5c5be1f2d68ebc9e40f790db0ef29" title="Settings redesign">
+  {
+    "Which layout should I build?": "tabs",
+    "Which layout should I build? (note)": "keep search at the top",
+    "Which platforms first?": ["macOS", "Other / none of these"],
+    "Which platforms first? (note)": "Linux too",
+    "Anything else?": null
+  }
+  </ghostex-page-answers>
+  ```
+
+For an answer the kit can't ask for, such as a ranking or a spot on a
+mockup, a page can send its own: `ghostex.submit(answers)` posts any JSON
+under 64 KiB and returns a promise that rejects with an `Error` saying why it
+wasn't sent; `ghostex.answered` and `ghostex.answers` tell a reopened page what
+was sent; an element with `data-gx-answered` is where the Answered note goes.
+A page takes one set of answers either way.
+
+What the reader picks and types is kept until they send, also when they close
+and reopen the page: the kit's picks and the value of every named `input`,
+`textarea` and `select` are saved and filled back in on their own. For other
+state (a ranking, marks on a mockup), call `ghostex.saveDraft(value)` with any
+JSON as it changes and read it back from `ghostex.draft` when the page loads;
+check `ghostex.saveDraft` exists first, since older Ghostex versions lack it.

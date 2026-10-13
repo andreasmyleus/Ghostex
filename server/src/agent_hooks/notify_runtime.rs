@@ -134,9 +134,9 @@ pub fn run_notify_hook(args: Vec<String>) -> Result<Option<String>, DomainStateE
     {
         return Ok(None);
     }
-    // See CDXC:SessionIdentity 2026-10-05 in nested_agent.rs: a Claude run another agent started from its tool is not the session's agent.
-    if matches!(agent_key.as_str(), "claude" | "openclaude")
-        && super::nested_agent::claude_hook_is_nested()
+    // See CDXC:SessionIdentity 2026-10-11 in nested_agent.rs: an agent another agent started from its tool is not the session's agent. A Claude background session runs outside the daemon and keeps the rule above.
+    if env_string("CLAUDE_CODE_SESSION_KIND").as_deref() != Some("bg")
+        && super::nested_agent::hook_agent_is_nested(&agent_key)
     {
         return Ok(None);
     }
@@ -664,7 +664,7 @@ fn post_json(
 }
 
 /// The `additionalContext` gxserver answered with, when the response carries one. The hook prints
-/// it only for a ZCode SessionStart on a coordinator session, so every other event keeps the
+/// it only for a ZCode SessionStart (a coordinator's guide pointer, the Marked handovers note), so every other event keeps the
 /// wrapper's canned response and every other agent sees an empty helper stdout.
 fn coordinator_additional_context(response: &str) -> Option<String> {
     let body = response.split_once("\r\n\r\n")?.1;

@@ -561,6 +561,10 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         without asking.
         */
         | "/api/readSessionTerminalTail"
+        // CDXC:CatchMeUp 2026-10-11 WHY: remote-allowed like readSessionChat: the transcript and the summary agent live on the machine that runs the session.
+        | "/api/catchUpSession"
+        // CDXC:FilesAndLinks 2026-10-12 WHY: remote-allowed like readSessionChat: the transcripts it reads live on the machine that runs the sessions.
+        | "/api/readSessionFilesLinks"
         | "/api/readSessionChatSkills"
         | "/api/readSessionChatFiles"
         | "/api/sendSessionChatMessage"
@@ -572,6 +576,7 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         | "/api/acknowledgeSessionChatDraftHandoff"
         | "/api/handoffSessionChatDraft"
         | "/api/replaceSessionChatDraft"
+        | "/api/takeBackSessionChatQueuedMessage"
         | "/api/claimSessionChatLaunchDraft"
         /*
         CDXC:SessionChat 2026-08-21:
@@ -923,6 +928,11 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         `ghostex show` publishes a page an agent on this computer wrote, so only the loopback listener accepts it; the remote listener must not let another machine store pages that this gxserver then serves.
         */
         "/api/publishVisualPage" => full_local(path),
+        /*
+        CDXC:ServerApi 2026-10-11 WHY:
+        A page card's picture is read by the chat on this computer (or the phone through its forward to this listener) and stored only by this computer's desktop app, from a page of this gxserver it showed (visual_pages/thumbnail.rs).
+        */
+        "/api/readVisualPageThumbnail" | "/api/storeVisualPageThumbnail" => full_local(path),
         /*
         CDXC:RemotePairing 2026-09-03:
         The only unauthenticated write endpoint. A phone registers its SSH key

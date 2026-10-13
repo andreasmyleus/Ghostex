@@ -7,8 +7,8 @@
 
 use ghostex_gx_chat_core::protocol::{ChatAppendedFrame, ChatSnapshotFrame, ChatStateFrame};
 use ghostex_gx_chat_core::{
-    ChatFrame, ChatSettings, ComposerBootRead, ConnectionUpdate, Event, Measurement, OpenRowDetail,
-    RpcOutcome, StartConfig, StorageKey, StorageRecord, UserAction,
+    ChatFrame, ChatSettings, ComposerBootRead, ConnectionUpdate, Event, KnownSession, Measurement,
+    OpenRowDetail, RpcOutcome, StartConfig, StorageKey, StorageRecord, UserAction,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -87,6 +87,9 @@ enum EventJson {
     },
     DraftChanged {
         text: String,
+    },
+    SessionDirectoryChanged {
+        sessions: Vec<KnownSession>,
     },
 }
 
@@ -178,6 +181,9 @@ pub(crate) fn parse(json: &str) -> Result<Event, String> {
             MeasurementJson::OpenRowDetails { rows } => Measurement::OpenRowDetails { rows },
         }),
         EventJson::DraftChanged { text } => Event::DraftChanged { text },
+        EventJson::SessionDirectoryChanged { sessions } => {
+            Event::SessionDirectoryChanged { sessions }
+        }
     })
 }
 

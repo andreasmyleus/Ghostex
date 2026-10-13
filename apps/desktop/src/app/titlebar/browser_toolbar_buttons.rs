@@ -96,7 +96,9 @@ impl GhostexGpuiApp {
                     }
                     let input = this.browser_address_inputs[&pane_id].read(cx);
                     let has_selection = !input.selected_range().is_empty();
-                    let has_paste = cx.read_from_clipboard().is_some();
+                    // Paste is offered without peeking at the clipboard, as GPUI Kit's own edit
+                    // menu does: a Windows read can block the UI thread (CDXC:Clipboard in
+                    // helpers/clipboard_read.rs), and the Paste action reads in the background.
                     GpuiContextMenu::new()
                         .menu_with_disabled(
                             "Cut",
@@ -108,11 +110,7 @@ impl GhostexGpuiApp {
                             !has_selection,
                             Box::new(gpui_component::input::Copy),
                         )
-                        .menu_with_disabled(
-                            "Paste",
-                            !has_paste,
-                            Box::new(gpui_component::input::Paste),
-                        )
+                        .menu("Paste", Box::new(gpui_component::input::Paste))
                         .separator()
                         .menu("Select All", Box::new(gpui_component::input::SelectAll))
                         .show(event.position, window, cx);

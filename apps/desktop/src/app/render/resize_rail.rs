@@ -149,6 +149,54 @@ pub(crate) fn resize_rail_deferred_strip(strip: impl IntoElement) -> AnyElement 
     deferred(strip.into_any_element()).into_any_element()
 }
 
+/// Where a lone chat pane's outline runs up beside the floating header and closes along the
+/// window's top edge (see `resize_rail_outline_segments`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct HeaderReach {
+    /// How far above the pane the header starts; zero when the chat flows under it.
+    pub(crate) above: f32,
+    /// How many logical pixels at the window's top edge the window's own frame paints over.
+    pub(crate) frame_cover: f32,
+}
+
+/// How far down from its top edge the window's own frame covers what the app paints, in logical
+/// pixels, measured from the platform so a line drawn just below it lands on a device row of its
+/// own at every display scale.
+#[cfg(target_os = "windows")]
+pub(crate) fn window_frame_top_cover(window: &gpui::Window) -> f32 {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, DwmGetWindowAttribute,
+    };
+    let scale = window.scale_factor();
+    let hwnd = match HasWindowHandle::window_handle(window)
+        .ok()
+        .map(|handle| handle.as_raw())
+    {
+        Some(RawWindowHandle::Win32(handle)) => handle.hwnd.get(),
+        _ => return 1.0 / scale,
+    };
+    let mut device_pixels: u32 = 0;
+    // Windows 10 has no such attribute; its frame covers one device row.
+    let read = unsafe {
+        DwmGetWindowAttribute(
+            hwnd as windows_sys::Win32::Foundation::HWND,
+            DWMWA_VISIBLE_FRAME_BORDER_THICKNESS as u32,
+            (&raw mut device_pixels).cast(),
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    if read != 0 {
+        device_pixels = 1;
+    }
+    device_pixels as f32 / scale
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn window_frame_top_cover(_window: &gpui::Window) -> f32 {
+    WORKSPACE_SPLIT_HANDLE_THICKNESS
+}
+
 /// A pane with a focus or attention outline closes it over the rails it touches, because it has no
 /// border of its own on those sides. Each segment is one rail thickness wide, sits just outside the
 /// pane, and spans the pane's full outer length including the borders it does have.
@@ -158,13 +206,16 @@ pub(crate) fn resize_rail_deferred_strip(strip: impl IntoElement) -> AnyElement 
 pub(crate) fn resize_rail_outline_segments(
     edges: RailFacingEdges,
     color: Hsla,
-    header_reach: Option<f32>,
+    header_reach: Option<HeaderReach>,
 ) -> Vec<AnyElement> {
     let thickness = WORKSPACE_SPLIT_HANDLE_THICKNESS;
     let inset = |faces_rail: bool| if faces_rail { 0.0 } else { -1.0 };
-    let vertical_top = header_reach.map_or(inset(edges.top), |reach| -reach);
+    let vertical_top = header_reach.map_or(inset(edges.top), |reach| -reach.above);
     let mut segments = Vec::new();
-    if let Some(reach) = header_reach.filter(|reach| *reach > 0.0) {
+    if let Some(reach) = header_reach
+        .map(|reach| reach.above)
+        .filter(|reach| *reach > 0.0)
+    {
         // Sides with a border of their own stop at the pane's top, so they get the stretch beside
         // the header as a segment over the same pixel column.
         let mut beside_header = |at_left: bool| {
@@ -215,10 +266,12 @@ pub(crate) fn resize_rail_outline_segments(
             .right(px(inset(edges.right)))
             .h(px(thickness))
             .bg(color);
-        // CDXC:Workarea 2026-10-09 WHY:
-        // Where the outline closes along the window's top edge, the window's own 1px frame covers that pixel row (on Windows the DWM border is drawn over the client area's top row), so a segment there was invisible while the side segments showed. It sits one pixel lower, on the first row the app really paints; the header's layout is unchanged.
+        // CDXC:Workarea 2026-10-11 WHY:
+        // Where the outline closes along the window's top edge, the window's own frame covers the client area's top rows (on Windows 11 the DWM border is drawn over them, 2 device pixels at 150%), so the segment sits just below what the frame covers, on the first row the app really paints; the header's layout is unchanged. This supersedes the 2026-10-09 fixed one-pixel offset, which GPUI snaps to device row 1 at 150% (1.5 rounds toward zero), still under the frame.
         let segment = if at_top {
-            segment.top(px(header_reach.map_or(-thickness, |reach| -reach + thickness)))
+            segment.top(px(
+                header_reach.map_or(-thickness, |reach| -reach.above + reach.frame_cover)
+            ))
         } else {
             segment.bottom(px(-thickness))
         };
@@ -241,7 +294,7 @@ pub(crate) fn rail_aware_pane_border<E: Styled + ParentElement>(
     edges: RailFacingEdges,
     color: Hsla,
     neutral_color: Hsla,
-    header_reach: Option<f32>,
+    header_reach: Option<HeaderReach>,
 ) -> E {
     let mut pane = pane.border_color(color);
     if !edges.left {

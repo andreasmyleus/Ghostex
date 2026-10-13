@@ -41,17 +41,21 @@ pub fn handle_with_ids(
         ActionKind::ToggleCoordinatorThreads => {
             let collapsed = !flag(action, "open");
             state.extras.panels.threads_collapsed = collapsed;
+            if collapsed {
+                crate::extras::coordinator_threads::set_step(&mut state.extras.panels, 0);
+            }
             vec![crate::extras::coordinator_threads::write_threads_collapsed(
                 collapsed,
             )]
         }
+        ActionKind::ToggleBackgroundTasks => {
+            state.extras.panels.background_tasks_open = flag(action, "open");
+            Vec::new()
+        }
         ActionKind::ToggleCoordinatorThreadsMore => {
             let panels = &mut state.extras.panels;
-            panels.threads_show_all = flag(action, "expanded");
-            if !panels.threads_show_all {
-                panels.threads_all = None;
-                panels.threads_all_request = None;
-            }
+            let step = action.param("step").and_then(Value::as_u64).unwrap_or(0);
+            crate::extras::coordinator_threads::set_step(panels, step.min(u32::MAX as u64) as u32);
             crate::extras::coordinator_threads::read_all_threads(
                 panels,
                 state.session.coordinator_threads.as_ref(),

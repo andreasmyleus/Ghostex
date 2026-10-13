@@ -9,6 +9,7 @@ pub mod activity;
 pub mod agent_fleet;
 pub mod agent_tasks;
 pub mod agents;
+pub mod background_tasks;
 pub mod coordinator_threads;
 pub mod document;
 pub mod minimap;

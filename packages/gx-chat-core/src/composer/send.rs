@@ -63,6 +63,9 @@ pub enum SendPhase {
 }
 
 /// `send`, `queue` and `compact`, which are one arm in the TypeScript.
+///
+/// `interrupt` is interrupt and send (Ctrl+Enter, the Send menu, the phone's More actions); see
+/// [`interrupts_turn`].
 pub fn begin(
     state: &mut ChatState,
     context: &ChatContext,
@@ -70,6 +73,7 @@ pub fn begin(
     text: &str,
     version: Option<crate::composer::queue::DraftVersion>,
     image_paths: Vec<String>,
+    interrupt: bool,
 ) -> Vec<Effect> {
     // A block that clears on its own does not refuse: the delivery phase waits for it instead.
     if let Some(refused) = crate::composer::document::send_refused(state) {
@@ -111,6 +115,10 @@ pub fn begin(
         });
     }
     phases.push(SendPhase::MarkSubmitted);
+    let interrupt = interrupt && interrupts_turn(state, mode);
+    if interrupt {
+        raise_interrupted_toast(state, context);
+    }
     let mut submission = Submission {
         text: text.to_string(),
         version,
@@ -127,9 +135,30 @@ pub fn begin(
         awaiting_gate: false,
         drawn: false,
         send_request_id,
+        interrupt,
     };
     draw_at_enter(state, context, &mut submission);
     start_or_wait(state, context, submission)
+}
+
+/// Whether an interrupt and send stops a turn: only a plain send to a working agent does. An idle
+/// agent just receives the message, and Compact & Send and the queue wait for the turn anyway.
+///
+/// CDXC:SessionChat 2026-10-11 DECISION:
+/// User: "I'm having to switch to terminal to press ctrl + return in order to interrupt and send a prompt. should be able to send this from the chat view without switching to terminal view." Ctrl+Enter in the chat box (and Interrupt & Send in the Send button's menu, and in More actions on the phone) stops the agent's running turn and sends the message at once, the way Claude Code's Ctrl+Enter does in the terminal. gxserver types the agent's own keys for it (session_chat_queue_runtime/send.rs).
+pub fn interrupts_turn(state: &ChatState, mode: SubmissionMode) -> bool {
+    mode == SubmissionMode::Send && crate::session::working::is_working(state)
+}
+
+/// The red "Agent was interrupted" toast, for 2 seconds.
+fn raise_interrupted_toast(state: &mut ChatState, context: &ChatContext) {
+    state.composer.interrupted_toast = true;
+    state.core.timers.arm(
+        INTERRUPTED_TOAST_TIMER,
+        context.now_ms,
+        crate::composer::policy::INTERRUPTED_TOAST_MS as f64,
+    );
+    state.core.request_publish();
 }
 
 /// CDXC:SessionChat 2026-10-07 DECISION:
@@ -308,6 +337,7 @@ fn run_head(state: &mut ChatState, context: &ChatContext) -> Vec<Effect> {
     let text = submission.text.clone();
     let version = submission.version.clone();
     let handoff = submission.handoff;
+    let interrupt = submission.interrupt && phase == SendPhase::SendText;
     let queued_text = match submission.mode {
         SubmissionMode::Queue => text.trim().to_string(),
         _ => text.clone(),
@@ -384,13 +414,17 @@ fn run_head(state: &mut ChatState, context: &ChatContext) -> Vec<Effect> {
             }
             let request_id = state.core.allocate_request_id();
             wait_request(state, request_id);
-            vec![agent_send_rpc(
+            let mut effect = agent_send_rpc(
                 request_id,
                 &body,
                 version,
                 &images,
                 send_request_id.as_deref(),
-            )]
+            );
+            if let (true, Effect::SendRpc { params, .. }) = (interrupt, &mut effect) {
+                params["interrupt"] = json!(true);
+            }
+            vec![effect]
         }
         SendPhase::QueueText => {
             let send_request_id = submission.send_request_id.clone();
@@ -881,6 +915,7 @@ pub fn handoff(
         awaiting_gate: false,
         drawn: true,
         send_request_id: None,
+        interrupt: false,
     };
     // The head phase writes the unsubmitted record a handoff parks from.
     start_or_wait(state, context, submission)
@@ -1086,13 +1121,7 @@ pub fn interrupt(state: &mut ChatState, context: &ChatContext, confirm: bool) ->
     // CDXC:SessionChat 2026-10-01 DECISION:
     // User: "when the user interrupts show a red one that says 'Agent was interrupted' same spot and look as the 'Press escape again..' one". Raised by every interrupt that stopped a working turn (Escape or the Stop button, desktop and phone), for 2 seconds.
     if sends::begin_interrupt(state, context) {
-        state.composer.interrupted_toast = true;
-        state.core.timers.arm(
-            INTERRUPTED_TOAST_TIMER,
-            context.now_ms,
-            crate::composer::policy::INTERRUPTED_TOAST_MS as f64,
-        );
-        state.core.request_publish();
+        raise_interrupted_toast(state, context);
     }
     let request_id = state.core.allocate_request_id();
     effects.push(Effect::SendRpc {

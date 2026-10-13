@@ -107,6 +107,16 @@ pub struct PageRef {
     pub popup: bool,
 }
 
+impl PageRef {
+    /// The page's id when its URL is a Ghostex page route (`…/visual/<32 hex>`): the key the chat's
+    /// `answeredPages` list uses.
+    pub fn page_id(&self) -> Option<&str> {
+        let path = self.url.split(['?', '#']).next().unwrap_or_default();
+        let id = path.trim_end_matches('/').rsplit_once("/visual/")?.1;
+        (id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(id)
+    }
+}
+
 /// What one block renders to.
 #[derive(Clone, Debug)]
 pub enum Visual {

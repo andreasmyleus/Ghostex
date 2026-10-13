@@ -21,6 +21,30 @@ use crate::{
 pub(crate) const SESSION_CHAT_QUEUE_COMPOSER_HOLD_MS: i64 = 120_000;
 const SESSION_CHAT_QUEUE_COMPOSER_RETRY_MS: i64 = 5_000;
 
+/// How long a startup send (a message the user already sent, CDXC:SessionChat 2026-10-11 in
+/// session_chat_send_wake.rs) waits between looks at the agent's input box: every 2 s while the
+/// agent is most likely to come up, then less often, settling at every 15 s. It never gives up
+/// while the session lives.
+pub(crate) fn startup_send_retry_ms(waited_ms: i64) -> i64 {
+    match waited_ms {
+        ..30_000 => 2_000,
+        ..120_000 => 5_000,
+        ..300_000 => 10_000,
+        _ => 15_000,
+    }
+}
+
+/// How long the scheduler waits between checks that a session holding a startup send is awake
+/// (CDXC:SessionChat 2026-10-12 in session_chat_send_wake.rs). The first check also waits, so a
+/// wake a client or the send itself just started is not raced.
+fn startup_send_wake_check_ms(waited_ms: i64) -> i64 {
+    match waited_ms {
+        ..120_000 => 10_000,
+        ..600_000 => 30_000,
+        _ => 60_000,
+    }
+}
+
 struct ComposerHold {
     prompt_id: String,
     since: DateTime<Utc>,
@@ -32,6 +56,11 @@ struct ComposerHold {
 #[derive(Clone, Default)]
 pub(crate) struct SessionChatQueueComposerHolds {
     holds: Arc<Mutex<HashMap<String, ComposerHold>>>,
+    /// When the scheduler next re-reads the screen of a session whose startup send waits for its
+    /// input box, so a long wait does not capture the screen every second.
+    screen_reads: Arc<Mutex<HashMap<String, ComposerHold>>>,
+    /// When the scheduler next checks that a session holding a startup send is awake.
+    wake_checks: Arc<Mutex<HashMap<String, ComposerHold>>>,
 }
 
 impl SessionChatQueueComposerHolds {
@@ -44,8 +73,18 @@ impl SessionChatQueueComposerHolds {
         })
     }
 
-    /// Whether a missing input box may still put this row back instead of failing it.
-    pub(crate) fn may_hold(&self, key: &str, prompt_id: &str, now: DateTime<Utc>) -> bool {
+    /// Whether a missing input box may still put this row back instead of failing it. A startup
+    /// send is always put back.
+    pub(crate) fn may_hold(
+        &self,
+        key: &str,
+        prompt_id: &str,
+        startup_send: bool,
+        now: DateTime<Utc>,
+    ) -> bool {
+        if startup_send {
+            return true;
+        }
         self.holds.lock().is_ok_and(|holds| match holds.get(key) {
             Some(hold) if hold.prompt_id == prompt_id => {
                 now.signed_duration_since(hold.since).num_milliseconds()
@@ -55,27 +94,67 @@ impl SessionChatQueueComposerHolds {
         })
     }
 
-    pub(crate) fn record(&self, key: &str, prompt_id: &str, now: DateTime<Utc>) {
+    pub(crate) fn record(
+        &self,
+        key: &str,
+        prompt_id: &str,
+        startup_send: bool,
+        now: DateTime<Utc>,
+    ) {
         let Ok(mut holds) = self.holds.lock() else {
             return;
         };
-        let since = holds
+        backoff(&mut holds, key, prompt_id, startup_send, now);
+    }
+
+    /// Whether the scheduler should re-read the screen of a session whose startup send waits for
+    /// its input box now; answering yes schedules the next read.
+    pub(crate) fn screen_read_due(&self, key: &str, prompt_id: &str, now: DateTime<Utc>) -> bool {
+        let Ok(mut reads) = self.screen_reads.lock() else {
+            return true;
+        };
+        let due = reads
             .get(key)
-            .filter(|hold| hold.prompt_id == prompt_id)
-            .map_or(now, |hold| hold.since);
-        holds.insert(
+            .is_none_or(|read| read.prompt_id != prompt_id || now >= read.retry_at);
+        if due {
+            backoff(&mut reads, key, prompt_id, true, now);
+        }
+        due
+    }
+
+    /// Whether the scheduler should check now that a session holding the startup send `prompt_id`
+    /// is awake; answering yes schedules the next check.
+    pub(crate) fn wake_check_due(&self, key: &str, prompt_id: &str, now: DateTime<Utc>) -> bool {
+        let Ok(mut checks) = self.wake_checks.lock() else {
+            return false;
+        };
+        let check = checks.get(key).filter(|check| check.prompt_id == prompt_id);
+        let since = check.map_or(now, |check| check.since);
+        if check.is_some_and(|check| now < check.retry_at) {
+            return false;
+        }
+        let first = check.is_none();
+        let waited_ms = now.signed_duration_since(since).num_milliseconds();
+        checks.insert(
             key.to_string(),
             ComposerHold {
                 prompt_id: prompt_id.to_string(),
                 since,
-                retry_at: now + Duration::milliseconds(SESSION_CHAT_QUEUE_COMPOSER_RETRY_MS),
+                retry_at: now + Duration::milliseconds(startup_send_wake_check_ms(waited_ms)),
             },
         );
+        !first
     }
 
     pub(crate) fn clear(&self, key: &str) {
         if let Ok(mut holds) = self.holds.lock() {
             holds.remove(key);
+        }
+        if let Ok(mut reads) = self.screen_reads.lock() {
+            reads.remove(key);
+        }
+        if let Ok(mut checks) = self.wake_checks.lock() {
+            checks.remove(key);
         }
     }
 
@@ -83,7 +162,40 @@ impl SessionChatQueueComposerHolds {
         if let Ok(mut holds) = self.holds.lock() {
             holds.retain(|key, _| live(key));
         }
+        if let Ok(mut reads) = self.screen_reads.lock() {
+            reads.retain(|key, _| live(key));
+        }
+        if let Ok(mut checks) = self.wake_checks.lock() {
+            checks.retain(|key, _| live(key));
+        }
     }
+}
+
+/// Starts or extends `key`'s clock for `prompt_id` and sets its next retry.
+fn backoff(
+    clocks: &mut HashMap<String, ComposerHold>,
+    key: &str,
+    prompt_id: &str,
+    startup_send: bool,
+    now: DateTime<Utc>,
+) {
+    let since = clocks
+        .get(key)
+        .filter(|hold| hold.prompt_id == prompt_id)
+        .map_or(now, |hold| hold.since);
+    let retry_ms = if startup_send {
+        startup_send_retry_ms(now.signed_duration_since(since).num_milliseconds())
+    } else {
+        SESSION_CHAT_QUEUE_COMPOSER_RETRY_MS
+    };
+    clocks.insert(
+        key.to_string(),
+        ComposerHold {
+            prompt_id: prompt_id.to_string(),
+            since,
+            retry_at: now + Duration::milliseconds(retry_ms),
+        },
+    );
 }
 
 /// The `Reply to:` global ref of a `ghostex agents send` header, if `text` carries one.

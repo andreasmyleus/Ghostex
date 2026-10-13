@@ -1,0 +1,67 @@
+name: Create iOS signing certificate
+
+# Started by tooling/release-mobile/ios-signing-certificate.sh, which keeps the private key on the
+# computer that runs it and sends only the certificate request. The certificate it gets back is public.
+run-name: Create iOS signing certificate ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: ID the local script uses to find this run
+        required: true
+        type: string
+      csr_base64:
+        description: Certificate request (PEM, base64 on one line)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mobile-ios-signing-certificate
+  cancel-in-progress: false
+
+jobs:
+  create:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check the request ID
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          [[ "$REQUEST_ID" =~ ^ios-signing-[0-9]{14}-[0-9]+$ ]]
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 1
+          submodules: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.13.1
+      - name: Install App Store Connect API key
+        env:
+          ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          ASC_KEY_BASE64: ${{ secrets.APPLE_ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+        run: |
+          test -n "$ASC_ISSUER_ID"
+          test -n "$ASC_KEY_BASE64"
+          test -n "$ASC_KEY_ID"
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "GHOSTEX_ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "GHOSTEX_ASC_KEY_ID=$ASC_KEY_ID" >> "$GITHUB_ENV"
+          echo "GHOSTEX_ASC_ISSUER_ID=$ASC_ISSUER_ID" >> "$GITHUB_ENV"
+      - name: Create the Apple Development certificate
+        env:
+          GHOSTEX_IOS_CSR_BASE64: ${{ inputs.csr_base64 }}
+        run: node tooling/release-mobile/asc-create-signing-certificate.mjs KTKP595G3B "$RUNNER_TEMP/ios-signing-certificate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ios-signing-certificate-${{ inputs.request_id }}
+          path: ${{ runner.temp }}/ios-signing-certificate/
+          if-no-files-found: error
+          retention-days: 1

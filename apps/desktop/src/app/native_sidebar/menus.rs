@@ -11,9 +11,71 @@ use gpui::{
 use gpui_component::{Root, h_flex, v_flex};
 use serde_json::Value;
 
-/// The gap between a trigger button and the menu that drops down from it.
-/// How long after the More menu dismisses itself a press on its button still counts as that press.
-const MORE_MENU_SAME_PRESS: std::time::Duration = std::time::Duration::from_millis(250);
+/// The gap between a sidebar row or button and the menu hung from it.
+pub(crate) const SIDEBAR_MENU_OWNER_GAP: f32 = 3.0;
+
+/// The sidebar menu button's trigger id.
+pub(crate) const SIDEBAR_MORE_TRIGGER: &str = "sidebar-more";
+
+/// What a sidebar menu hangs from, and the button that toggles it.
+pub(crate) struct SidebarMenuOpener {
+    /// The row or button the menu opens from; it stays uncovered.
+    pub(crate) owner: Bounds<Pixels>,
+    /// Line the menu's right edge up with the owner's instead of its left edge.
+    pub(crate) align_right: bool,
+    /// The gap to the owner, unscaled.
+    pub(crate) gap: f32,
+    /// A button that opened the menu, by a stable id, so pressing it again closes the menu.
+    /// `None` for a menu that a row's right-click opened.
+    pub(crate) trigger: Option<String>,
+    /// Where the press that opened it went down (`press_position`), to tell the press that
+    /// dismissed an open menu from a new one.
+    pub(crate) press: Option<Point<Pixels>>,
+}
+
+impl SidebarMenuOpener {
+    /// A menu hung `SIDEBAR_MENU_OWNER_GAP` below `owner`, left-aligned with it.
+    pub(crate) fn below(owner: Bounds<Pixels>) -> Self {
+        Self {
+            owner,
+            align_right: false,
+            gap: SIDEBAR_MENU_OWNER_GAP,
+            trigger: None,
+            press: None,
+        }
+    }
+
+    /// The same, toggled by the button `trigger`, opened by the press at `press`.
+    pub(crate) fn toggled_by(
+        mut self,
+        trigger: impl Into<String>,
+        press: Option<Point<Pixels>>,
+    ) -> Self {
+        self.trigger = Some(trigger.into());
+        self.press = press;
+        self
+    }
+}
+
+/// Where a row or button that opens a menu was last painted, for the menu to hang from.
+pub(crate) type MenuOwner = std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>;
+
+/// An `on_prepaint` callback that records the element's bounds into `owner`.
+pub(crate) fn record_menu_owner(
+    owner: &MenuOwner,
+) -> impl FnOnce(Bounds<Pixels>, &mut Window, &mut gpui::App) + 'static {
+    let owner = owner.clone();
+    move |bounds, _, _| owner.set(Some(bounds))
+}
+
+/// Where the press behind a click went down, `None` for a keyboard click.
+pub(crate) fn press_position(event: &gpui::ClickEvent) -> Option<Point<Pixels>> {
+    match event {
+        gpui::ClickEvent::Mouse(event) => Some(event.down.position),
+        gpui::ClickEvent::Touch(event) => Some(event.position),
+        gpui::ClickEvent::Keyboard(_) => None,
+    }
+}
 
 impl GhostexGpuiApp {
     pub(crate) fn show_native_sidebar_menu(
@@ -27,69 +89,113 @@ impl GhostexGpuiApp {
             items,
             position,
             SidebarMenuPlacement::Pointer,
+            None,
             scale,
             window,
             cx,
         );
     }
 
-    /// CDXC:Sidebar 2026-09-21 DECISION:
-    /// User: clicking the sidebar More button again closes that menu. Reading whether the menu is still open cannot toggle: the overlay and the sidebar root both dismiss on the outside mouse down (the button sits above the panel), then the button's click would open a fresh one. The dismissal records the time, and a press on this button within 250ms is the closing half of that press. This supersedes closing only when the menu was still open.
-    pub(crate) fn toggle_native_sidebar_more_menu(
-        &mut self,
+    /// CDXC:Sidebar 2026-10-11 DECISION:
+    /// User: a menu opened from a sidebar row, such as a session card's tag menu or the project header's new-agent menu, opens 3px below that card, left-aligned with it, never covering it, and above it only when there is no room below; the workspace menu likewise opens above its button, left-aligned, 3px away. Every sidebar menu opened from a row or a button hangs from it this way (the sidebar menu button keeps its 2026-09-21 right-aligned drop). This supersedes centring those menus across the sidebar at the pointer.
+    /// CDXC:Sidebar 2026-10-11 DECISION:
+    /// User: clicking the button that opened a menu while it is open closes it, "as should happen for all menus like this in the app". The outside press dismisses the menu first and records the trigger and where the press went down; the click that same press then makes on the trigger (`press_position`) is the closing half and opens nothing. This supersedes the 2026-09-21 250ms rule that did this for the sidebar menu button alone.
+    pub(crate) fn show_native_sidebar_menu_from(
         items: &Value,
-        trigger: Bounds<Pixels>,
-        scale: f32,
-        window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) {
-        if self
-            .native_sidebar
-            .menu
-            .as_ref()
-            .is_some_and(SidebarMenuState::dropped_from_trigger)
-        {
-            self.native_sidebar.more_menu_dismissed_at = None;
-            self.close_native_sidebar_menu(window, cx);
-            return;
-        }
-        if self
-            .native_sidebar
-            .more_menu_dismissed_at
-            .take()
-            .is_some_and(|at| at.elapsed() < MORE_MENU_SAME_PRESS)
-        {
-            return;
-        }
-        Self::show_native_sidebar_menu_below(items, trigger, scale, window, cx);
-    }
-
-    /// CDXC:Sidebar 2026-09-21 DECISION:
-    /// User: the sidebar menu drops down from its trigger button rather than opening where the pointer was: its right edge lines up with the button's right edge, and it sits below the button with a gap (4px since 2026-09-25, `HEADER_MENU_TRIGGER_GAP`).
-    pub(crate) fn show_native_sidebar_menu_below(
-        items: &Value,
-        trigger: Bounds<Pixels>,
+        opener: SidebarMenuOpener,
         scale: f32,
         window: &mut Window,
         cx: &mut gpui::App,
     ) {
-        Self::open_native_sidebar_menu(
+        let placement = SidebarMenuPlacement::Attached {
+            owner: opener.owner,
+            align_right: opener.align_right,
+            gap: px(opener.gap * scale),
+        };
+        let anchor = Point::new(opener.owner.left(), opener.owner.bottom());
+        let toggle = opener.trigger.map(|trigger| (trigger, opener.press));
+        Self::open_native_sidebar_menu(items, anchor, placement, toggle, scale, window, cx);
+    }
+
+    /// CDXC:Sidebar 2026-09-21 DECISION:
+    /// User: the sidebar menu drops down from its trigger button rather than opening where the pointer was: its right edge lines up with the button's right edge, and it sits below the button with a gap (4px since 2026-09-25, `HEADER_MENU_TRIGGER_GAP`). Clicking the button again closes it.
+    pub(crate) fn toggle_native_sidebar_more_menu(
+        items: &Value,
+        trigger: Bounds<Pixels>,
+        press: Point<Pixels>,
+        scale: f32,
+        window: &mut Window,
+        cx: &mut gpui::App,
+    ) {
+        Self::show_native_sidebar_menu_from(
             items,
-            Point::new(
-                trigger.right(),
-                trigger.bottom() + px(crate::app::consts::HEADER_MENU_TRIGGER_GAP * scale),
-            ),
-            SidebarMenuPlacement::BelowTrigger,
+            SidebarMenuOpener {
+                owner: trigger,
+                align_right: true,
+                gap: crate::app::consts::HEADER_MENU_TRIGGER_GAP,
+                trigger: None,
+                press: None,
+            }
+            .toggled_by(SIDEBAR_MORE_TRIGGER, Some(press)),
             scale,
             window,
             cx,
         );
+    }
+
+    /// A menu hung below `owner` (a row or a button) when it was painted, else where the pointer
+    /// is; `trigger` names the button that toggles it and the press that opened it.
+    pub(crate) fn show_native_sidebar_menu_hung(
+        items: &Value,
+        owner: Option<Bounds<Pixels>>,
+        trigger: Option<(String, Option<Point<Pixels>>)>,
+        fallback: Point<Pixels>,
+        scale: f32,
+        window: &mut Window,
+        cx: &mut gpui::App,
+    ) {
+        match owner {
+            Some(owner) => {
+                let mut opener = SidebarMenuOpener::below(owner);
+                if let Some((trigger, press)) = trigger {
+                    opener = opener.toggled_by(trigger, press);
+                }
+                Self::show_native_sidebar_menu_from(items, opener, scale, window, cx);
+            }
+            None => Self::open_native_sidebar_menu(
+                items,
+                fallback,
+                SidebarMenuPlacement::Pointer,
+                trigger,
+                scale,
+                window,
+                cx,
+            ),
+        }
+    }
+
+    /// Closes the menu for a press outside it, remembering which button opened it and where the
+    /// press went down, so that press's click on the same button does not open it again.
+    pub(crate) fn dismiss_native_sidebar_menu_by_press(
+        &mut self,
+        press: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        // The sidebar root and the menu's layer both see one outside press; only the first, which
+        // still finds the menu open, records it.
+        if let Some(menu) = &self.native_sidebar.menu {
+            self.native_sidebar.menu_dismissed_by_press =
+                menu.trigger.clone().map(|trigger| (trigger, press));
+        }
+        self.close_native_sidebar_menu(window, cx);
     }
 
     fn open_native_sidebar_menu(
         items: &Value,
         position: Point<Pixels>,
         placement: SidebarMenuPlacement,
+        toggle: Option<(String, Option<Point<Pixels>>)>,
         scale: f32,
         window: &mut Window,
         cx: &mut gpui::App,
@@ -127,6 +233,25 @@ impl GhostexGpuiApp {
         cx.defer(move |cx| {
             let _ = source.update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
+                    let dismissed = app.native_sidebar.menu_dismissed_by_press.take();
+                    if let Some((trigger, press)) = &toggle {
+                        if app
+                            .native_sidebar
+                            .menu
+                            .as_ref()
+                            .is_some_and(|menu| menu.opened_by(trigger))
+                        {
+                            app.close_native_sidebar_menu(window, cx);
+                            return;
+                        }
+                        if press.is_some()
+                            && dismissed.as_ref().is_some_and(|(dismissed, at)| {
+                                dismissed == trigger && Some(*at) == *press
+                            })
+                        {
+                            return;
+                        }
+                    }
                     let previous_focus = window.focused(cx);
                     let focus = cx.focus_handle();
                     focus.focus(window, cx);
@@ -154,6 +279,7 @@ impl GhostexGpuiApp {
                         }],
                         focus,
                         previous_focus,
+                        trigger: toggle.map(|(trigger, _)| trigger),
                         scale,
                         // CDXC:Tooltips 2026-09-15 DECISION: User: no tooltip may show while a context menu is open; the suppression is held for as long as the menu is.
                         _tooltips: Root::suppress_tooltips(window, cx),
@@ -373,15 +499,7 @@ impl GhostexGpuiApp {
                     {
                         return;
                     }
-                    if app
-                        .native_sidebar
-                        .menu
-                        .as_ref()
-                        .is_some_and(SidebarMenuState::dropped_from_trigger)
-                    {
-                        app.native_sidebar.more_menu_dismissed_at = Some(web_time::Instant::now());
-                    }
-                    app.close_native_sidebar_menu(window, cx);
+                    app.dismiss_native_sidebar_menu_by_press(event.position, window, cx);
                 }),
             )
             .on_key_down(cx.listener(Self::native_sidebar_menu_key_down));

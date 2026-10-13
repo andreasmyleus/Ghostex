@@ -23,15 +23,20 @@ use crate::transcript::jsstr::js_trim;
 use crate::transcript::line_breaks::{agent_line_breaks, user_line_breaks, AgentLineBreaks};
 use crate::transcript::long_prompt::collapsed_prompt;
 use crate::transcript::markdown_links::markdown_references;
+use crate::transcript::marked_sections::mark_sections;
 use crate::transcript::message_text::{
     message_action_content, normalize_user_message_markdown, split_reasoning_headline,
     user_turn_copy_markdown,
 };
 use crate::transcript::message_time::message_time;
-use crate::transcript::native_markdown::native_markdown;
+use crate::transcript::native_markdown::{native_markdown, without_question_forms};
 use crate::transcript::noise::suppressed_turn_presentation;
+use crate::transcript::page_answers::{
+    page_answers_in, project_page_answers, split_page_answers, PageAnswers,
+};
 use crate::transcript::prose::prose_markdown;
 use crate::transcript::question_exchange::answered_question_exchange;
+use crate::transcript::question_forms::{question_forms, QuestionForm};
 use crate::transcript::sent_message::{project_sent_messages, resolve_recipients};
 use crate::transcript::simple::{simple_edit_label, tool_count_label};
 use crate::transcript::system_cards::classify_system_card;
@@ -42,6 +47,7 @@ use crate::transcript::transcript::{
 };
 use crate::transcript::transcript_rows::{file_rows, open_tool_detail, tool_fold, tool_rows};
 use crate::transcript::turns::{partition_completed_work, worked_duration_label, RenderItem};
+use crate::transcript::work_summary::{tool_durations, work_stats};
 
 /// A message's file changes and tool calls, in the order their rows are numbered.
 pub fn message_tool_rows(message: &ChatMessage) -> (Vec<FileChange<'_>>, Vec<ToolPair<'_>>) {
@@ -97,17 +103,26 @@ fn message_keys(message: &ChatMessage) -> Map<String, Value> {
 /// re-parsing markdown.
 pub fn project_message(
     message: &ChatMessage,
+    messages: &[ChatMessage],
     agent_path: &str,
     working_directory: Option<&str>,
     line_breaks: AgentLineBreaks,
     context: &ChatContext,
+    durations: &std::collections::HashMap<String, i64>,
 ) -> Value {
     let (prose, tools) = split_blocks(&message.blocks);
     let images = image_blocks(&prose);
     let body = js_trim(&prose_markdown(&message.blocks)).to_string();
     let is_user = message.role == ChatRole::User;
+    // Answers a page or question form sent: the card stands for the envelope, and the bubble below
+    // it shows only what the user wrote besides (`page_answers.rs`).
+    let page_answers = is_user.then(|| split_page_answers(&body)).flatten();
+    let user_words = match &page_answers {
+        Some((_, rest)) if !rest.is_empty() => rest.as_str(),
+        _ => body.as_str(),
+    };
     let displayed_body = if is_user {
-        normalize_user_message_markdown(&body)
+        normalize_user_message_markdown(user_words)
     } else if matches!(message.role, ChatRole::Assistant | ChatRole::Reasoning) {
         agent_line_breaks(&body, line_breaks)
     } else {
@@ -128,18 +143,25 @@ pub fn project_message(
         body.clone()
     };
     // Code-block headers, GitHub alerts, and typed file paths, marked for the native renderer.
+    // A ```questions block somebody typed stays code: only the agent's own reply asks the reader.
     let native_body = if is_user {
-        native_markdown(&user_line_breaks(&displayed_body), true)
+        without_question_forms(native_markdown(&user_line_breaks(&displayed_body), true))
     } else {
         native_markdown(&displayed_body, false)
+    };
+    // The reply's marked sections, tagged after its references are read so the marks carry none.
+    let marked_body = if message.role == ChatRole::Assistant {
+        mark_sections(native_body.clone())
+    } else {
+        native_body.clone()
     };
     // A long prompt's first lines, which its bubble shows until it is expanded.
     let collapsed_body = is_user
         .then(|| collapsed_prompt(&displayed_body))
         .flatten()
-        .map(|preview| native_markdown(&user_line_breaks(&preview), true));
+        .map(|preview| without_question_forms(native_markdown(&user_line_breaks(&preview), true)));
     let suppressed = suppressed_turn_presentation(message);
-    let rows = tool_rows(&tool_pairs, agent_path, working_directory);
+    let rows = tool_rows(&tool_pairs, agent_path, working_directory, durations);
     let system_card = classify_system_card(message, &displayed_body);
     let reasoning = split_reasoning_headline(&body);
     let questions: Vec<Value> = {
@@ -157,7 +179,7 @@ pub fn project_message(
     }
 
     let mut projected = message_keys(message);
-    projected.insert("text".to_string(), native_body.clone().into());
+    projected.insert("text".to_string(), marked_body.into());
     projected.insert("copyText".to_string(), copy_text.clone().into());
     projected.insert(
         "canRewind".to_string(),
@@ -220,6 +242,19 @@ pub fn project_message(
             None => Value::Null,
         },
     );
+    projected.insert(
+        "pageAnswers".to_string(),
+        page_answers
+            .as_ref()
+            .map_or(Value::Null, |(answers, rest)| {
+                // An in-chat form's answers show its choices' labels (`project_page_answers`).
+                let forms = question_forms(messages);
+                let form = forms.iter().find(|form| form.id == answers.page_id);
+                let mut card = project_page_answers(answers, form);
+                card["withText"] = Value::Bool(!rest.is_empty());
+                card
+            }),
+    );
     projected.insert("questions".to_string(), Value::Array(questions));
     projected.insert(
         "sentMessages".to_string(),
@@ -252,15 +287,26 @@ pub fn project_message(
                     "markdown".to_string(),
                     native_markdown(&agent_line_breaks(&body, line_breaks), false).into(),
                 );
+                let name = card
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                card.insert(
+                    "card".to_string(),
+                    crate::transcript::agent_message_card::subagent_card(&name),
+                );
                 Value::Object(card)
             }
             other => other,
         },
     );
+    let files = file_rows(&changes, &message.id, working_directory);
     projected.insert(
-        "files".to_string(),
-        Value::Array(file_rows(&changes, &message.id, working_directory)),
+        "fileCard".to_string(),
+        crate::transcript::file_change_rows::file_change_card(&files),
     );
+    projected.insert("files".to_string(), Value::Array(files));
     projected.insert(
         "simpleFileLabel".to_string(),
         simple_edit_label(changed_paths.len()).into(),
@@ -303,7 +349,9 @@ pub fn project_message(
         "shellCard".to_string(),
         crate::transcript::local_command::shell_card(message),
     );
-    Value::Object(projected)
+    let mut projected = Value::Object(projected);
+    crate::transcript::agent_message_card::dress_received(&mut projected);
+    projected
 }
 
 /// CDXC:SessionChat 2026-09-18 WHY:
@@ -336,6 +384,12 @@ fn placeholder(message: &ChatMessage) -> Value {
 pub struct Projection {
     pub items: Vec<TranscriptItem>,
     pub final_ids: Vec<String>,
+    /// The published pages whose answers arrived in this transcript (`page_answers.rs`).
+    pub answered_pages: Vec<String>,
+    /// The question forms the agent's replies hold (`question_forms.rs`).
+    pub question_forms: Vec<QuestionForm>,
+    /// The answers that arrived, for pages and forms alike.
+    pub page_answers: Vec<PageAnswers>,
     /// Ids that shipped as placeholders and want a backfill batch.
     pub backfill: Vec<ChatMessage>,
     /// The minimap rail for this pass.
@@ -371,6 +425,8 @@ pub struct ProjectionScope<'a> {
     pub live_side_question: Option<String>,
     /// The Subagents roster, which names the background agents whose messages the session gets.
     pub agent_fleet: Option<&'a Value>,
+    /// The host's session list, which names the other session on a message between agents.
+    pub session_directory: &'a [crate::event::KnownSession],
 }
 
 /// The session's line-break rule, which the subagent viewer shares: a child runs the same agent.
@@ -393,6 +449,7 @@ pub fn scope<'a>(state: &'a ChatState, view: &'a TranscriptViewState) -> Project
         line_breaks: line_breaks(state),
         live_side_question: crate::transcript::side_question::live_side_question(state),
         agent_fleet: state.session.agent_fleet.as_ref(),
+        session_directory: &view.session_directory,
     }
 }
 
@@ -412,12 +469,19 @@ pub fn project_cached(
             return entry.model.clone();
         }
     }
+    // How long each call ran comes from the rows as they arrived, before the fold merged them.
+    let durations = tool_durations(
+        message,
+        std::iter::once(scope.messages).chain(scope.deferred.values().map(Vec::as_slice)),
+    );
     let model = project_message(
         message,
+        scope.messages,
         scope.agent_path,
         scope.working_directory,
         scope.line_breaks,
         context,
+        &durations,
     );
     cache.insert(
         message.id.clone(),
@@ -628,6 +692,14 @@ pub fn build_scope(
                     }
                 }
                 let changed_files = changed.len();
+                let stats = if turn.user.deferred_work.is_some() && work.is_empty() {
+                    // The rows are still on the server: only the files are known until it opens.
+                    work_stats(&[], changed_files)
+                } else {
+                    let rows: Vec<&ChatMessage> =
+                        work.iter().chain(turn.final_message.iter()).collect();
+                    work_stats(&rows, changed_files)
+                };
                 let deferred_value = turn
                     .user
                     .deferred_work
@@ -649,6 +721,8 @@ pub fn build_scope(
                             // An interrupted turn has no final reply; it ran until its last row.
                             .or_else(|| turn.work.iter().rev().find_map(|row| row.timestamp)),
                     ),
+                    stats,
+                    files_card: crate::transcript::file_change_rows::file_change_card(&files),
                     files,
                     files_label: format!(
                         "{changed_files} {} changed",
@@ -702,7 +776,7 @@ pub fn build_scope(
             .collect()
     };
 
-    resolve_recipients(&mut items, scope.agent_fleet);
+    resolve_recipients(&mut items, scope.agent_fleet, scope.session_directory);
 
     // `itemIndex`: the first row that draws a given id, which is what a dash jumps to.
     let mut item_index: Vec<(String, usize)> = Vec::with_capacity(items.len());
@@ -720,9 +794,16 @@ pub fn build_scope(
     let minimap = crate::extras::minimap::project_minimap_turns(&turns, &item_index);
     let backfill = builder.backfill;
     prune_cache(cache, scope);
+    let page_answers = page_answers_in(scope.messages);
     Projection {
         items,
         final_ids: projection.final_ids,
+        answered_pages: page_answers
+            .iter()
+            .map(|answers| answers.page_id.clone())
+            .collect(),
+        question_forms: question_forms(scope.messages),
+        page_answers,
         backfill,
         minimap,
     }
@@ -758,7 +839,11 @@ pub fn row_detail_scope(
     let (files, tools) = message_tool_rows(source);
     if kind == "file" {
         let change = files.get(index)?;
-        return Some(serde_json::json!({ "lines": change.lines }));
+        return Some(serde_json::json!({
+            "lines": change.lines,
+            // How many of `lines` a row shows until "Show all" is pressed.
+            "preview": crate::transcript::file_change_rows::file_change_preview_end(&change.lines),
+        }));
     }
     tools.get(index).map(open_tool_detail)
 }

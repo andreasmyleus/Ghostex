@@ -128,7 +128,11 @@ fn running_shells_activity(label: &str) -> Option<SessionChatTerminalActivity> {
         return None;
     }
 
-    let activity = if let Some(completed_at) = completed_at {
+    let background = SessionChatBackgroundWork {
+        count,
+        tasks: Vec::new(),
+    };
+    let mut activity = if let Some(completed_at) = completed_at {
         SessionChatTerminalActivity::new(
             SESSION_CHAT_ACTIVITY_SHELLS_RUNNING,
             format!(
@@ -144,6 +148,7 @@ fn running_shells_activity(label: &str) -> Option<SessionChatTerminalActivity> {
         activity.elapsed_seconds = Some(elapsed_seconds);
         activity
     };
+    activity.background = Some(background);
     Some(activity)
 }
 

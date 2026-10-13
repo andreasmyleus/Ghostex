@@ -12,7 +12,11 @@
 //
 // Cluster: updater, first-run onboarding, gxserver bootstrap, OS shells, portless, keep-awake
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+/// The newest startup bootstrap; an older one that is still retrying stops when a new one begins.
+static GPUI_GXSERVER_BOOTSTRAP_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 // RefCell backs cross-platform runtime state (window frame persistence), not
 // just the macOS-only shims that first introduced the import.
@@ -36,6 +40,8 @@ impl GhostexGpuiApp {
         show_loading_toast: bool,
         cx: &mut gpui::Context<Self>,
     ) {
+        let bootstrap_generation =
+            GPUI_GXSERVER_BOOTSTRAP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
         #[cfg(target_os = "windows")]
         let windows_first_run_setup_active =
             self.windows_first_run_setup_state != GpuiWindowsFirstRunSetupState::Ready;
@@ -316,9 +322,10 @@ impl GhostexGpuiApp {
                     );
                 });
             }
+            let spawn_binary = binary.clone();
             let spawn_result = cx
                 .background_executor()
-                .spawn(async move { gpui_spawn_local_gxserver_daemon(&binary) })
+                .spawn(async move { gpui_spawn_local_gxserver_daemon(&spawn_binary) })
                 .await;
             let launch_steps = match spawn_result {
                 Ok(steps) => steps,
@@ -362,11 +369,25 @@ impl GhostexGpuiApp {
             CDXC:ServerDaemon 2026-09-28 WHY:
             On a freshly installed Windows the first gxserver start waited almost a minute before its own code ran (Windows scanning the new executable), while this loop gave up after about 20 seconds: the app showed "gxserver failed to start" and left the first-run setup frozen on "Checking the bundled terminal engine…" even after gxserver came up. Probe quickly for the first seconds, then keep probing less often until the startup patience runs out.
             */
+            /*
+            CDXC:ServerDaemon 2026-10-12 WHY:
+            After the 2026-10-12 restart the port answered for minutes with an older gxserver marked `superseded` (one an SSH-side `gxserver start` had launched from the unrefreshed package). This loop only waited for it to leave, showed the startup diagnostics after its patience although the app was already running on that old build, and never retried. Now another build answering is taken over (asked to stop, ended if it keeps answering, the bundled daemon started) and counts as progress, a port that stays silent gets the bundled daemon started again every 30 s (which takes the port from a stale holder), the diagnostics appear only after the patience passes with no progress, and the loop keeps going behind them and clears them the moment the bundled build answers.
+            */
             let spawned_at = std::time::Instant::now();
+            let mut progress_at = spawned_at;
+            let mut last_launch_at = spawned_at;
+            let mut failure_shown = false;
+            let mut takeovers = 0u32;
             let mut attempt = 0;
-            while spawned_at.elapsed() < GPUI_GXSERVER_START_PATIENCE {
+            loop {
+                if GPUI_GXSERVER_BOOTSTRAP_GENERATION.load(Ordering::SeqCst) != bootstrap_generation {
+                    // A newer bootstrap (Retry, a restart) owns startup now.
+                    return;
+                }
                 attempt += 1;
-                let interval = if spawned_at.elapsed() < Duration::from_secs(20) {
+                let interval = if failure_shown {
+                    Duration::from_secs(5)
+                } else if progress_at.elapsed() < Duration::from_secs(20) {
                     Duration::from_millis(500)
                 } else {
                     Duration::from_secs(2)
@@ -376,10 +397,15 @@ impl GhostexGpuiApp {
                     .background_executor()
                     .spawn(async { gpui_probe_local_gxserver_health_with_diagnostics() })
                     .await;
-                startup_diagnostics.push(format!("+{}ms probe {attempt}: {detail}", startup_started.elapsed().as_millis()));
+                if !failure_shown {
+                    startup_diagnostics.push(format!("+{}ms probe {attempt}: {detail}", startup_started.elapsed().as_millis()));
+                }
                 match health {
                     GpuiLocalGxserverHealthState::Healthy { tools_available } => {
                         let _ = this.update(cx, |this, cx| {
+                            if failure_shown {
+                                this.remove_gpui_app_toast(GPUI_GXSERVER_DAEMON_TOAST_ID, cx);
+                            }
                             #[cfg(windows)]
                             if windows_first_run_setup_active && tools_available {
                                 this.windows_first_run_setup_state = GpuiWindowsFirstRunSetupState::Ready;
@@ -426,39 +452,83 @@ impl GhostexGpuiApp {
                         });
                         return;
                     }
+                    GpuiLocalGxserverHealthState::BuildMismatch
+                        if last_launch_at.elapsed() >= Duration::from_secs(10)
+                            || takeovers == 0 =>
+                    {
+                        takeovers += 1;
+                        let takeover_binary = binary.clone();
+                        let steps = cx
+                            .background_executor()
+                            .spawn(async move { gpui_take_over_local_gxserver_from_other_build(&takeover_binary) })
+                            .await;
+                        if !failure_shown {
+                            startup_diagnostics.extend(steps);
+                        }
+                        last_launch_at = std::time::Instant::now();
+                        // A build that keeps coming back is not progress, so the diagnostics still appear.
+                        if takeovers <= 3 {
+                            progress_at = last_launch_at;
+                        }
+                        continue;
+                    }
                     GpuiLocalGxserverHealthState::BuildMismatch => {}
-                    GpuiLocalGxserverHealthState::Unreachable => {}
+                    GpuiLocalGxserverHealthState::Unreachable => {
+                        if last_launch_at.elapsed() >= Duration::from_secs(30) {
+                            last_launch_at = std::time::Instant::now();
+                            let launch_binary = binary.clone();
+                            let launched = cx
+                                .background_executor()
+                                .spawn(async move { gpui_spawn_local_gxserver_daemon(&launch_binary) })
+                                .await;
+                            if !failure_shown {
+                                startup_diagnostics.push(format!(
+                                    "+{}ms started the bundled gxserver again: {}",
+                                    startup_started.elapsed().as_millis(),
+                                    match &launched {
+                                        Ok(_) => "accepted".to_string(),
+                                        Err(error) => error.clone(),
+                                    }
+                                ));
+                            }
+                        }
+                    }
                 }
-            }
-            let report = cx
-                .background_executor()
-                .spawn(async move { gpui_gxserver_startup_failure_report(&startup_diagnostics) })
-                .await;
-            // During first-run setup the failure belongs on the setup screen, which offers Retry.
-            #[cfg(target_os = "windows")]
-            if windows_first_run_setup_active {
+                if failure_shown || progress_at.elapsed() < GPUI_GXSERVER_START_PATIENCE {
+                    continue;
+                }
+                failure_shown = true;
+                let report_diagnostics = startup_diagnostics.clone();
+                let report = cx
+                    .background_executor()
+                    .spawn(async move { gpui_gxserver_startup_failure_report(&report_diagnostics) })
+                    .await;
+                // During first-run setup the failure belongs on the setup screen, which offers Retry.
+                #[cfg(target_os = "windows")]
+                if windows_first_run_setup_active {
+                    let _ = this.update(cx, |this, cx| {
+                        this.windows_first_run_setup_state = GpuiWindowsFirstRunSetupState::Failed(
+                            "The Ghostex background service did not start. Try again; if it keeps failing, restart Windows and open Ghostex again."
+                                .to_string(),
+                        );
+                        cx.notify();
+                    });
+                    return;
+                }
                 let _ = this.update(cx, |this, cx| {
-                    this.windows_first_run_setup_state = GpuiWindowsFirstRunSetupState::Failed(
-                        "The Ghostex background service did not start. Try again; if it keeps failing, restart Windows and open Ghostex again."
-                            .to_string(),
+                    this.show_gpui_gxserver_bootstrap_toast(
+                        "error",
+                        "gxserver failed to start",
+                        "The daemon did not become healthy in time. Ghostex keeps trying; copy diagnostics to share the failure details.",
+                        true,
+                        cx,
                     );
-                    cx.notify();
+                    if let Some(toast) = this.app_toasts.iter_mut().find(|toast| toast.id == GPUI_GXSERVER_DAEMON_TOAST_ID) {
+                        toast.copy_text = Some(report);
+                    }
+                    this.sync_gpui_app_toast_window(cx);
                 });
-                return;
             }
-            let _ = this.update(cx, |this, cx| {
-                this.show_gpui_gxserver_bootstrap_toast(
-                    "error",
-                    "gxserver failed to start",
-                    "The daemon did not become healthy in time. Copy diagnostics to share the failure details.",
-                    true,
-                    cx,
-                );
-                if let Some(toast) = this.app_toasts.iter_mut().find(|toast| toast.id == GPUI_GXSERVER_DAEMON_TOAST_ID) {
-                    toast.copy_text = Some(report);
-                }
-                this.sync_gpui_app_toast_window(cx);
-            });
         })
         .detach();
     }

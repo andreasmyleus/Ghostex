@@ -222,11 +222,11 @@ pub fn usage() -> String {
         ),
         format_help_command(
             "show <file.html> [--title text] [--browser] [--json]",
-            "Publish a self-contained HTML page and print the ```visual block that shows it as a card in the chat; the card opens it in a floating window over the chat (--browser: in the browser)",
+            "Publish a self-contained HTML page and print the ```visual block that shows it as a card in the chat; the card opens it in a floating window over the chat (--browser: in the browser). Questions written as <gx-questions> (or the page's own ghostex.submit(answers)) send the reader's answers back to you as a message",
         ),
         format_help_command(
             "visual check <file.json|-> [--width N] [--light] [--out file.png]",
-            "Draw a ```visual block's JSON to a PNG and print its path, so an agent can check it before replying",
+            "Draw a ```visual block's JSON to a PNG and print its path, or read a ```questions block and list its questions, so an agent can check it before replying",
         ),
         format_help_command("run-agent <agentId>", "Run a configured agent button"),
         format_help_command(
@@ -392,6 +392,7 @@ pub fn usage() -> String {
         format_help_command("select-session-chat-model <selector> [--model <model> --effort <effort>] [--scope session|default] [--mode <mode>] [--fast-mode on|off] [--defer] --json", "Change chat model, effort or mode; --scope session applies it to this session without changing the agent's default (Claude, Codex 0.157 or newer, OpenCode); --defer queues the choice until the agent is ready"),
         format_help_command("read-session-chat-skills <selector> --json", "List skills available to the session's agent"),
         format_help_command("read-session-chat-files <selector> --json", "List the session project's files for @ mentions"),
+        format_help_command("read-session-files-links <selector> --json", "List every attachment, file and link the session mentioned, and for a coordinator its threads too, grouped by session"),
         format_help_command("send-session-chat-message <selector> <text>", "Send a chat message into an agent session"),
         format_help_command("answer-session-chat-prompt <selector> --answer-json '<json>'", "Answer a pending question/approval prompt or an on-screen picker row"),
         format_help_command("rewind-session-chat <selector> --message-id <uuid> --json", "Drive Claude Code or Codex rewind to the point before a user prompt"),
@@ -1239,13 +1240,16 @@ Usage:
 
 Agent skill:
   Use $ghostex-visuals when the user asks for it: charts, stats and tables go
-  in the reply as a ```visual block; mockups and small tools are HTML pages
+  in the reply as a ```visual block; questions go in a ```questions block,
+  which the chat shows as a form; mockups and small tools are HTML pages
   published with `ghostex show`.
 
 check:
   Draws the block's JSON (or the whole fenced block) exactly as the chat lays
   it out and prints the path of a PNG to look at, or the error that names what
-  to fix. --width defaults to 640; use 360 for a phone.
+  to fix. --width defaults to 640; use 360 for a phone. A ```questions block
+  is read instead: check lists its questions and answer keys, or names the
+  problem.
 "
     .to_string()
 }

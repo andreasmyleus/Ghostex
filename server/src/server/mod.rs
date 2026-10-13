@@ -160,6 +160,7 @@ mod app_state;
 mod foreground;
 mod http_dispatch;
 mod route_http;
+mod stale_server_takeover;
 
 pub(crate) use agent_http::*;
 pub(crate) use agent_prompt_search_http::*;
@@ -181,4 +182,5 @@ pub use app_state::*;
 pub use foreground::*;
 use http_dispatch::*;
 use route_http::*;
+use stale_server_takeover::*;
 

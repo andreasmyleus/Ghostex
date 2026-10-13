@@ -78,6 +78,7 @@ impl GhostexGpuiApp {
                         break;
                     }
                 }
+                // CDXC:ServerDaemon 2026-10-12 WHY: older daemons asked to stop stayed alive for hours on a blocking task stuck on a hung drive, which made this restart report "gxserver stop failed" and never start the bundled daemon. A process that outlives its stop is ended.
                 stop_error = cx
                     .background_executor()
                     .spawn(async move {
@@ -85,6 +86,10 @@ impl GhostexGpuiApp {
                             previous_pid,
                             Duration::from_secs(15),
                         )
+                        .or_else(|error| match previous_pid {
+                            Some(pid) => gpui_terminate_local_gxserver_process(pid),
+                            None => Err(error),
+                        })
                     })
                     .await
                     .err();

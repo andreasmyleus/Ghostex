@@ -3,8 +3,9 @@ use std::{collections::BTreeMap, fs};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 
 use super::{
+    kit::{KIT_SCRIPT, KIT_STYLE},
     store::{clip_chars, VISUAL_PAGE_MAX_BYTES, VISUAL_PAGE_TITLE_MAX_CHARS},
-    theme::{PAGE_BOOTSTRAP, THEME_STYLE},
+    theme::{PAGE_API, PAGE_BOOTSTRAP, PAGE_STATE_MARKER, THEME_STYLE},
 };
 
 const IMAGE_MAX_BYTES: u64 = 10 * 1024 * 1024;
@@ -21,9 +22,9 @@ const RAW_TEXT_ELEMENTS: &[&str] = &[
     "noscript",
 ];
 
-/// CDXC:ServerApi 2026-10-06 WHY:
-/// A published page runs its own scripts, and gxserver's default CORS list accepts the `null` origin a sandboxed page sends (`DEFAULT_CORS_ALLOWED_ORIGINS` in config.rs), so without this policy a page could read gxserver's unauthenticated answers on http://127.0.0.1. Every fetch, image, font and media source is limited to https: and inline data, which keeps pages off the loopback listener while CDN libraries still load. serve.rs sends the same policy as a response header, so a page that buries or reorders this tag is still held to it.
-pub(super) const PAGE_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; connect-src https:; media-src data: blob: https:; frame-src 'none'; form-action 'none'; base-uri 'none'";
+/// CDXC:ServerApi 2026-10-11 WHY:
+/// A published page runs its own scripts, and gxserver's default CORS list accepts the `null` origin a sandboxed page sends (`DEFAULT_CORS_ALLOWED_ORIGINS` in config.rs), so without this policy a page could read gxserver's unauthenticated answers on http://127.0.0.1. Every image, font and media source is limited to https: and inline data, and fetches to https: plus the page's own server (`'self'`) so `ghostex.submit` can post its answers. serve.rs sends the policy again as a response header with `'self'` narrowed to the page's one answers URL; the browser enforces both, so a page that buries or reorders this tag is still held to the header and cannot reach any other gxserver route. This replaces the 2026-10-06 policy that allowed fetches to https: only.
+pub(super) const PAGE_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; connect-src https: 'self'; media-src data: blob: https:; frame-src 'none'; form-action 'none'; base-uri 'none'";
 
 pub(crate) struct PreparedPage {
     pub(crate) html: String,
@@ -542,6 +543,10 @@ fn inject_head(html: &str, scan: &DocumentScan) -> String {
     block.push_str("\">");
     block.push_str(THEME_STYLE);
     block.push_str(PAGE_BOOTSTRAP);
+    block.push_str(PAGE_API);
+    block.push_str(PAGE_STATE_MARKER);
+    block.push_str(KIT_STYLE);
+    block.push_str(KIT_SCRIPT);
     if !prologue.inside_head && !scan.has_head {
         block = format!("<head>{block}</head>");
     }

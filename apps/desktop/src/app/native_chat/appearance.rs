@@ -19,6 +19,9 @@ pub(crate) struct ChatAppearance {
     /// The status-card shell tones (cards.rs): a panel and a footer band stepped off the background.
     pub(crate) card_panel: Hsla,
     pub(crate) card_footer: Hsla,
+    /// The rows and boxes inside a card (a question's options, its note box, a page card's window):
+    /// darker than the panel in dark mode, the input tone in light mode.
+    pub(crate) card_row: Hsla,
     pub(crate) prose: Hsla,
     pub(crate) card_muted: Hsla,
     pub(crate) muted: Hsla,
@@ -35,6 +38,8 @@ pub(crate) struct ChatAppearance {
     pub(crate) simple: bool,
     pub(crate) file_previews: bool,
     pub(crate) transcript_width: Option<f32>,
+    /// How marked sections in agents' replies are drawn.
+    pub(crate) marked_sections: super::marked_sections::MarkerStyle,
 }
 
 impl ChatAppearance {
@@ -55,6 +60,7 @@ impl ChatAppearance {
             self.card_footer = wash(true, 0.3);
             self.composer_background = self.input;
             self.composer_border = wash(false, 0.08);
+            self.card_row = self.input;
         } else {
             self.input = wash(true, 0.06);
             self.border = wash(true, 0.08);
@@ -63,6 +69,7 @@ impl ChatAppearance {
             self.card_footer = wash(true, 0.03);
             self.composer_background = self.input;
             self.composer_border = wash(true, 0.08);
+            self.card_row = self.input;
         }
         self
     }
@@ -87,6 +94,11 @@ impl ChatAppearance {
     /// The `--destructive` tone the React transcript painted failed tool results and failed writes in.
     pub(crate) fn error(&self) -> Hsla {
         rgb(if self.light { 0xc53030 } else { 0xef9999 }).into()
+    }
+
+    /// A finished tool call's check (the 2026-10-11 work look, gx-chat-core `work_summary.rs`).
+    pub(crate) fn success(&self) -> Hsla {
+        rgb(if self.light { 0x059669 } else { 0x34d399 }).into()
     }
 
     /// The zoom this pane returns to, `sessionChatZoomPercent`. `zoom.rs` layers the keyboard's
@@ -180,19 +192,19 @@ impl ChatAppearance {
                 gpui::Hsla::from(rgb(0xffffff)).opacity(0.08)
             },
             card_background: if light { raised(0.3) } else { background },
-            // CDXC:Theming 2026-09-22 DECISION: User: the cards must take the theme's tint in the blueish light theme; they were not tinted at all. Light mode mixes toward white off the chat background (60% for the panel, 10% for the footer band) instead of the fixed #fdfdfd / #f5f5f5 pinned on 2026-09-16, which this supersedes, keeping the cards lighter than the page.
-            // Over the neutral defaults these are the old #1e1e1e / #151515 dark and #fbfbfb / #f5f5f6
-            // light tones.
+            // CDXC:Theming 2026-10-11 DECISION: User: the cards must take the theme's tint ("in the blueish light theme; they were not tinted at all", 2026-09-22), and every chat card is as dark as the page question cards ("yellow + dark all", after "background for the whole question component still too light" on the question page). Dark mode lifts the panel 3.5%, the rows inside a card 1.5% and the footer band 2.5% toward white off the chat background, replacing 7% / 3% / 3.3%. Light mode keeps mixing toward white (60% for the panel, 10% for the footer band) and its rows keep the input tone.
+            // SEE-ALSO: server/src/visual_pages/kit.rs (the page question cards' `--gx-card`, `--gx-option` and `--gx-footer` follow the same rule), apps/mobile/app/src/chat/native/transcript/theme.ts (`cardPanel`, `cardRow`, `cardFooter`).
             card_panel: if light {
                 raised(0.6)
             } else {
-                lifted(0.07, 0.0)
+                lifted(0.035, 0.0)
             },
             card_footer: if light {
                 raised(0.1)
             } else {
-                lifted(0.033, 0.0)
+                lifted(0.025, 0.0)
             },
+            card_row: lifted(0.015, 0.032),
             ring: color(0x737373, 0x9f9fa9),
             prose: color(0xb4b8c0, 0x4d4d50),
             // CDXC:SessionChat 2026-09-13 DECISION: User: fix unreadable chat cards in light mode through the shared theme. Dark mode keeps #fcfcfc titles and actions (`foreground`) and #b4b8bf content (`card_muted`); light mode uses the light palette; sizes, weights and outlined actions stay the same.
@@ -225,6 +237,7 @@ impl ChatAppearance {
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(true),
             file_previews: enabled("sessionChatFileEditPreviews"),
+            marked_sections: super::marked_sections::MarkerStyle::from_settings(settings),
             transcript_width: enabled("sessionChatCustomTranscriptWidthEnabled").then(|| {
                 settings
                     .get("sessionChatTranscriptWidthPercent")

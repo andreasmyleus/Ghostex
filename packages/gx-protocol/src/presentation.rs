@@ -727,6 +727,14 @@ pub struct PresentationSession {
     /// Loading chrome only.
     #[serde(default, deserialize_with = "crate::de::null_as_default")]
     pub is_generating_first_prompt_title: bool,
+    /// The name of the user's last rename that the agent never confirmed within 8 seconds: the
+    /// title shakes when it appears and the next Rename opens with it. Absent once a rename is
+    /// confirmed or another one is requested, and on a daemon that predates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_failed_title: Option<String>,
+    /// When gxserver gave up on `rename_failed_title`; a new value is a new failure to shake for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_failed_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

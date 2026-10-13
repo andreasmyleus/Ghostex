@@ -1,5 +1,8 @@
-//! Same module paths as the desktop's `helpers/`. `chrome_palette`, `indicator_animation` and `markdown_table_csv` are the desktop files; the others hold only the items `build.rs` lifts out of the desktop files of the same name (see `extracted-items.txt`), because the rest of those files is native-only.
+//! Same module paths as the desktop's `helpers/`. `chrome_palette`, `clipboard_read`, `indicator_animation` and `markdown_table_csv` are the desktop files; the others hold only the items `build.rs` lifts out of the desktop files of the same name (see `extracted-items.txt`), because the rest of those files is native-only.
 pub(crate) mod chrome_palette;
+/// The web reads through GPUI Kit fields only, so `gpui_read_clipboard` has no caller here.
+#[allow(dead_code)]
+pub(crate) mod clipboard_read;
 pub(crate) mod indicator_animation;
 pub(crate) mod markdown_table_csv;
 #[allow(dead_code, unused_imports)]
@@ -44,6 +47,7 @@ pub(crate) use ids::*;
 pub(crate) use project::*;
 pub(crate) use web::*;
 pub(crate) use chrome_palette::*;
+pub(crate) use clipboard_read::*;
 pub(crate) use indicator_animation::*;
 pub(crate) use sidebar::*;
 pub(crate) use titlebar::*;

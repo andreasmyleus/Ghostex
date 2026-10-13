@@ -87,6 +87,8 @@ pub fn sync(state: &mut ChatState) -> Vec<Effect> {
         }
     }
 
+    effects.extend(crate::questions::forms::sync(state));
+
     // The async strip reads its saved answers once per chat, the way `start` kicks off
     // `asyncQuestions.load()`.
     if !state.questions.async_questions.load_started {

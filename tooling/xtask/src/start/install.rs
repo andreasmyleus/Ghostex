@@ -344,13 +344,22 @@ impl Start {
     ) -> Res {
         let health = gxserver::health(base_url, token, Duration::from_secs(1));
         if let Some(pid) = pid {
-            if health
+            match health
                 .as_ref()
                 .and_then(|h| h.get("pid"))
                 .and_then(|p| p.as_u64())
-                != Some(pid)
             {
-                bail!("Could not verify the gxserver listener owned by pid {pid} at {base_url}.");
+                Some(answered) if answered == pid => {}
+                Some(_) => bail!(
+                    "Could not verify the gxserver listener owned by pid {pid} at {base_url}."
+                ),
+                // CDXC:ServerDaemon 2026-10-12 WHY: a gxserver whose listener is bound but not served (a slow startup, a hung shutdown) used to fail the start here or be launched beside; it is ended so the app starts its bundled daemon.
+                None => {
+                    self.log.detail(&format!(
+                        "gxserver pid {pid} holds {base_url} but does not answer; ending it."
+                    ));
+                    return self.end_gxserver_process(pid);
+                }
             }
         }
         let Some(health) = health else {
@@ -390,12 +399,33 @@ impl Start {
         }
         gxserver::request_stop(base_url, token);
         if !gxserver::wait_for_stop(base_url, token, Duration::from_secs(5)) {
-            bail!("gxserver stop was requested, but the old control plane is still responding.");
+            let Some(pid) = pid else {
+                bail!(
+                    "gxserver stop was requested, but the old control plane is still responding."
+                );
+            };
+            self.log.detail(&format!(
+                "gxserver pid {pid} did not stop when asked; ending it."
+            ));
+            return self.end_gxserver_process(pid);
         }
         self.log.detail(
             "gxserver control plane stopped; GPUI will start its bundled daemon on launch.",
         );
         Ok(())
+    }
+
+    /// Ends a gxserver process found on a Windows listener (only those endpoints carry a pid).
+    fn end_gxserver_process(&self, pid: u64) -> Res {
+        #[cfg(windows)]
+        if u32::try_from(pid).is_ok_and(|pid| super::windows_native::terminate_process(pid, 10_000))
+        {
+            self.log.detail(
+                "gxserver control plane ended; GPUI will start its bundled daemon on launch.",
+            );
+            return Ok(());
+        }
+        bail!("Could not end the gxserver process {pid} that holds its port.")
     }
 
     fn bundled_gxserver_build_identity(&self) -> Option<String> {

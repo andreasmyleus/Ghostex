@@ -631,7 +631,7 @@ impl GpuiOnboardingWindow {
             .child(tiles_row)
             .child(div().mb(s.px(14.0)).child(label(s, "Default session view")))
             .child(
-                div().flex().gap(s.px(8.0)).children(
+                div().flex().gap(s.px(8.0)).mb(s.px(20.0)).children(
                     [
                         ("chat", "Chat", "Cleaner agent conversation"),
                         ("terminal", "Terminal", "Raw CLI interface"),
@@ -656,7 +656,9 @@ impl GpuiOnboardingWindow {
                         )
                     }),
                 ),
-            );
+            )
+            .child(div().mb(s.px(14.0)).child(label(s, "Agent approvals")))
+            .child(self.render_agent_approvals(s, cx));
         let look_card = self.render_look_card(s, now, cx);
         let note: AnyElement = if let Some(error) = &self.get_started.open_error {
             div()
@@ -771,6 +773,37 @@ impl GpuiOnboardingWindow {
                 .into_any_element(),
         );
         out
+    }
+
+    /// CDXC:Onboarding 2026-10-11 DECISION:
+    /// User: add the "Agent approvals" setting (Keep default / Skip permissions) to the last page of the setup flow, with the same shared segmented control and the same setting key as Settings -> Agents -> Defaults so the two always agree, plus a one-line explanation. The line already warns what Skip permissions does, so the pick saves at once without Settings' "Skip permissions?" confirmation.
+    fn render_agent_approvals(&mut self, s: S, cx: &mut Context<Self>) -> AnyElement {
+        use super::super::native_modal_kit::{ModalRailItem, modal_bordered_segmented_control};
+        let items = ["Keep default", "Skip permissions"].map(|label| ModalRailItem {
+            label: label.into(),
+            trailing: None,
+        });
+        let control = modal_bordered_segmented_control(
+            gpui::rgb(0xeef1f7),
+            gpui::rgba(0xffffff1f),
+            gpui::rgb(0x9ea7b6),
+            "onboarding-agent-approvals",
+            &items,
+            usize::from(self.settings.accept_all),
+            |this: &mut Self, index, _window, cx| {
+                this.update_one("agentAcceptAllEnabled", Value::Bool(index == 1), cx);
+            },
+            cx,
+        )
+        .w_full();
+        div()
+            .flex()
+            .flex_col()
+            .child(control)
+            .child(ss(s, 13.0).mt(s.px(10.0)).child(
+                "Skip permissions: agents edit files and run commands without asking. Change it in Settings → Agents.",
+            ))
+            .into_any_element()
     }
 
     /// CDXC:Onboarding 2026-09-25 DECISION:

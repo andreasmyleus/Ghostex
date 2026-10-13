@@ -1342,6 +1342,41 @@ a:hover {
   line-height: 1.5;
 }
 
+/* Markdown drawn by WorkMarkdown (markdown.tsx); its sizes and colours are in the style it passes. */
+.w-md {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.w-md .enrm-text > :first-child {
+  margin-top: 0 !important;
+}
+
+.w-md a:not([href^="mention:"]):hover {
+  text-decoration: underline !important;
+}
+
+.w-md a[href^="mention:"] {
+  border-radius: 3px;
+  padding: 0 2px;
+  cursor: default;
+}
+
+.w-md pre {
+  overflow-x: auto;
+}
+
+.w-md-clamp > .w-link-btn {
+  margin: 2px 0 0;
+}
+
+.w-pr-body {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--w-line);
+}
+
 .w-link-btn {
   border: 0;
   background: transparent;

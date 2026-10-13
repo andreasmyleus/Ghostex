@@ -35,6 +35,8 @@
 //!   `dismissals.rs` folds the recovery markers a retirement leaves into ranges, `locale.rs` the
 //!   two formatted stamps the host owes the core.
 //! - `platform.rs` is the clock, the timezone and the random source.
+//! - `session_directory.rs` is the sidebar store's session list, which names the other session on
+//!   a message between agents.
 //! - `diagnostics.rs` writes the periodic counters, behind the usual two gates; `refusals.rs` names
 //!   a refused request and an unrouted call with code constants.
 
@@ -58,6 +60,7 @@ mod refusals;
 mod retained;
 pub(crate) mod saved_prompt_records;
 mod saves;
+pub(crate) mod session_directory;
 mod storage;
 mod storage_backend;
 mod store;

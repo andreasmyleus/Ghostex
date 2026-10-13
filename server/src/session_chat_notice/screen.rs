@@ -14,6 +14,8 @@ pub(super) const NOTICE_EXIT_SCAN_LINES: usize = 10;
 /// Evidence attached to a notice.
 const NOTICE_SCREEN_TAIL_LINES: usize = 12;
 const NOTICE_SCREEN_TAIL_MAX_CHARS: usize = 2000;
+const NOTICE_LIVE_TAIL_LINES: usize = 24;
+const NOTICE_LIVE_TAIL_MAX_CHARS: usize = 4000;
 const NOTICE_EVIDENCE_MAX_CHARS: usize = 240;
 
 /// One prepared capture: parallel display/folded views of the same tail lines,
@@ -177,10 +179,19 @@ impl NoticeScreen {
     `NOTICE_SCREEN_TAIL_LINES` real lines.
     */
     pub(super) fn screen_tail(&self) -> Option<String> {
+        self.tail(NOTICE_SCREEN_TAIL_LINES, NOTICE_SCREEN_TAIL_MAX_CHARS)
+    }
+
+    /// The tail a pass-through card draws live: a whole picker, not a few lines of evidence.
+    pub(super) fn live_tail(&self) -> Option<String> {
+        self.tail(NOTICE_LIVE_TAIL_LINES, NOTICE_LIVE_TAIL_MAX_CHARS)
+    }
+
+    fn tail(&self, max_lines: usize, max_chars: usize) -> Option<String> {
         let mut newest_first: Vec<&str> = Vec::new();
         let mut content_lines = 0usize;
         for line in self.display.iter().rev() {
-            if content_lines >= NOTICE_SCREEN_TAIL_LINES {
+            if content_lines >= max_lines {
                 break;
             }
             let line = line.trim_end();
@@ -204,7 +215,7 @@ impl NoticeScreen {
             tail_lines.pop();
         }
         let tail = tail_lines.join("\n");
-        (!tail.trim().is_empty()).then(|| cap_chars_from_end(&tail, NOTICE_SCREEN_TAIL_MAX_CHARS))
+        (!tail.trim().is_empty()).then(|| cap_chars_from_end(&tail, max_chars))
     }
 
     /// A bare shell prompt as the bottom line is what distinguishes "the agent

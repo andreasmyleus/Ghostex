@@ -47,12 +47,20 @@ impl NativeChatView {
         }
         let enabled = self.composer_ready && !self.draft.trim().is_empty();
         let can_queue = enabled && self.snapshot["queue"]["capabilities"]["canQueue"] == true;
-        let rows = vec![json!({
-            "label":"Compact & Send",
-            "detail":crate::hotkey_label::terminal_overlay_hotkey_chord_label("alt+enter"),
-            "disabled":!can_queue,
-            "command":{"type":"submit","mode":"compact"},
-        })];
+        let rows = vec![
+            json!({
+                "label":"Interrupt & Send",
+                "detail":crate::hotkey_label::terminal_overlay_hotkey_chord_label("ctrl+enter"),
+                "disabled":!enabled || self.snapshot["working"] != true,
+                "command":{"type":"submit","mode":"interrupt"},
+            }),
+            json!({
+                "label":"Compact & Send",
+                "detail":crate::hotkey_label::terminal_overlay_hotkey_chord_label("alt+enter"),
+                "disabled":!can_queue,
+                "command":{"type":"submit","mode":"compact"},
+            }),
+        ];
         self.show_chat_menu_at(rows, position, 240.0, window, cx);
     }
 
@@ -187,6 +195,9 @@ impl NativeChatView {
                 let mut row = json!({"label":label,"iconPath":icon,"command":{"type":"composerHost","action":action}});
                 if id == "note" {
                     row["checked"] = self.snapshot["note"]["open"].clone();
+                }
+                if id == "files" {
+                    row["checked"] = self.snapshot["filesLinks"]["open"].clone();
                 }
                 rows.push(row);
             }

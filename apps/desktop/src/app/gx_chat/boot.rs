@@ -105,13 +105,13 @@ pub(super) fn read(session_key: &str, now_ms: i64, errors: &mut BootReads) -> Co
 /// it up in the service's `sessionsById` by `projectId:sessionId`, and on desktop that map was never
 /// fed (the `hydrate` message carried no groups), so it was `null` under QuickJS too.
 pub(super) fn chat_settings() -> ChatSettings {
+    let settings = crate::shared_settings::shared_sidebar_settings_snapshot();
+    let object = settings.object();
     ChatSettings {
-        hide_account_emails: crate::shared_settings::shared_sidebar_settings_snapshot()
-            .object()
-            .get("hideAccountEmails")
-            .and_then(Value::as_bool)
-            == Some(true),
+        hide_account_emails: object.get("hideAccountEmails").and_then(Value::as_bool) == Some(true),
         title: None,
+        // CDXC:CatchMeUp 2026-10-12 WHY: only a settings object that names `chatCatchMeUp` speaks for it. The web page has no settings file, and an unset key is the default anyway, so otherwise gxserver's `catchUp` on the chat read decides; answering `false` here hid the button on the web while the switch was on.
+        catch_up: object.get("chatCatchMeUp").and_then(Value::as_bool),
     }
 }
 

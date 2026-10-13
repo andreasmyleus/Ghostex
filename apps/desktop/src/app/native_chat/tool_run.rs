@@ -20,8 +20,15 @@ use gpui_component::text::{TextView, TextViewStyle};
 use serde_json::Value;
 
 /// The spacing between the rows of a run, kept the same inside an expansion as
-/// it is outside one so opening a group never re-flows the rows it reveals.
-const ROW_GAP: f32 = 8.0;
+/// it is outside one so opening a group never re-flows the rows it reveals. Each
+/// row carries its own padding (the 2026-10-11 work look), so the gap is small.
+const ROW_GAP: f32 = 2.0;
+
+/// A tool row's padding beside its glyph tile; its detail's rail is moved in by the same
+/// amount so the line still runs down from the middle of the tile.
+const ROW_PAD_X: f32 = 8.0;
+/// The glyph tile's side.
+const TILE: f32 = 22.0;
 
 /// The bundled icon for each glyph `sessionChatToolGlyph` classifies a tool into.
 fn glyph_icon(glyph: &str) -> &'static str {
@@ -165,8 +172,8 @@ impl NativeChatView {
     }
 
     /// A `!` command the user ran (`shellCard`, gx-chat-core's `shell_card`), in the user's bubble:
-    /// a header with the terminal glyph, the command, its status and a copy button, opening onto
-    /// the output alone. It shows in simple mode too, since it is what the user typed. It folds
+    /// a header with the terminal glyph, the command and its failure status, opening onto the
+    /// output alone; its copy button floats outside the bubble, on its left. It shows in simple mode too, since it is what the user typed. It folds
     /// like every disclosure: the header and the rail both flip it, and a running card that opened
     /// on its own records the close against that default.
     pub(super) fn shell_command_card(
@@ -175,7 +182,6 @@ impl NativeChatView {
         p: &ChatAppearance,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        const GROUP: &str = "native-chat-shell-card";
         let s = p.scale;
         let card = &message["shellCard"];
         let key = format!("shell:{}", text(message, "id"));
@@ -256,24 +262,7 @@ impl NativeChatView {
                         .text_color(if failed { p.error() } else { p.muted })
                         .child(status),
                 )
-            })
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .invisible()
-                    .group_hover(GROUP, |style| style.visible())
-                    .child(super::code_block::action(
-                        SharedString::from(format!("copy:{key}")),
-                        "titlebar/copy.svg",
-                        p,
-                        move |cx| {
-                            crate::app::helpers::gpui_copy_to_clipboard(
-                                ClipboardItem::new_string(full_command.clone()),
-                                cx,
-                            )
-                        },
-                    )),
-            );
+            });
         let bubble = |content: AnyElement| {
             div()
                 .max_w(gpui::relative(0.8))
@@ -282,6 +271,9 @@ impl NativeChatView {
                 .bg(p.input)
                 .child(content)
         };
+        // The copy button floats outside the bubble on its left, the message action of an ordinary
+        // prompt, shown while the row is hovered.
+        let copy = self.shell_command_copy_action(message, &full_command, p, cx);
         let mut column = div()
             .flex()
             .flex_col()
@@ -290,10 +282,19 @@ impl NativeChatView {
             .w_full()
             .min_w_0()
             .child(
-                bubble(header.into_any_element())
-                    .group(GROUP)
-                    .px(px(12.0 * s))
-                    .py(px(8.0 * s)),
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .gap(px(4.0 * s))
+                    .w_full()
+                    .min_w_0()
+                    .child(copy)
+                    .child(
+                        bubble(header.into_any_element())
+                            .px(px(12.0 * s))
+                            .py(px(8.0 * s)),
+                    ),
             );
         // The output opens in a bubble of its own below the header, which keeps its collapsed size;
         // the header is its toggle, so it carries no rail.
@@ -347,17 +348,31 @@ impl NativeChatView {
         p: &ChatAppearance,
     ) -> StyledText {
         let gap = "\u{2002}";
-        let run = |len: usize, family: String, color: gpui::Hsla| gpui::TextRun {
-            len,
-            font: gpui::font(family),
-            color,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
+        let run = |len: usize, family: String, weight: gpui::FontWeight, color: gpui::Hsla| {
+            let mut font = gpui::font(family);
+            font.weight = weight;
+            gpui::TextRun {
+                len,
+                font,
+                color,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }
         };
         let runs = vec![
-            run(name.len() + gap.len(), p.font.clone(), heading),
-            run(preview.len(), CHAT_MONO.to_string(), p.muted),
+            run(
+                name.len() + gap.len(),
+                p.font.clone(),
+                gpui::FontWeight::MEDIUM,
+                heading,
+            ),
+            run(
+                preview.len(),
+                CHAT_MONO.to_string(),
+                gpui::FontWeight::NORMAL,
+                p.muted,
+            ),
         ];
         StyledText::new(format!("{name}{gap}{preview}")).with_runs(runs)
     }
@@ -392,15 +407,19 @@ impl NativeChatView {
             .aria_expanded(expanded)
             .flex()
             .items_center()
-            .gap(px(6.0 * s))
-            .rounded(px(4.0 * s))
+            .gap(px(8.0 * s))
+            .px(px(ROW_PAD_X * s))
+            .py(px(2.0 * s))
+            .rounded(px(8.0 * s))
+            .text_size(px(13.5 * s))
             .text_color(p.muted)
             .chat_cursor_pointer()
-            .hover(|style| style.bg(p.border.opacity(0.4)))
+            .hover(|style| style.bg(p.foreground.opacity(0.03)))
             .child(
+                // The chevron sits in a slot as wide as the rows' glyph tiles, so the label
+                // starts where their names do.
                 div()
-                    .w(px(16.0 * s))
-                    .ml(px(2.0 * s))
+                    .w(px(TILE * s))
                     .h(px(22.75 * s))
                     .flex()
                     .items_center()
@@ -438,13 +457,24 @@ impl NativeChatView {
         let failed = tool["failed"] == true;
         let name = text(tool, "name");
         let preview = text(tool, "preview");
+        let failure = text(tool, "failure");
+        let duration = text(tool, "duration");
+        let status = text(tool, "status");
         let subagent = text(&tool["subagent"], "name");
-        let heading = if failed { p.error() } else { p.primary };
+        let heading = if failed { p.error() } else { p.foreground };
         let toggle_key = key.clone();
         let a11y_label = match (subagent.is_empty(), preview.is_empty()) {
             (true, true) => format!("Tool {name}"),
             (true, false) => format!("Tool {name}: {preview}"),
             (false, _) => format!("Tool {name} ({subagent}): {preview}"),
+        };
+        // The preview is the tool's argument, which simple mode hides, followed by what failed
+        // when it failed, which every mode shows.
+        let preview = if p.simple { String::new() } else { preview };
+        let preview = match (preview.is_empty(), failure.is_empty()) {
+            (_, true) => preview,
+            (true, false) => failure,
+            (false, false) => format!("{preview} \u{b7} {failure}"),
         };
         let mut trigger = div()
             .id(key.clone())
@@ -455,20 +485,24 @@ impl NativeChatView {
             .flex()
             .items_center()
             .min_w_0()
-            .gap(px(6.0 * s))
-            .rounded(px(4.0 * s))
+            .gap(px(8.0 * s))
+            .px(px(ROW_PAD_X * s))
+            .py(px(5.0 * s))
+            .rounded(px(8.0 * s))
+            .text_size(px(13.5 * s))
+            .when(failed, |this| this.bg(p.error().opacity(0.06)))
             .when(has_detail, |this| {
                 this.chat_cursor_pointer()
-                    .hover(|style| style.bg(p.border.opacity(0.4)))
+                    .hover(|style| style.bg(p.foreground.opacity(0.03)))
                     .on_click(
                         cx.listener(move |view, _, _, cx| view.toggle_disclosure(&toggle_key, cx)),
                     )
             })
             .child(
                 div()
-                    .w(px(16.0 * s))
-                    .ml(px(2.0 * s))
-                    .h(px(22.75 * s))
+                    .size(px(TILE * s))
+                    .rounded(px(6.0 * s))
+                    .bg(p.foreground.opacity(0.05))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -476,35 +510,53 @@ impl NativeChatView {
                     .child(
                         gpui::svg()
                             .path(glyph_icon(tool["glyph"].as_str().unwrap_or("tool")))
-                            .size(px(14.0 * s))
+                            .size(px(13.0 * s))
                             .text_color(p.muted),
                     ),
             );
-        // The preview is the tool's argument; a subagent row shows the agent instead, and simple mode shows neither.
-        // It takes only the width it needs and shrinks with an ellipsis when it cannot have that,
-        // so the chevron follows the text instead of being pushed to the pane's right edge
-        // (React's `.ghostex-chat-work-preview`, which never grows either).
-        trigger = if !preview.is_empty() && subagent.is_empty() && !p.simple {
+        // A subagent row shows the agent instead of the preview. The text takes the row's free
+        // width and truncates, so the duration and the status sit at the right edge.
+        let fills = subagent.is_empty();
+        trigger = if !preview.is_empty() && subagent.is_empty() {
             trigger.child(
                 div()
+                    .flex_1()
                     .min_w_0()
                     .truncate()
                     .child(Self::name_and_preview(name, preview, heading, p)),
             )
         } else {
-            trigger.child(div().flex_shrink_0().text_color(heading).child(name))
+            trigger.child(
+                div()
+                    .when(fills, |this| this.flex_1())
+                    .min_w_0()
+                    .truncate()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(heading)
+                    .child(name),
+            )
         };
-        if has_detail {
+        if !duration.is_empty() {
+            trigger = trigger.child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(11.5 * s))
+                    .text_color(p.muted.opacity(0.75))
+                    .child(duration),
+            );
+        }
+        let status_icon = match status.as_str() {
+            "done" => Some(("titlebar/check.svg", p.success())),
+            "failed" => Some(("titlebar/x.svg", p.error())),
+            _ => None,
+        };
+        if let Some((icon, color)) = status_icon {
             trigger = trigger.child(
                 gpui::svg()
-                    .path(if expanded {
-                        "titlebar/chevron-down.svg"
-                    } else {
-                        "titlebar/chevron-right.svg"
-                    })
-                    .size(px(12.0 * s))
+                    .path(icon)
+                    .size(px(13.0 * s))
                     .flex_shrink_0()
-                    .text_color(p.muted),
+                    .text_color(color),
             );
         }
         let mut row = div().flex().flex_col().min_w_0().w_full().gap(px(4.0 * s));
@@ -589,6 +641,13 @@ impl NativeChatView {
                     detail,
                     cx,
                 );
+                // The rail hangs from the middle of the glyph tile, which the row's padding moved
+                // right of the marker column the rail is measured from.
+                let body = div()
+                    .pl(px((ROW_PAD_X + TILE / 2.0 - 10.0) * s))
+                    .min_w_0()
+                    .child(body)
+                    .into_any_element();
                 row = row.child(self.disclosure_body_motion(&key, motion, 4.0 * s, body));
             }
         }

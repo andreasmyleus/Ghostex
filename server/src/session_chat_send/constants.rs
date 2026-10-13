@@ -19,6 +19,9 @@ pub const SESSION_CHAT_SUBMIT: &str = "\r";
 /// Empryo's Alt+Q, which sends its input at once while idle and queues it as a turn of its own
 /// while one runs; Enter there would steer the running turn instead.
 pub const SESSION_CHAT_EMPRYO_SUBMIT: &str = "\u{1b}q";
+/// Claude Code's `chat:sendNow` chord, Ctrl+X Ctrl+S: it stops the running turn and sends what
+/// Claude has queued, and does nothing while no turn runs.
+pub const SESSION_CHAT_CLAUDE_SEND_NOW: &str = "\u{18}\u{13}";
 /*
 CDXC:Clipboard 2026-08-24:
 Why the Enter is closed-loop. The old sequence wrote the paste body, slept

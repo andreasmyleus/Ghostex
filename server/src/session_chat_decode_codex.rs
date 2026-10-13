@@ -115,6 +115,7 @@ fn codex_response_item(
                 output: codex_tool_search_output(payload.get("tools")),
                 is_error: None,
                 call_id: None,
+                patch: None,
             }],
         )),
         /*
@@ -564,6 +565,7 @@ fn codex_tool_result(output: Option<&Value>) -> SessionChatBlock {
         output: tool_result_output(content),
         is_error: if is_error { Some(true) } else { None },
         call_id: None,
+        patch: None,
     }
 }
 

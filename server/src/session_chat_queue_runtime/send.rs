@@ -36,10 +36,14 @@ pub(crate) async fn send_session_chat_message_internal(
         image_paths,
         source,
         None,
+        false,
     )
     .await
 }
 
+/// The pause after an interrupt and send's Escape, so the agent ends its turn before the message
+/// is typed instead of taking it into the turn it is stopping.
+const INTERRUPT_BEFORE_SEND_SETTLE_MS: u64 = 1_000;
 /// How much longer a send keeps watching the input box for a paste the first check missed.
 const LATE_PASTE_WATCH_MS: u64 = 6_000;
 /// The paste check of the one clear-and-retype attempt.
@@ -157,6 +161,7 @@ pub(crate) async fn send_session_chat_message_with_draft(
     image_paths: &[String],
     source: SessionChatMessageSource,
     draft_version: Option<&crate::session_chat_draft_versions::DraftVersion>,
+    interrupt: bool,
 ) -> std::result::Result<usize, DomainStateError> {
     if let Some(version) = draft_version {
         let db = open_gxserver_database(&state.paths).map_err(|error| DomainStateError {
@@ -232,6 +237,9 @@ pub(crate) async fn send_session_chat_message_with_draft(
                 crate::session_chat_local_command::anchor_session_chat_local_command(
                     command, &session,
                 );
+            }
+            if interrupt {
+                crate::session_chat_opencode::interrupt(&send_id, None)?;
             }
             crate::session_chat_opencode::Client::discover()?.send(
                 &send_id,
@@ -435,6 +443,7 @@ pub(crate) async fn send_session_chat_message_with_draft(
         terminal_agent.as_deref(),
         source,
         drafted_text,
+        image_paths,
     )
     .await
     {
@@ -498,6 +507,25 @@ pub(crate) async fn send_session_chat_message_with_draft(
         image_paths,
         dismiss_claude_panel,
     );
+    if terminal_agent.as_deref() == Some("claude") {
+        crate::session_chat_send::remember_claude_sent_pictures(
+            &target.project_id,
+            &target.session_id,
+            text,
+            image_paths,
+        );
+    }
+    /*
+    CDXC:SessionChat 2026-10-11 DECISION:
+    User: "I'm having to switch to terminal to press ctrl + return in order to interrupt and send a prompt. should be able to send this from the chat view." Interrupt and send stops the agent's running turn and sends the message right away. Claude Code gets its own key for it after the message (Return queues the message while a turn runs, then `chat:sendNow` stops the turn and sends the queue). Every other agent gets chat Stop's Escape (Ctrl+C for Cursor) before the message, and only while it is mid-turn, so an idle agent just receives the message.
+    WHY: Claude's Ctrl+Enter only reaches it as a CSI-u sequence, so the send types the other binding of the same action, Ctrl+X Ctrl+S, as plain control bytes; verified live on Claude Code 2.1.296 through wmx (the turn stopped and the queued message was answered; with no turn running it does nothing). Escape first would make Claude hand its queued messages back to the input box, which the send's clear then erases. The Escape for the other agents is its own job, awaited before the message, because the interrupt guards end their job, which would drop the message with it.
+    */
+    let claude_send_now = interrupt && terminal_agent.as_deref() == Some("claude");
+    if claude_send_now {
+        steps.push(crate::session_chat_send::SessionChatSendStep::Write(
+            crate::session_chat_send::SESSION_CHAT_CLAUDE_SEND_NOW.to_string(),
+        ));
+    }
     /*
     CDXC:SessionChat 2026-09-10 DECISION:
     User: a slash command sent from chat must show up in chat for every agent,
@@ -555,6 +583,30 @@ pub(crate) async fn send_session_chat_message_with_draft(
         crate::session_chat_send::SessionChatSendStep::StopLocalCommandOutput,
     );
     let mid_turn_probe = super::agent_mid_turn_probe(state, &target, terminal_agent.as_deref());
+    if interrupt && !claude_send_now && mid_turn_probe.mid_turn().await {
+        let mut interrupt_steps =
+            crate::session_chat_send::session_chat_interrupt_escape_steps(agent.as_deref());
+        interrupt_steps.push(crate::session_chat_send::SessionChatSendStep::SleepMs(
+            INTERRUPT_BEFORE_SEND_SETTLE_MS,
+        ));
+        crate::session_chat_send::execute_session_chat_send(
+            &target.project_id,
+            &target.session_id,
+            &target.zmx_name,
+            "session-chat-interrupt",
+            interrupt_steps,
+        )
+        .await
+        .map_err(|error| DomainStateError {
+            code: "sessionInputFailed",
+            message: error.message,
+        })?;
+        crate::session_chat_send::record_session_chat_interrupt(
+            state,
+            &target,
+            "session-chat-interrupt-and-send",
+        );
+    }
     steps.insert(
         0,
         crate::session_chat_send::SessionChatSendStep::WaitOutBusyAgent(mid_turn_probe.clone()),
@@ -666,7 +718,7 @@ pub(crate) async fn send_session_chat_message_with_draft(
                 id,
             );
         }
-        return hold_for_restarted_agent(state, &target, source, drafted_text);
+        return hold_for_restarted_agent(state, &target, source, drafted_text, image_paths);
     }
     if let Err(error) = sent {
         if let Some(id) = durable_id.as_deref() {

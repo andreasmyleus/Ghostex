@@ -215,6 +215,8 @@ export interface TeamFlowStepState {
   label: string;
   status: TeamFlowStepStatus;
   detail: string;
+  /** The step may be skipped (the Slack thread): while it is not done it shows as unknown. */
+  optional?: boolean;
   /** Where the step's evidence opens (the Slack working thread, the validation thread). */
   url?: string;
 }

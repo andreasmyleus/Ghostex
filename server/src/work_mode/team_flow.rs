@@ -1,13 +1,17 @@
-//! A team's flow: the steps a ticket goes through (ticket, working thread, session, PR, review
-//! comments, CI, video, QC package, validation), each with the rule that says it is done. The
+//! A team's flow: the steps a ticket goes through (ticket, Slack thread, session, PR, video,
+//! review comments, CI, QC package, validation), each with the rule that says it is done. The
 //! steps are data stored per project or per workspace, with the user's team flow as the default,
 //! and the Work page's ticket details draw them as a tracker. A workspace connected to a team uses
 //! the team's steps from its Convex project instead (crate::team_sync::read_team_flow_steps).
 //!
-//! CDXC:WorkMode 2026-10-09 DECISION:
-//! User: the team-flow steps on each ticket are editable in Team flow settings from the start, so
-//! other teams can define their own steps, with "our flow as default" (ticket, working thread,
-//! session, PR, review comments, CI, video, QC package, validation).
+//! CDXC:WorkMode 2026-10-12 DECISION:
+//! User: the team-flow steps on each ticket are editable in Team flow settings, with "our flow as
+//! default", now in the order ticket, Slack thread, session, PR, video, review comments, CI, QC
+//! package, validation ("move video before review comments"). The working-thread step is called
+//! "Slack thread" and is optional ("make it optinoal step (question mark, gray) / we dont always
+//! have a working thread"): an optional step that is not done shows as unknown and the tracker's
+//! next step skips it. Its id stays `working-thread` so saved flows keep matching. Supersedes the
+//! 2026-10-09 order (video after CI) and the "Working thread" label.
 //!
 //! CDXC:WorkMode 2026-10-09 WHY:
 //! A step whose data Ghostex does not have is "unknown", never "done", so the tracker cannot claim
@@ -58,12 +62,12 @@ pub(crate) const TEAM_FLOW_RULES: &[(&str, &str, bool)] = &[
 pub(crate) fn default_team_flow_steps() -> Value {
     json!([
         { "id": "ticket", "label": "Ticket", "rule": { "kind": "ticketExists" } },
-        { "id": "working-thread", "label": "Working thread", "rule": { "kind": "slackWorkingThread" } },
+        { "id": "working-thread", "label": "Slack thread", "optional": true, "rule": { "kind": "slackWorkingThread" } },
         { "id": "session", "label": "Session", "rule": { "kind": "sessionLinked" } },
         { "id": "pr", "label": "PR", "rule": { "kind": "pullRequestExists" } },
+        { "id": "video", "label": "Video", "rule": { "kind": "videoApproved" } },
         { "id": "review-comments", "label": "Review comments", "rule": { "kind": "reviewCommentsResolved" } },
         { "id": "ci", "label": "CI", "rule": { "kind": "checksPassing" } },
-        { "id": "video", "label": "Video", "rule": { "kind": "videoApproved" } },
         { "id": "qc-package", "label": "QC package", "rule": { "kind": "pullRequestLabel", "label": "READY-FOR-QC" } },
         { "id": "validation", "label": "Validation", "rule": { "kind": "slackValidationPost" } }
     ])
@@ -274,7 +278,11 @@ pub(crate) fn validate_team_flow_steps(steps: &Value) -> Result<Value, DomainSta
             id = format!("step-{}", index + 1);
         }
         ids.push(id.clone());
-        output.push(json!({ "id": id, "label": label, "rule": Value::Object(clean_rule) }));
+        let mut clean_step = json!({ "id": id, "label": label, "rule": Value::Object(clean_rule) });
+        if step.get("optional").and_then(Value::as_bool) == Some(true) {
+            clean_step["optional"] = json!(true);
+        }
+        output.push(clean_step);
     }
     Ok(Value::Array(output))
 }
@@ -369,12 +377,16 @@ pub(crate) struct TeamFlowStepState {
     /// `done`, `current`, `pending`, `failed` or `unknown`.
     pub(crate) status: &'static str,
     pub(crate) detail: String,
+    /// The step may be skipped: when it is not done it shows as unknown, never as the next step.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) optional: bool,
     /// Where the step's evidence opens (the working thread, the validation thread).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) url: Option<String>,
 }
 
-/// Evaluates every step; the first step that is neither done nor unknown is the current one.
+/// Evaluates every step; the first step that is neither done nor unknown is the current one. An
+/// optional step that is not done is unknown, so it never holds up the flow.
 pub(crate) fn evaluate_team_flow(steps: &Value, facts: &TeamFlowFacts) -> Vec<TeamFlowStepState> {
     let mut states: Vec<TeamFlowStepState> = steps
         .as_array()
@@ -385,12 +397,18 @@ pub(crate) fn evaluate_team_flow(steps: &Value, facts: &TeamFlowFacts) -> Vec<Te
             let id = step.get("id").and_then(Value::as_str)?.to_string();
             let label = step.get("label").and_then(Value::as_str)?.to_string();
             let rule = step.get("rule").cloned().unwrap_or(Value::Null);
-            let (status, detail) = evaluate_rule(&rule, facts);
+            let optional = step.get("optional").and_then(Value::as_bool) == Some(true);
+            let (status, detail) = match evaluate_rule(&rule, facts) {
+                ("done", detail) => ("done", detail),
+                (_, detail) if optional => ("unknown", detail),
+                outcome => outcome,
+            };
             Some(TeamFlowStepState {
                 id,
                 label,
                 status,
                 detail,
+                optional,
                 url: rule_url(&rule, facts),
             })
         })

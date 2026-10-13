@@ -16,14 +16,21 @@ pub(crate) fn session_chat_queue_sender(
     let state = state.clone();
     let project_id = project_id.to_string();
     let session_id = session_id.to_string();
-    Arc::new(move |text: String| {
+    Arc::new(move |text: String, images: Vec<String>| {
         let state = state.clone();
         let project_id = project_id.clone();
         let session_id = session_id.clone();
         Box::pin(async move {
-            send_session_chat_message_internal(&state, &project_id, &session_id, &text, &[], source)
-                .await
-                .map(|_| ())
+            send_session_chat_message_internal(
+                &state,
+                &project_id,
+                &session_id,
+                &text,
+                &images,
+                source,
+            )
+            .await
+            .map(|_| ())
         })
     })
 }
@@ -84,6 +91,20 @@ pub(crate) fn session_chat_queue_composer_reader(
     let state = state.clone();
     Arc::new(move |project_id: &str, session_id: &str| {
         cached_session_chat_composer_readiness(&state, project_id, session_id)
+    })
+}
+
+pub(crate) fn session_chat_queue_waker(
+    state: &Arc<AppState>,
+) -> crate::session_chat_queue_runtime::SessionChatQueueWaker {
+    let state = state.clone();
+    Arc::new(move |project_id: &str, session_id: &str, prompt_id: &str| {
+        crate::session_chat_send_wake::wake_session_holding_startup_send(
+            &state,
+            project_id,
+            session_id,
+            Some(prompt_id.to_string()),
+        );
     })
 }
 

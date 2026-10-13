@@ -4,6 +4,7 @@
 //! Sessions and Experimental, in that order (CDXC:Settings 2026-08-24: each rail group's sections stay
 //! contiguous), then Reset to defaults.
 mod chat_tools;
+mod marked_sections_preview;
 mod powershell;
 mod sidebar;
 mod system;
@@ -31,6 +32,8 @@ pub(crate) struct GeneralTab {
     store: Entity<SettingsStore>,
     fields: FieldStates,
     powershell: powershell::PowerShellState,
+    /// The Marked sections style Preview dialog, while it is open (its focus, for Escape).
+    marked_preview: Option<gpui::FocusHandle>,
 }
 
 impl GeneralTab {
@@ -40,10 +43,14 @@ impl GeneralTab {
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe(&store, |_, _, cx| cx.notify()).detach();
+        let preview_state = store.read(cx).request().preview_state.clone();
         let mut page = Self {
             store,
             fields: FieldStates::default(),
             powershell: powershell::PowerShellState::default(),
+            // The preview binary's `marked-preview` state opens the Marked sections Preview.
+            marked_preview: (preview_state.as_deref() == Some("marked-preview"))
+                .then(|| cx.focus_handle()),
         };
         if settings_catalog().flag(module::SEARCH_CATALOG, "IS_WINDOWS_HOST") {
             page.load_powershell(cx);
@@ -365,12 +372,16 @@ impl Render for GeneralTab {
                     cx,
                 )),
         ));
-        div().size_full().child(settings_page(
-            &self.store,
-            SettingsTabId::General,
-            &g.p,
-            blocks,
-            cx,
-        ))
+        let preview = self.marked_sections_preview(&g, window, cx);
+        div()
+            .size_full()
+            .child(settings_page(
+                &self.store,
+                SettingsTabId::General,
+                &g.p,
+                blocks,
+                cx,
+            ))
+            .children(preview)
     }
 }

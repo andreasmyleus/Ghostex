@@ -507,12 +507,36 @@ impl ExtensionsTab {
             |page: &mut Self, _window, cx| page.save_custom_view(cx),
             cx,
         );
+        let saved_views = custom_views(&self.store.read(cx).values());
+        let delete = editor.id.clone().map(|id| {
+            // The saved name, not a rename still in the draft.
+            let name = saved_views
+                .iter()
+                .find(|saved| saved.id() == id)
+                .map_or_else(|| view.name().to_string(), |saved| saved.name().to_string());
+            settings_sized_button(
+                p,
+                "view-editor-delete",
+                "Delete",
+                Some(icon::TRASH),
+                None,
+                SizedButtonVariant::Destructive,
+                SizedButtonSize::Default,
+                false,
+                None,
+                move |page: &mut Self, window, cx| {
+                    page.request_delete_view(id.clone(), name.clone(), window, cx)
+                },
+                cx,
+            )
+        });
         rows.push(
             h_flex()
                 .w_full()
                 .py(px(12.0))
                 .gap(px(8.0))
                 .child(save_template)
+                .children(delete)
                 .child(div().flex_1())
                 .child(cancel)
                 .child(save)

@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 /// CDXC:SessionChat 2026-09-11 DECISION:
 /// User: show Summary mode between More actions and Session note when there is room; keep it in More actions in the compact toolbar.
 /// This order is also the order controls fold into More actions.
-pub(super) const COMPOSER_CONTROLS: [(&str, &str, &str, &str); 7] = [
+pub(super) const COMPOSER_CONTROLS: [(&str, &str, &str, &str); 8] = [
     (
         "summary",
         "summaryMode",
@@ -17,6 +17,12 @@ pub(super) const COMPOSER_CONTROLS: [(&str, &str, &str, &str); 7] = [
         "titlebar/list-details.svg",
     ),
     ("note", "sessionNote", "Session note", "titlebar/note.svg"),
+    (
+        "files",
+        "filesLinks",
+        "Files and links",
+        "titlebar/link.svg",
+    ),
     (
         "stash",
         "stashPrompt",
@@ -43,6 +49,9 @@ pub(super) const COMPOSER_CONTROLS: [(&str, &str, &str, &str); 7] = [
         "titlebar/terminal-2.svg",
     ),
 ];
+
+/// The Linux Attach button's trigger id, so a second press closes its Files/Folders menu.
+const ATTACH_PATH_TRIGGER: &str = "chat-attach-path";
 
 impl NativeChatView {
     pub(super) fn composer_control_overflowed(&self, id: &str) -> bool {
@@ -75,6 +84,7 @@ impl NativeChatView {
             "maximizeComposer" => self.toggle_maximized(window,cx),
             "summaryMode" => self.invoke(json!({"type":"toggleSummary"}),cx),
             "dictate" => self.toggle_dictation(window,cx),
+            "attachPath" if cfg!(target_os = "linux") && self.chat_menu_toggled_shut(ATTACH_PATH_TRIGGER, cx) => {}
             "attachPath" if cfg!(target_os = "linux") => self.show_chat_menu_at(vec![
                 json!({"label":"Images or files…","command":{"type":"host","action":"pickAttachments","requestId":"native-chat-attachments","selection":"files"}}),
                 json!({"label":"Folders…","command":{"type":"host","action":"pickAttachments","requestId":"native-chat-attachments","selection":"folders"}}),
@@ -83,6 +93,7 @@ impl NativeChatView {
             "stashPrompt" if !self.draft.trim().is_empty() => self.invoke(json!({"type":"stash","text":self.draft,"draftVersion":{"draftId":self.draft_id,"revision":self.draft_revision}}),cx),
             "stashPrompt" => self.host("stashedPrompts",json!({}),cx),
             "sessionNote" => self.invoke(json!({"type":"toggleNote"}),cx),
+            "filesLinks" => self.invoke(json!({"type":"filesLinks"}),cx),
             _ => self.host(action,json!({}),cx),
         }
     }

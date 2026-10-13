@@ -11,7 +11,8 @@
 //!     appended to the fence's info string;
 //!   * a GitHub alert quote (`> [!NOTE]`) becomes a marked, unquoted section;
 //!   * a finished ```mermaid fence is wrapped in marks, so the renderer draws the diagram, and a
-//!     finished ```visual (or ```vega-lite) fence likewise, so it draws the chart or page card;
+//!     finished ```visual (or ```vega-lite) fence likewise, so it draws the chart or page card, and
+//!     a finished ```questions fence, with the form's id, so it draws the question form;
 //!   * a picture written into prose becomes a marked token carrying its image source;
 //!   * a file reference written as inline code, or a path somebody typed into a prompt, becomes a
 //!     real Markdown link, so the native reference pill and the React file chip point at the same
@@ -53,6 +54,10 @@ pub const NATIVE_MERMAID_CLOSE: &str = "\u{e000}/mermaid";
 /// page card in place of the code.
 pub const NATIVE_VISUAL_OPEN: &str = "\u{e000}visual";
 pub const NATIVE_VISUAL_CLOSE: &str = "\u{e000}/visual";
+/// A finished ```questions fence: the chat draws the form whose id follows the colon
+/// (`question_forms.rs`), which the document's `questionForms` holds.
+pub const NATIVE_QUESTIONS_OPEN: &str = "\u{e000}questions:";
+pub const NATIVE_QUESTIONS_CLOSE: &str = "\u{e000}/questions";
 
 /// What the native code-block header shows, as JSON on the fence's info string.
 fn fence_header(info: &str) -> Option<String> {
@@ -269,13 +274,13 @@ fn fence_run(line: &str) -> Option<(u8, usize, &str)> {
 /// string, so an info string carrying a stray carriage return fails the match entirely and the line
 /// is NOT treated as a fence opener. A CRLF transcript therefore gets no code-block headers, which
 /// is what the shipped rules do and what this reproduces.
-fn fence_open(line: &str) -> Option<(u8, usize, &str)> {
+pub(crate) fn fence_open(line: &str) -> Option<(u8, usize, &str)> {
     let (character, run, rest) = fence_run(line)?;
     (!rest.contains(['\r', '\n', '\u{2028}', '\u{2029}'])).then_some((character, run, rest))
 }
 
 /// `^ {0,3}(`{3,}|~{3,})\s*$`, where `\s` does match a carriage return.
-fn fence_close(line: &str) -> Option<(u8, usize)> {
+pub(crate) fn fence_close(line: &str) -> Option<(u8, usize)> {
     let (character, run, rest) = fence_run(line)?;
     js_trim(rest).is_empty().then_some((character, run))
 }
@@ -398,6 +403,19 @@ fn is_table_delimiter(line: &str) -> bool {
     at == line.len()
 }
 
+/// Marked Markdown with its question forms back to plain code blocks: the marks go, the fence lines
+/// stay.
+pub fn without_question_forms(marked: String) -> String {
+    if !marked.contains(NATIVE_QUESTIONS_OPEN) {
+        return marked;
+    }
+    split_lf(&marked)
+        .into_iter()
+        .filter(|line| !line.starts_with(NATIVE_QUESTIONS_OPEN) && *line != NATIVE_QUESTIONS_CLOSE)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The line that closes a drawn fence (```mermaid, or a ```visual block) opened at `open`, when
 /// the fence is finished, with the marks that wrap it.
 ///
@@ -415,6 +433,8 @@ fn closed_drawn_fence(
         (NATIVE_MERMAID_OPEN, NATIVE_MERMAID_CLOSE)
     } else if ghostex_gx_visual::is_visual_language(language) {
         (NATIVE_VISUAL_OPEN, NATIVE_VISUAL_CLOSE)
+    } else if crate::transcript::question_forms::is_questions_language(language) {
+        (NATIVE_QUESTIONS_OPEN, NATIVE_QUESTIONS_CLOSE)
     } else {
         return None;
     };
@@ -452,7 +472,15 @@ fn mark_blocks(markdown: &str) -> String {
             if let Some((close, open_mark, close_mark)) =
                 closed_drawn_fence(&lines, index, character, run, info)
             {
-                result.push(open_mark.to_string());
+                result.push(if open_mark == NATIVE_QUESTIONS_OPEN {
+                    let body = lines[index + 1..close].join("\n");
+                    format!(
+                        "{open_mark}{}",
+                        crate::transcript::question_forms::form_id(&body)
+                    )
+                } else {
+                    open_mark.to_string()
+                });
                 result.extend(lines[index..=close].iter().map(|line| (*line).to_string()));
                 result.push(close_mark.to_string());
                 index = close + 1;

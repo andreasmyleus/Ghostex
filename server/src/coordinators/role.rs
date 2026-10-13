@@ -12,6 +12,18 @@ use crate::paths::GxserverPaths;
 /// CDXC:Coordinators 2026-10-09 DECISION:
 /// User: "If a tool call got rejected with ("STOP and wait") just as a thread report arrives then this is Ghostex's delivery Escape, not the owner pausing your work: retry the tool call and carry on." The playbook's "Waiting means ending your turn" section says so.
 ///
+/// CDXC:Coordinators 2026-10-11 DECISION:
+/// User: "pls make sure future orchestrators on customers pcs on 10.20.0 would behave like you are behaving now". The playbook's "Asking the user" part has orchestrators ask plain questions as an in-chat ```questions form (all open questions at once, never typed answers or the one-question-at-a-time built-in tool), visual questions as a page, and never resend an answered question.
+///
+/// CDXC:Coordinators 2026-10-11 DECISION:
+/// User: "i should never have to go into a inner thread to see questions or mockups or whatever ... I should only talk to u and you bring what needs my attentino from the threads under you since you're the orchestrator". The playbook's "Everything the user sees comes through you" section has the orchestrator ask a thread's questions and republish its pages from its own session (so answers come back to it), and the thread brief (brief.rs `thread_brief`) tells threads not to ask the user or publish pages themselves.
+///
+/// CDXC:Coordinators 2026-10-12 DECISION:
+/// User, on question numbers restarting at Q1 in a new form: "save this in the memory for this thread and for the orchestrator skill/instructinos please so users get this too!" The playbook's "Asking the user" section has the orchestrator tag every question Q1, Q2, … and keep counting across the whole conversation (forms, pages, questions asked again, a thread's questions brought to the user), never restarting, so a number always means one question.
+///
+/// CDXC:Coordinators 2026-10-12 DECISION:
+/// User: "when you say 'In progress' but don't share all of the actual in progress tasks this isn't nice because it makes me think some tasks aren't running when they actually are running", and for the threads started this turn: "let's call it 'Kicked off'". Then (2026-10-12), on a thread listed under both: "let's not share same update in 2 places pls". The playbook's "Talking to the user" section has a handover list the threads started this turn under 🛫 Kicked off and every other thread still working (from `ghostex orchestrator status`) under 🔄 In progress, so each running thread appears exactly once. Supersedes the 2026-10-11 wording that listed every working thread under In progress.
+///
 /// CDXC:Coordinators 2026-10-10 DECISION:
 /// User: "let's please rename "Coordinator" to "Orchestrator" everywhere so it's clearer to everyone." The playbook and the guide pointer call the role an orchestrator and name `ghostex orchestrator` verbs; the role file's name on disk and every internal name keep "coordinator".
 pub const COORDINATOR_ROLE_PROMPT: &str = include_str!("role.md");
@@ -35,8 +47,19 @@ pub fn coordinator_role_file(paths: &GxserverPaths) -> PathBuf {
 /// coordinator at its next launch or resume.
 pub fn ensure_coordinator_role_file(paths: &GxserverPaths) -> std::io::Result<PathBuf> {
     let path = coordinator_role_file(paths);
-    write_if_changed(&path, COORDINATOR_ROLE_PROMPT)?;
+    write_if_changed(&path, &coordinator_role_with_marked_handovers())?;
     Ok(path)
+}
+
+/// The playbook with the Marked handovers note after it: an orchestrator always marks its
+/// handovers (CDXC:MarkedHandovers in agents/marked_handovers.rs), so the role it loads at launch
+/// carries the note whatever the setting says.
+fn coordinator_role_with_marked_handovers() -> String {
+    format!(
+        "{}\n\n{}\n",
+        COORDINATOR_ROLE_PROMPT.trim(),
+        crate::agents::MARKED_HANDOVERS_NOTE
+    )
 }
 
 fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
@@ -83,8 +106,8 @@ pub fn ensure_empryo_coordinator_agent_file(paths: &GxserverPaths) -> std::io::R
     write_if_changed(
         &path,
         &format!(
-            "---\nname: {EMPRYO_COORDINATOR_AGENT_NAME}\ndescription: The Ghostex orchestrator role. Ghostex starts an orchestrator session with it; never delegate a task to it.\n---\n\n{}\n",
-            COORDINATOR_ROLE_PROMPT.trim()
+            "---\nname: {EMPRYO_COORDINATOR_AGENT_NAME}\ndescription: The Ghostex orchestrator role. Ghostex starts an orchestrator session with it; never delegate a task to it.\n---\n\n{}",
+            coordinator_role_with_marked_handovers()
         ),
     )?;
     Ok(path)
@@ -110,17 +133,23 @@ pub fn with_coordinator_role(
             "{command} --append-system-prompt-file {}",
             crate::agents::quote_shell_arg(&role_file.to_string_lossy())
         )),
-        "codex" => {
-            let value = serde_json::to_string(GUIDE_POINTER_COORDINATOR_INSTRUCTIONS)
-                .unwrap_or_else(|_| "\"\"".to_string());
-            Ok(format!(
-                "{command} -c {}",
-                crate::agents::quote_shell_arg(&format!("developer_instructions={value}"))
-            ))
-        }
+        "codex" => Ok(format!(
+            "{command} {}",
+            codex_developer_instructions_arg(GUIDE_POINTER_COORDINATOR_INSTRUCTIONS)
+        )),
         "zcode" | "empryo" => Ok(command.to_string()),
         _ => Err(DomainStateError::bad_request(format!(
             "An orchestrator runs on {COORDINATOR_AGENT_FAMILIES_TEXT}. Pick one of those agents."
         ))),
     }
+}
+
+/// The `-c developer_instructions=…` argument a Codex coordinator's command carries. Marked
+/// handovers (agents/marked_handovers.rs) finds it by this exact text to add its note to it.
+pub fn codex_developer_instructions_arg(text: &str) -> String {
+    let value = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        "-c {}",
+        crate::agents::quote_shell_arg(&format!("developer_instructions={value}"))
+    )
 }

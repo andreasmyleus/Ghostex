@@ -102,24 +102,29 @@ owner's picture, then the repo, the PR, and the Linear project (or GitHub
 Project) last. Click a row's ticket ID, PR number, repo name or project name to
 open that page (the ticket, the PR, the repo on GitHub, the project) in the
 app's browser. Click anywhere else on a row, or a ticket or PR chip on a session card, to see its
-details: the ticket and its latest comments, the PR with each check by name and
-its reviews, videos (Loom, YouTube and video files play right there), the
-sessions linked to it, and where it is in your team's flow (Ticket, Working
-thread, Session, PR, Review comments, CI, Video, QC package, Validation). Steps
-Ghostex cannot see, such as the video OK, show a question mark instead of a tick.
+details: the ticket and its latest comments, the PR with each check by name,
+its reviews and its description, videos (Loom, YouTube and video files play right there), the
+sessions linked to it, and where it is in your team's flow (Ticket, Slack
+thread, Session, PR, Video, Review comments, CI, QC package, Validation).
+Descriptions, comments and Slack messages show formatted the way Linear, GitHub
+and Slack show them (headings, bold, lists, checklists, tables, code and links).
+Steps Ghostex cannot see, such as the video OK, show a question mark instead of a tick,
+and so does an optional step that isn't done yet (Slack thread is optional, since
+not every ticket has one); the next step never waits for an optional one.
 In a Work workspace connected to its team (see the team backend under Git and
 worktrees), each row shows how many Slack threads the ticket has, and the details
 show every thread: its channel, the first message and the latest replies with who
 wrote them and when, files, links, and Loom or YouTube videos that play right
 there, with **Open in Slack**; the ticket's working thread is marked as such.
-Working thread is ticked once the ticket has one (click the step to open it), and
+Slack thread is ticked once the ticket has a working thread (click the step to open it), and
 Validation once the request shows up in a watch-only channel or a session posted
 the final result. **Conversations** also lists the sessions your teammates (and
 you, in the cloud or on another computer) run on the ticket, with **Open in
 Claude** and **Open in terminal** for a cloud session; watching a teammate's conversation is not available
 yet. Without a team, as in a Personal workspace, these stay as they are. To
 change the steps, open Settings > Workspaces and use
-the workspace's **Team-flow steps**: reorder, rename or remove steps, add one with
+the workspace's **Team-flow steps**: reorder, rename or remove steps, tick
+**Optional** on a step the team can skip, add one with
 the rule that marks it done (for example "The pull request has a label" with
 `READY-FOR-QC`), then **Save steps**; **Reset to default** goes back to the
 default flow. In a workspace connected to a team the steps are the team's, shared
@@ -410,8 +415,8 @@ Each workspace has its own projects, Spaces,
 Linear API key, Claude account and Browser sign-ins (cookies), and a window
 shows one workspace at a time. Every install starts with one workspace,
 Personal, holding all your projects and Spaces. The workspace button sits at
-the left end of the Space row (with Spaces off, it shows in that row once you
-have a second workspace): the workspace's letter with a small arrow beside it.
+the bottom left of the sidebar, in its bottom bar: the workspace's letter with
+a small arrow beside it.
 Click the letter to switch this window to your other workspace in one click
 (with more than two, it goes back to the one this window showed last; hover it
 to see where it goes). If another window already shows that workspace, that
@@ -727,6 +732,10 @@ syncs those names without running a first-prompt title job or blocking terminal
 input. Pi and OMP use the Title Generation Agent for first-prompt names.
 Manual Generate Name and `/rename` in chat remain available for Claude and Codex.
 In a Hermes chat, `/rename <name>` is sent as Hermes' own `/title <name>`.
+A renamed agent session shows its new name right away, on the computer and the
+phone, while the agent saves it. If the agent has not taken the name within 8
+seconds, the old name comes back with a short shake; open Rename again and the
+name you tried is already filled in, so you can send it again.
 Renaming an Empryo session from Ghostex (the Rename dialog or `ghostex rename-command`)
 types Empryo's own `/tab rename <name>`, so Empryo keeps the name too, and the
 Rename dialog's Generate Name can name an Empryo session from its recent messages.
@@ -789,9 +798,9 @@ when you open it.
   Cmd+K, the Actions button at the bottom right, or a right-click lists
   everything else the row can do (star, tag, copy, edit, delete, remove, New
   Prompt) with each action's hotkey. Cmd+Shift+P opens Commands directly to
-  search app commands, pane actions, and project actions. The Commands row at
-  the bottom of the sidebar opens the same thing, and the gear beside it opens
-  Settings in one click.
+  search app commands, pane actions, and project actions. The lightning button
+  at the bottom right of the sidebar opens the same thing, and the gear beside
+  it opens Settings in one click.
   Previous Sessions in More Options lists past conversations from every agent
   CLI with resume and fork. The History icon immediately to the
   right of Add Worktree on a project header opens Quick Access > Sessions with
@@ -865,6 +874,8 @@ again. Copy still copies the whole message.
 Hover a message to show its actions and the time it was sent in a row below
 it: Copy message, Reply by Annotating, and Save to md under an agent's final
 reply; Rewind to here, Save prompt, and Copy message under your own messages.
+On the phone there is no hover: hold a message to open its menu with Copy,
+Add to Chat and the same actions; nothing shows under a message until you do.
 Hover the time to see the full date. When the session you are in shows its
 chat, Cmd+Shift+; copies the last code block the agent wrote and Cmd+Shift+C
 copies the agent's last reply (Mac only; on Windows and Linux Ctrl+Shift+C stays
@@ -895,6 +906,16 @@ in its terminal, so sending one switches to Terminal View. Your next chat messag
 or switching back to Chat View on the computer, closes the side conversation first.
 Claude panels such as `/status` and `/usage` show as clickable tabs, tables and
 usage meters instead of terminal text.
+`/resume` works from the chat. In Claude Code and Codex chats it opens a Resume a
+conversation card listing the agent's own conversations: type to search, Up and
+Down move, Enter resumes the highlighted one, Escape cancels, or click a row (tap it
+on the phone). The card follows the agent's list as you go, and once you pick, the
+chat switches to that conversation. Other agents' pickers and menus that take over
+their terminal (and Codex screens the chat can't read) show that part of the terminal
+in a card instead. While that card is up it has the chat's keyboard: letters, numbers,
+the arrow keys, Enter and Escape go straight to the agent, even if you were typing a
+message. Click Return keyboard to chat on the card to type in the chat box again. On
+the phone, the card's key buttons send the keys.
 A new Claude Code install's first-run setup is answered in the chat too: the
 text style, the login method, and Sign in to Claude, where you paste the code the
 browser sign-in page shows and press Sign in (Retry appears if the code was wrong).
@@ -930,7 +951,9 @@ terminal). Commands: `ghostex send-session-chat-message`,
 `ghostex answer-session-chat-prompt`.
 Sending a message to a sleeping session wakes it. While the agent is still
 starting, the message shows in the chat right away and is typed in as soon as
-the agent's input box appears. If Claude Code has its settings, a plugin
+the agent's input box appears. It keeps waiting for as long as the session is
+open, even if you close Ghostex, and until it goes out you can edit or delete it
+from the buttons under the message. If Claude Code has its settings, a plugin
 recommendation, or its background-agents list over the input box, sending closes
 it first (a recommendation is declined for now). A question or approval the
 agent is waiting on still has to be answered in its card.
@@ -992,19 +1015,38 @@ view you can zoom and pan. The web chat shows the diagram's source.
 Agents can show charts, tables, stat tiles, and short text layouts right in the
 chat, drawn in the chat's own colors on desktop, web, and mobile. For things a
 chart can't show, such as a UI mockup or a small interactive tool, the agent
-writes an HTML page and the chat shows a card for it. On desktop the card opens
+writes an HTML page and the chat shows a card for it with a small preview
+picture of the page, the same on desktop, web, and mobile. The picture is taken
+the first time you open the page in the Ghostex desktop app (and again after you
+answer it); until then the card shows the page's file name. On desktop the card opens
 the page in a floating window over the chat, which closes when you click away
 or press Escape; its header can open the page in your browser instead. A page
 the agent publishes for the browser, and pages on web and mobile, open in the
 browser. Agents do this when you ask for `$ghostex-visuals` in your
 prompt; they never use it on their own. Install the skill from Settings >
 Integrations (Ghostex Visuals) or with `ghostex visual install-skill`. Pages
-open in a sandbox and can't reach your computer's files or Ghostex. Commands:
+open in a sandbox and can't reach your computer's files or Ghostex.
+When the agent needs your decisions, it asks them as a form right in the chat
+on desktop, web, and mobile: every question at once, with choices you click
+and a note box for each. Nothing is picked for you (the agent may mark the
+option it recommends), every choice question has an Other / none of these
+choice, and you can leave any question blank or click a choice again to clear
+it. Send (or Ctrl+Enter, Cmd+Enter on macOS, from anywhere in the form or
+page) delivers your answers to the agent as a message (when the agent is
+busy, they wait in the chat's queue and go as soon as it is free), the chat
+shows them as a card, and the form then reads Answered. Questions that need a picture,
+such as choosing between two mockups, come as a page instead, where you can
+also pick an option right at its mockup and add a note under each mockup. A
+page works the same way: its card reads Answered once you send, and opening it
+again shows what you sent. On desktop the floating window closes once your answers are
+sent, and stays open with the error if they could not be. Until you send,
+what you picked and typed is kept, in a form and on a page alike, even when
+you close the page or the chat, switch sessions, or restart. Commands:
 `ghostex show <file.html>`
 publishes a page and prints the block that shows its card (`--browser` opens it
 in the browser instead of floating), and
-`ghostex visual check <file.json>` draws a chart block to an image so the agent
-can check it before replying.
+`ghostex visual check <file.json>` draws a chart block to an image, or lists a
+question form's questions, so the agent can check it before replying.
 
 Use Cmd+P (Recent Sessions) to jump between chats across projects, or
 Cmd+[ and Cmd+] to go back and forward through visited sessions, the same keys
@@ -1079,6 +1121,12 @@ in the same place for 2 seconds. If a Claude message is cancelled before it is
 accepted, its text returns to the chat composer for editing. Rewind to here
 also returns the selected text when the message was never accepted, keeping
 anything already in the composer (`ghostex interrupt-session-chat <session>`).
+To stop the agent and send a new message at once, press Ctrl+Enter in the chat box
+(on every platform, the same key Claude Code uses in the terminal), or right-click
+Send and choose Interrupt & Send; on the phone, choose Interrupt & Send in More
+actions. It is offered while the agent is working; Claude Code stops its turn and
+takes the message the way its own Ctrl+Enter does, and other agents are stopped as
+with Escape before the message is sent. While the agent is idle, Ctrl+Enter just sends.
 Codex rewind continues in a new conversation before the selected prompt and
 returns that prompt for editing. If the chat cannot reconnect after the rewind,
 choose Retry synchronization in the dialog to reconnect without rewinding again
@@ -1087,7 +1135,10 @@ Sending in a new chat shows your message immediately in the conversation while
 Ghostex waits for the agent to be ready. It appears once, with a spinner beside the
 bubble's bottom-left corner while it waits; you can retry or remove it if delivery fails.
 A message sent while the agent is still working shows a play button there instead:
-click it to interrupt the agent (one Escape) so it takes that message right away. Prompts you explicitly
+click it to interrupt the agent (one Escape) so it takes that message right away. For Claude Code,
+Back to composer in that message's actions (hover it; on the phone, under the bubble) takes it out of
+Claude's queue and adds its text and pictures to your chat draft instead, unsent; pressing Up in an
+empty chat box does the same for the newest queued message, like Up in Claude's own input. Prompts you explicitly
 queue stay in the list above the input. This also applies when reopening the chat
 or continuing on another device.
 Claude children stay in the Subagents card while the terminal lists them, including
@@ -1138,7 +1189,11 @@ is available in the conversation. It clears when the turn ends, you stop the
 agent, or the agent asks for input. Completed searches and commands stay in
 that turn's expandable work details; changing model or effort does not bring
 them back. Background commands that are still running, compaction, and
-requests for approval keep their own status cards.
+requests for approval keep their own status cards. For Claude Code, the
+background card lists each command still running on its own row, named the way
+the agent described it, with how long it has been running; hover a row (press
+and hold on the phone) to see the command itself. When one finishes, a row in
+the chat says so, with its exit code only when it did not succeed.
 Chat follows the app theme by default. In Settings > Theme > Advanced, set Chat theme to Light, Dark, or System for a separate appearance, or choose Follow app to use the main Appearance (`sessionChatTheme`, `sidebarTheme`).
 
 Set Default Chat Zoom (%) in Settings > Chat to scale the desktop chat interface, including messages, controls, and the prompt composer. Choose 70% to 200% in 5% steps; the initial default is 100%. The saved level applies to open chats and when chats open again (`sessionChatZoomPercent`). With a chat focused, Cmd+= and Cmd+- (Ctrl on Windows and Linux) resize that chat for as long as it is open, and Cmd+0 returns it to the saved level.
@@ -1164,13 +1219,17 @@ section directly below it. Older history loads with completed turns already
 collapsed, so you can scroll through prompts and answers without passing through
 their tool logs first. Expanding older work or its files loads those details on
 demand; the original history remains available. The count includes each file once, even if it was
-edited repeatedly. Expand the section to see the files along an activity rail,
-with added lines in green and removed lines in red. Each file defaults to one
-collapsed row with its path and green/red change counts. Enable Show file edit
-previews in Settings > Chat to show the first seven code lines by default.
-Long paths truncate from the start, keeping the filename visible. Click anywhere
-on the path or filename to open it in Editor or Files, just like a file reference
-pill. Local folder links in desktop chat open your system file explorer; remote
+edited repeatedly. File changes show as one card per message (or per turn in
+that section): its header says how many files changed, the folder they share,
+and the total added and removed lines with a green/red ratio bar, and on the
+desktop Review all opens the project's Code view to review the changes. Each
+file is a row with its name, its folder, an Edited, New or Deleted tag, its
+green/red counts and a five-block change bar. Click a row to open its diff,
+with the file's own line numbers and the function each change sits in (for
+Claude sessions); under the first seven lines, Show all N changed lines shows
+the rest and Open file opens it in Editor or Files, just like a file reference
+pill. Enable Show file edit previews in Settings > Chat to open every row to its
+first seven lines by default. Local folder links in desktop chat open your system file explorer; remote
 folder links open in this computer's Code view so you can browse the remote files.
 File reference pills in the composer also open with one click using the same
 Code/Files preferences as transcript links. Double-click a composer pill to edit
@@ -1209,6 +1268,56 @@ the row to see the usual file and diff cards. The menu and Settings use the same
 toggle (`sessionChatSimpleMode`, on by default). The phone app has Simple mode too,
 under More actions > View in its chat box or in its Settings > Chat; the phone keeps
 its own switch, also on by default.
+
+Marked handovers: orchestrators and their threads always begin each part of
+the message they hand back with a marker: ❓ Needs you, ✅ Done, ⚠️ Read this,
+🛫 Kicked off (work started this turn), 🔄 In progress, 🧪 Untested, 🚀 Shipped or 🛑 Blocked, so a quick skim shows
+what needs you; a thread's report to its orchestrator is marked too. Turn on
+Marked handovers in every session (Settings > Chat, off by default) to have
+every other agent session do the same. The agent otherwise writes as usual. It
+reaches Claude Code, Codex and ZCode (and Empryo orchestrators). A change applies
+to sessions started or resumed afterwards; a running agent keeps the
+instructions it started with until it is resumed. The chat colours each marked section by
+its kind, in the style picked under Marked sections style right below the
+switch (shown while it is on): coloured labels (the default), a thin left rule, or a coloured
+badge naming the kind; the eye button next to it previews all three side by
+side. Show marker emojis, under it and off by default, adds the marker emoji
+to every style; while it is off the colour and the label show the kind.
+Copying a message still gives the agent's own text. The phone app sets both in
+its own Settings > Chat > Marked sections, which also offers Plain text.
+Settings: `markedHandovers`, `markedHandoversStyle` (`labels`, `rule`,
+`badge`), `markedHandoversEmoji`.
+
+Catch me up: turn on Catch me up button (Settings > Chat, off by default) and
+the chat box shows a Catch me up button at its top right while it is empty, on
+the computer and on the phone; it fades out as you start typing and back in
+when the box is empty again. Clicking it has your Title Generation Agent
+(Settings > Agents, a small, cheap model such as Claude Haiku or Codex's mini
+model) read the session's last 30 agent messages (and your messages between
+them) and opens a card above the chat box that says what
+the session is working on, then what needs you, what is blocked, in progress,
+done, untested, kicked off or shipped, coloured like marked handovers. It takes
+a few seconds; Refresh writes a fresh one, Copy copies it, and Close or the
+button again closes it. Nothing is sent to the session's own agent. If the
+Title Generation Agent is not installed, the card says so; pick another one in
+Settings > Agents. Setting: `chatCatchMeUp`.
+
+Files and links: the link button in the chat box's toolbar (after Session note;
+in More actions when the window is narrow) opens a list above the chat box of
+everything the session mentioned, on the computer and on the phone. Attachments
+holds every picture (pasted, attached, or shown by the agent) and every file
+you attached; Files holds every other file or folder you or the agent mentioned
+and every file the agent created, edited or deleted (tagged New, Edited or
+Deleted); Links holds every web address, with its link text. Each item is
+listed once, newest first, with how often and when it was first and last
+mentioned, and a filter box appears once the list is long. Click an item to
+open it: a picture in the image preview, a file the way a file link in the chat
+opens, a link in the browser. First and Last (or Show) scroll the chat to the
+message that mentioned it; on the phone, hold a row to see them. In an
+orchestrator's chat the list also covers every one of its threads, done ones
+included, grouped by thread title, and Open thread opens the thread that
+mentioned the item. Agents can read the same list with `ghostex
+read-session-files-links <session> --json`.
 
 Summary mode folds each turn down to your prompt and an "Agent reply" row; the
 newest reply stays open, and older ones open with a click. The row holds every
@@ -1418,7 +1527,9 @@ conversation on the selected account. For a Claude background session,
 switching stops that conversation and its remaining jobs before resuming its
 saved history on the selected account. A card in the middle of Session Chat,
 over a dimmed conversation, shows the current and selected accounts, their usage
-percentages (including Claude's Fable limit), and the switch progress. It stays
+percentages (including Claude's Fable limit), and the switch progress. Renamed
+accounts appear as email - name; accounts without a custom name show just their
+email. Hide emails also applies to these labels. The card stays
 until the new account is confirmed and the conversation is ready on it, then
 briefly confirms success, or shows a failure with Retry switch and a close (X)
 button in its top-right corner that dismisses it everywhere. On phones and
@@ -1438,6 +1549,11 @@ including sessions that are already open, forks, and restored sessions, so a
 change there applies everywhere at once. To make one session behave differently,
 open More actions > Switch Account and click Customize under Keep going at a
 limit; Use session defaults returns it to the Settings values.
+A sleeping session whose account is already at its limit wakes on another
+account that has room. When every account set to Automatic is full, the
+session's chat shows "Weekly limit reached on every account" (or whichever limit
+it hit) with when it continues on its own, and the bell gets one notification;
+both go away once the session switches or resumes.
 Account sign-in terminals open in the active local project's folder and appear
 under that project. Before a first project is chosen, sign-in uses the home folder.
 When a newer usage reading cannot be fetched for a Claude account, for example
@@ -1714,9 +1830,13 @@ still starting, and fails with the reason when the agent did not take it. If Gho
 a queued message, the row stays in the recipient's queue marked Not delivered
 with Retry and Delete, and the sending agent gets a note saying so. `agents close
 <session-ref>` ends that session, including any unfinished work. `ghostex read-session-chat` and `ghostex read-text` read replies.
-In the chat, a message another agent sent shows as a "Message from" card with
-its first two lines; click it to read the rest. A message the session's own
-agent sent shows as a "Message to" card, closed until you click it.
+In the chat, a message between agents is one line with that agent's logo,
+named after the other session's title: Message from "<session title>" for one
+another agent sent, Message to "<session title>" for one this session's agent
+sent. Click the line to read the whole message. One command that sends the same
+message to several sessions is a single "Message to 2 sessions" line that lists
+each recipient when opened. A session Ghostex cannot find any more reads
+"Message from another agent".
 An agent can also read or search any other thread, including a sleeping one:
 `ghostex read-session-chat <session> --all --format text` prints the whole
 conversation, and `--grep "<words>" --context 1` finds where a topic came up.
@@ -2489,14 +2609,20 @@ backend: `ghostex team deploy|join|invite|identity|status|ping|leave`. Slack:
   absent wherever it is hidden, so its hotkeys and command palette entries go
   away with it. Custom views under Your views keep their own Available in
   picker inside their own editor.
+  To delete one of your own views, open it with its pencil button and press
+  **Delete** at the bottom of its editor (or hover its card and click the
+  trash button), then confirm. The view is removed from every project and its
+  tab closes. Built-in views and the built-in templates cannot be deleted, only
+  switched off; a template you saved yourself has its own remove button in the
+  Add view template list.
   Its Account usage in the sidebar section lets you star saved Claude and Codex
   accounts to show their usage at the bottom of the desktop sidebar, or unstar
   them to hide it. These are the same per-account stars available in
   Settings > Accounts. The meters are hidden until you ask for them: hover the
-  chart button in the sidebar's Commands row, just left of the Settings gear,
+  chart button in the sidebar's bottom bar, just left of the Settings gear,
   and every starred account floats over the bottom of the list, four per row,
   without moving the list. The button turns into a pin while you hover it:
-  click it to keep the meters there above the Commands row, and click it again
+  click it to keep the meters there above the bottom bar, and click it again
   (the pin shows filled while they are pinned) to unpin them. Ghostex remembers
   whether they are pinned. The button itself is only there once you have
   starred an account.
@@ -2614,8 +2740,9 @@ backend: `ghostex team deploy|join|invite|identity|status|ping|leave`. Slack:
   that installs any other supported agent, the Ghostex helper (agent hooks)
   and Computer Use; which views to show (Browser and Files are on by default
   on a first run) and the browser skill; phone pairing and notifications;
-  and the first project folder with the default agent and session view,
-  next to the look: Appearance, the theme colour squares (Dark and Light tabs),
+  and the first project folder with the default agent, session view and
+  Agent approvals (Keep default or Skip permissions, the same setting as
+  Settings > Agents, `agentAcceptAllEnabled`), next to the look: Appearance, the theme colour squares (Dark and Light tabs),
   Colourfulness and one Transparency row (the simple choices from Settings >
   Theme), with a "More theme options in Settings > Theme" link that opens the
   Theme page. Turning transparency on there also switches Appearance to Dark. The very first run opens on a short
@@ -2741,9 +2868,8 @@ Related settings: `sidebarTheme`, `darkThemePreset`, `lightThemePreset`,
 
 ## Sending feedback
 
-The chat-bubble button at the top of the sidebar, after Search, opens Send
-Feedback (when the sidebar is too narrow the button moves into the sidebar
-menu; Search and Notifications always stay in the top row). Write what is broken, confusing or missing and paste
+The chat-bubble button in the sidebar's bottom bar, right of the workspace
+switcher, opens Send Feedback. Write what is broken, confusing or missing and paste
 screenshots into the text box with Cmd+V (Ctrl+V on Windows and Linux): up to
 five PNG, JPEG or WebP images of 5 MB each; a larger PNG screenshot is scaled
 down to fit. Review then shows the exact GitHub issue, title and description,

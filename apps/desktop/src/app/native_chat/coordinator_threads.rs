@@ -1,6 +1,6 @@
 //! A coordinator's Threads panel, pinned above the composer beside Tasks and Subagents: one list of
-//! its threads, each row opening that thread. Order, labels and the "N more" fold come from the core
-//! (packages/gx-chat-core/src/extras/coordinator_threads.rs).
+//! its threads, each row opening that thread. Order, labels and the steps ("Show recent", "N more")
+//! come from the core (packages/gx-chat-core/src/extras/coordinator_threads.rs).
 //!
 //! SEE-ALSO: apps/mobile/app/src/chat/native/cards/AgentPanels.tsx (`CoordinatorThreadsPanel`, the
 //! phone's twin), apps/desktop/src/app/session_chat/host_actions.rs (`openCoordinatorThread`).
@@ -37,7 +37,7 @@ impl NativeChatView {
             super::panel_card::PanelHeader {
                 id: "chat-coordinator-threads-header",
                 icon: "titlebar/users-group.svg",
-                title: "Threads",
+                title: "Threads".into(),
                 meta: text(&panel, "meta"),
                 open,
                 has_body: open || motion.is_some(),
@@ -67,18 +67,29 @@ impl NativeChatView {
             for row in panel["rows"].as_array().into_iter().flatten() {
                 rows = rows.child(self.coordinator_thread_row(row, p, cx));
             }
+            let empty = text(&panel, "emptyLabel");
+            if !empty.is_empty() {
+                rows = rows.child(
+                    div()
+                        .px(px(4.0 * s))
+                        .py(px(3.0 * s))
+                        .text_size(px(12.0 * s))
+                        .text_color(p.card_muted)
+                        .child(empty),
+                );
+            }
             body.push(rows.into_any_element());
             let more = text(&panel, "moreLabel");
             if !more.is_empty() {
-                let expanded = panel["showAll"] == true;
+                let step = panel["moreStep"].as_u64().unwrap_or(0);
                 body.push(
                     div()
                         .id("chat-coordinator-threads-more")
                         .role(gpui::Role::Button)
-                        .aria_label(if expanded {
-                            "Show fewer threads".to_string()
-                        } else {
-                            format!("Show {more} threads")
+                        .aria_label(match step {
+                            0 => "Show fewer threads".to_string(),
+                            1 => "Show recent threads".to_string(),
+                            _ => format!("Show {more} threads"),
                         })
                         .chat_cursor_pointer()
                         .text_size(px(12.0 * s))
@@ -87,7 +98,7 @@ impl NativeChatView {
                         .child(more)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.invoke(
-                                json!({"type":"toggleCoordinatorThreadsMore","expanded":!expanded}),
+                                json!({"type":"toggleCoordinatorThreadsMore","step":step}),
                                 cx,
                             )
                         }))

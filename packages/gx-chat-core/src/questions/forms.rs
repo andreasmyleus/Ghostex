@@ -1,0 +1,414 @@
+//! The reader's side of a question form (a ```questions block, `transcript/question_forms.rs`):
+//! picking choices, the note or text answer, sending the answers to the agent, and the saved picks.
+//!
+//! A choice question's picks follow the page kit (`server/src/visual_pages/kit.rs`): nothing starts
+//! picked, clicking a pick again clears it, one of N replaces the pick while many of N toggles, and
+//! "Other / none of these" (the row after the last choice) is a pick of its own whose note says
+//! what instead. The answers go into the session's chat queue as the `<ghostex-page-answers>`
+//! message, which gxserver types once the agent is idle; the form reads Queued until then and
+//! Answered once the transcript carries the message.
+
+use std::collections::BTreeMap;
+
+use serde_json::{json, Map, Value};
+
+use crate::document::QuestionDraft;
+use crate::effect::Effect;
+use crate::event::StorageKey;
+use crate::questions::drafts::{decode_drafts, encode_drafts, form_drafts_key, AnswerDrafts};
+use crate::state::{ChatContext, ChatState, FormSend, FormState};
+use crate::transcript::question_forms::{answers_message, QuestionForm, NOTE_SUFFIX, OTHER_CHOICE};
+use crate::wire::{ChatRpcMethod, RpcOutcome};
+
+fn form<'a>(state: &'a ChatState, id: &str) -> Option<&'a QuestionForm> {
+    state
+        .transcript_view
+        .question_forms
+        .iter()
+        .find(|form| form.id == id && form.error.is_empty())
+}
+
+/// The answers the transcript already carries for this form.
+fn received_answers<'a>(state: &'a ChatState, id: &str) -> Option<&'a Value> {
+    state
+        .transcript_view
+        .page_answers
+        .iter()
+        .find(|answers| answers.page_id == id)
+        .map(|answers| &answers.answers)
+}
+
+/// Whether the reader can still change the form. It never waits for the saved picks: the rows
+/// that find a new form are rebuilt after this family's sync, so their read can leave an event
+/// late, and picks the reader makes first win over it.
+fn open(state: &ChatState, id: &str) -> bool {
+    received_answers(state, id).is_none()
+        && state
+            .questions
+            .forms
+            .get(id)
+            .is_some_and(|entry| entry.send.is_none() && entry.sent.is_none())
+}
+
+fn answered(draft: &QuestionDraft) -> bool {
+    !draft.indices.is_empty() || draft.other_picked || !draft.other.trim().is_empty()
+}
+
+fn save(state: &ChatState, id: &str) -> Vec<Effect> {
+    let Some(entry) = state.questions.forms.get(id) else {
+        return Vec::new();
+    };
+    let drafts: AnswerDrafts = entry
+        .drafts
+        .iter()
+        .enumerate()
+        .filter(|(_, draft)| answered(draft))
+        .map(|(index, draft)| (index.to_string(), draft.clone()))
+        .collect();
+    vec![Effect::WriteStorage {
+        key: form_drafts_key(&state.identity.session_key, id),
+        value: encode_drafts(&drafts),
+        durable: false,
+    }]
+}
+
+/// `formChoice {form, question, choice}`: a click on a choice, where `choice` one past the last
+/// choice is "Other / none of these".
+pub fn pick(state: &mut ChatState, id: &str, question: usize, choice: usize) -> Vec<Effect> {
+    if !open(state, id) {
+        return Vec::new();
+    }
+    let Some(asked) = form(state, id)
+        .and_then(|form| form.questions.get(question))
+        .cloned()
+    else {
+        return Vec::new();
+    };
+    if asked.text || choice > asked.choices.len() {
+        return Vec::new();
+    }
+    let Some(entry) = state.questions.forms.get_mut(id) else {
+        return Vec::new();
+    };
+    entry.touched = true;
+    let Some(draft) = entry.drafts.get_mut(question) else {
+        return Vec::new();
+    };
+    let index = choice as u32;
+    if choice == asked.choices.len() {
+        draft.other_picked = !draft.other_picked;
+        if draft.other_picked && !asked.multiple {
+            draft.indices.clear();
+        }
+    } else if asked.multiple {
+        match draft.indices.iter().position(|picked| *picked == index) {
+            Some(at) => {
+                draft.indices.remove(at);
+            }
+            None => {
+                draft.indices.push(index);
+                draft.indices.sort_unstable();
+            }
+        }
+    } else if draft.indices == [index] {
+        draft.indices.clear();
+    } else {
+        draft.indices = vec![index];
+        draft.other_picked = false;
+    }
+    state.core.request_publish();
+    save(state, id)
+}
+
+/// `formText {form, question, text}`: the question's note, or a text question's answer.
+pub fn write(state: &mut ChatState, id: &str, question: usize, text: &str) -> Vec<Effect> {
+    if !open(state, id) {
+        return Vec::new();
+    }
+    let Some(entry) = state.questions.forms.get_mut(id) else {
+        return Vec::new();
+    };
+    entry.touched = true;
+    let Some(draft) = entry.drafts.get_mut(question) else {
+        return Vec::new();
+    };
+    draft.other = text.to_string();
+    state.core.request_publish();
+    save(state, id)
+}
+
+/// The answers as the agent receives them, keyed like the page kit's.
+fn answers(form: &QuestionForm, drafts: &[QuestionDraft]) -> Value {
+    let mut out = Map::new();
+    for (asked, draft) in form.questions.iter().zip(drafts) {
+        let note = draft.other.trim();
+        if asked.text {
+            out.insert(
+                asked.key.clone(),
+                if note.is_empty() {
+                    Value::Null
+                } else {
+                    json!(note)
+                },
+            );
+            continue;
+        }
+        let mut picked: Vec<Value> = draft
+            .indices
+            .iter()
+            .filter_map(|index| asked.choices.get(*index as usize))
+            .map(|choice| json!(choice.value))
+            .collect();
+        if draft.other_picked {
+            picked.push(json!(OTHER_CHOICE));
+        }
+        let value = if asked.multiple {
+            if picked.is_empty() {
+                Value::Null
+            } else {
+                Value::Array(picked)
+            }
+        } else {
+            picked.into_iter().next().unwrap_or(Value::Null)
+        };
+        out.insert(asked.key.clone(), value);
+        if !note.is_empty() {
+            out.insert(format!("{}{NOTE_SUFFIX}", asked.key), json!(note));
+        }
+    }
+    Value::Object(out)
+}
+
+/// `formSend {form}`: the answers go to the agent as a chat message.
+pub fn send(state: &mut ChatState, context: &ChatContext, id: &str) -> Vec<Effect> {
+    if !open(state, id) {
+        return Vec::new();
+    }
+    let Some(form) = form(state, id).cloned() else {
+        return Vec::new();
+    };
+    let drafts = state
+        .questions
+        .forms
+        .get(id)
+        .map(|entry| entry.drafts.clone())
+        .unwrap_or_default();
+    if !drafts.iter().any(answered) {
+        return Vec::new();
+    }
+    let answers = answers(&form, &drafts);
+    // See the SessionChat 2026-10-11 DECISION in server/src/visual_pages/answers.rs: answers go
+    // into the session's chat queue, which types them once the agent is idle, like a page's.
+    let request_id = state.core.allocate_request_id();
+    let effect = Effect::SendRpc {
+        request_id,
+        method: ChatRpcMethod::QueueSessionChatPrompt,
+        params: Box::new(json!({
+            "text": answers_message(&form, &answers),
+            "sendRequestId": format!("question-form-{id}-{}", context.now_millis()),
+        })),
+    };
+    if let Some(entry) = state.questions.forms.get_mut(id) {
+        entry.error = None;
+        entry.send = Some(FormSend {
+            request_id,
+            answers,
+        });
+    }
+    state.core.request_publish();
+    vec![effect]
+}
+
+/// The send's answer, or `None` when the id is not a form's.
+pub fn rpc_settled(
+    state: &mut ChatState,
+    request_id: u64,
+    outcome: &RpcOutcome,
+) -> Option<Vec<Effect>> {
+    let id = state
+        .questions
+        .forms
+        .iter()
+        .find(|(_, entry)| {
+            entry
+                .send
+                .as_ref()
+                .is_some_and(|send| send.request_id == request_id)
+        })
+        .map(|(id, _)| id.clone())?;
+    let sent = state.questions.forms.get_mut(&id)?.send.take()?;
+    state.core.request_publish();
+    match outcome {
+        // Queued: the saved picks stay until the transcript carries the answers (`sync`), so a
+        // queued message the user removes again leaves the form as it was after a reload.
+        RpcOutcome::Ok { .. } => {
+            if let Some(entry) = state.questions.forms.get_mut(&id) {
+                entry.sent = Some(sent.answers);
+            }
+            Some(Vec::new())
+        }
+        RpcOutcome::Err { message, .. } => {
+            if let Some(entry) = state.questions.forms.get_mut(&id) {
+                entry.error = Some(message.clone());
+            }
+            Some(Vec::new())
+        }
+    }
+}
+
+/// Adopts a form's saved picks.
+pub fn storage_loaded(state: &mut ChatState, id: &str, value: Option<&str>) {
+    let saved = value.map(decode_drafts).unwrap_or_default();
+    if let Some(entry) = state
+        .questions
+        .forms
+        .get_mut(id)
+        .filter(|entry| !entry.touched)
+    {
+        for (index, draft) in entry.drafts.iter_mut().enumerate() {
+            if let Some(stored) = saved.get(&index.to_string()) {
+                *draft = stored.clone();
+            }
+        }
+    }
+    state.core.request_publish();
+}
+
+/// Gives every open form its blank picks and asks for the saved ones, once, and forgets the saved
+/// picks of a form whose answers the transcript now carries.
+pub fn sync(state: &mut ChatState) -> Vec<Effect> {
+    let mut effects = Vec::new();
+    let session_key = state.identity.session_key.clone();
+    let answered: Vec<String> = state
+        .transcript_view
+        .page_answers
+        .iter()
+        .map(|answers| answers.page_id.clone())
+        .collect();
+    for (id, entry) in state.questions.forms.iter_mut() {
+        if !entry.cleared && answered.contains(id) {
+            entry.cleared = true;
+            effects.push(Effect::WriteStorage {
+                key: form_drafts_key(&session_key, id),
+                value: None,
+                durable: false,
+            });
+        }
+    }
+    let open_forms: Vec<(String, usize)> = state
+        .transcript_view
+        .question_forms
+        .iter()
+        .filter(|form| form.error.is_empty() && received_answers(state, &form.id).is_none())
+        .map(|form| (form.id.clone(), form.questions.len()))
+        .collect();
+    for (id, count) in open_forms {
+        let entry = state.questions.forms.entry(id.clone()).or_default();
+        if entry.load_requested {
+            continue;
+        }
+        entry.load_requested = true;
+        entry.drafts = vec![QuestionDraft::default(); count];
+        effects.push(Effect::ReadStorage {
+            key: form_drafts_key(&session_key, &id),
+        });
+    }
+    effects
+}
+
+/// The answers as the form shows them once sent: the picks they name.
+fn drafts_from_answers(form: &QuestionForm, answers: &Value) -> Vec<QuestionDraft> {
+    form.questions
+        .iter()
+        .map(|asked| {
+            let value = answers.get(&asked.key).unwrap_or(&Value::Null);
+            let note = answers
+                .get(format!("{}{NOTE_SUFFIX}", asked.key))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if asked.text {
+                return QuestionDraft {
+                    other: value.as_str().unwrap_or_default().to_string(),
+                    ..QuestionDraft::default()
+                };
+            }
+            let values: Vec<&str> = match value {
+                Value::Array(items) => items.iter().filter_map(Value::as_str).collect(),
+                Value::String(text) => vec![text.as_str()],
+                _ => Vec::new(),
+            };
+            QuestionDraft {
+                indices: asked
+                    .choices
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, choice)| values.contains(&choice.value.as_str()))
+                    .map(|(index, _)| index as u32)
+                    .collect(),
+                other: note.to_string(),
+                other_picked: values.contains(&OTHER_CHOICE),
+            }
+        })
+        .collect()
+}
+
+/// The document's `questionForms`: each form with what the reader picked, or what was sent.
+pub fn project(state: &ChatState) -> BTreeMap<String, Value> {
+    state
+        .transcript_view
+        .question_forms
+        .iter()
+        .map(|form| {
+            let entry = state.questions.forms.get(&form.id);
+            let fallback = FormState::default();
+            let entry = entry.unwrap_or(&fallback);
+            let sent = received_answers(state, &form.id).or(entry.sent.as_ref());
+            let (phase, drafts) = match (sent, entry.send.as_ref()) {
+                (Some(answers), _) if received_answers(state, &form.id).is_some() => {
+                    ("answered", drafts_from_answers(form, answers))
+                }
+                (Some(answers), _) => ("queued", drafts_from_answers(form, answers)),
+                (None, Some(send)) => ("sending", drafts_from_answers(form, &send.answers)),
+                (None, None) if entry.drafts.len() == form.questions.len() => {
+                    ("open", entry.drafts.clone())
+                }
+                (None, None) => ("open", vec![QuestionDraft::default(); form.questions.len()]),
+            };
+            let mut value = serde_json::to_value(form).unwrap_or_default();
+            if let Some(object) = value.as_object_mut() {
+                object.insert("state".to_string(), json!(phase));
+                object.insert(
+                    "canSend".to_string(),
+                    json!(phase == "open" && drafts.iter().any(answered)),
+                );
+                // CDXC:SessionChat 2026-10-12 DECISION: User: "i see the answer twice fam" (the answered form showed the picks and "Sent to the agent" while the answer message below repeated them); picked option c of docs/2026-10-12/handover-colors-and-answers/index.html: once the transcript carries a form's answers it collapses to one line (a check, the title, "Answered", a chevron) that opens the full read-only form and closes it again, collapsed by default and after a reload; the "You answered" card below stays as the record.
+                object.insert(
+                    "collapsed".to_string(),
+                    json!(phase == "answered" && !entry.expanded),
+                );
+                object.insert("otherLabel".to_string(), json!(OTHER_CHOICE));
+                object.insert("drafts".to_string(), json!(drafts));
+                object.insert(
+                    "sendError".to_string(),
+                    json!(entry.error.clone().unwrap_or_default()),
+                );
+            }
+            (form.id.clone(), value)
+        })
+        .collect()
+}
+
+/// `formToggle {form}`: opens an answered form's full view, or collapses it again.
+pub fn toggle(state: &mut ChatState, id: &str) {
+    if received_answers(state, id).is_none() {
+        return;
+    }
+    let entry = state.questions.forms.entry(id.to_string()).or_default();
+    entry.expanded = !entry.expanded;
+    state.core.request_publish();
+}
+
+/// Whether a storage key is a question form's, and which.
+pub fn form_of_key(key: &StorageKey) -> Option<String> {
+    crate::questions::drafts::form_of_drafts_key(key)
+}

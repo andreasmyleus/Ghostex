@@ -14,6 +14,7 @@ mod approval;
 mod async_questions;
 mod attachment_previews;
 mod attachments;
+mod background_tasks;
 mod binding;
 mod cards;
 mod chat_hotkeys;
@@ -44,13 +45,17 @@ mod menu_toggle;
 mod minimap;
 mod nested_scroll;
 mod new_session_welcome;
+mod catch_up;
+mod files_links;
 mod note;
 mod notice;
 mod pagination;
 mod panel_blocks;
 mod panel_card;
+mod ask_card;
 mod question;
 mod question_exchange;
+mod question_form;
 pub(crate) mod queue;
 mod reference_menu;
 mod rewind;
@@ -74,14 +79,21 @@ mod tool_run;
 mod code_block;
 mod keyboard;
 mod markdown_links;
+// The preview half of the look is used by Settings' own include of this file.
+#[allow(dead_code)]
+mod marked_look;
+pub(crate) mod marked_sections;
 mod mermaid;
 mod mermaid_render;
 pub(crate) mod markdown_style;
 mod maximized;
 mod message_actions;
+mod page_answers;
+mod page_card;
 mod rich_markdown;
 mod row_details;
 mod send_control;
+mod tone_card;
 mod toolbar;
 mod transcript_host;
 mod transcript_layout;
@@ -91,6 +103,7 @@ mod visual;
 mod visual_popup;
 
 mod terminal_dialog;
+mod terminal_picker;
 
 mod option_menu;
 

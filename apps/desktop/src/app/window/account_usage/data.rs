@@ -97,6 +97,30 @@ pub(super) fn exact_tokens(tokens: f64) -> String {
     result
 }
 
+/// How long ago `value` was, in the words gxserver's stale-usage notice uses ("3 days", "1 hour"), so the header and the notice name the same age.
+pub(super) fn age_text(value: &str) -> String {
+    let Some(ms) = timestamp(value) else {
+        return String::new();
+    };
+    let unit = |count: i64, name: &str| {
+        if count == 1 {
+            format!("1 {name}")
+        } else {
+            format!("{count} {name}s")
+        }
+    };
+    let minutes = ((now() - ms).max(0) as f64 / 60_000.).round() as i64;
+    if minutes < 1 {
+        "under a minute".into()
+    } else if minutes < 60 {
+        unit(minutes, "minute")
+    } else if minutes < 24 * 60 {
+        unit(minutes / 60, "hour")
+    } else {
+        unit(minutes / (24 * 60), "day")
+    }
+}
+
 pub(super) fn local_date(value: &str, with_date: bool) -> String {
     let Some(ms) = timestamp(value) else {
         return String::new();

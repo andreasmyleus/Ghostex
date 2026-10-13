@@ -175,6 +175,114 @@ fn gpui_local_process_is_alive(pid: u32) -> Result<bool, String> {
     }
 }
 
+/// Ends a local gxserver process that will not stop when asked. Native processes only: a WSL daemon is never taken over this way.
+#[cfg(unix)]
+pub(crate) fn gpui_terminate_local_gxserver_process(pid: u32) -> Result<(), String> {
+    let pid = libc::pid_t::try_from(pid).map_err(|_| "Invalid gxserver process ID.".to_string())?;
+    if unsafe { libc::kill(pid, libc::SIGKILL) } == 0 {
+        return Ok(());
+    }
+    Err(format!(
+        "Could not end gxserver process {pid}: {}",
+        std::io::Error::last_os_error()
+    ))
+}
+
+#[cfg(windows)]
+pub(crate) fn gpui_terminate_local_gxserver_process(pid: u32) -> Result<(), String> {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, WAIT_OBJECT_0},
+        System::Threading::{
+            OpenProcess, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess,
+            WaitForSingleObject,
+        },
+    };
+    // A WSL daemon reports a Linux pid, which names some other Windows process.
+    if matches!(
+        windows_terminal_backend::resolve_current(),
+        Ok(windows_terminal_backend::ResolvedWindowsTerminalBackend::Wsl { .. })
+    ) {
+        return Err(format!(
+            "gxserver process {pid} runs inside WSL and was not ended."
+        ));
+    }
+    let process = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, 0, pid) };
+    if process.is_null() {
+        return Err(format!(
+            "Could not end gxserver process {pid}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    unsafe { TerminateProcess(process, 1) };
+    let waited = unsafe { WaitForSingleObject(process, 10_000) };
+    unsafe { CloseHandle(process) };
+    if waited == WAIT_OBJECT_0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "gxserver process {pid} did not exit after it was ended."
+        ))
+    }
+}
+
+/// CDXC:ServerDaemon 2026-10-12 WHY:
+/// After a restart the port can be held by a gxserver of another build: one a `gxserver start` from the SSH side started from the not yet refreshed package, which the app's package refresh then marked `superseded`. The startup loop used to wait for it to go away for its whole patience and then show the startup diagnostics while the app ran on that old build. It is asked to stop, ended if it keeps answering, and the bundled daemon is started; returns the steps for the diagnostics report.
+/// SEE-ALSO: `bind_local_listener_taking_over_stale_holder` in server/src/server/stale_server_takeover.rs, which takes the port from a holder that does not answer at all.
+pub(crate) fn gpui_take_over_local_gxserver_from_other_build(binary: &Path) -> Vec<String> {
+    let started = std::time::Instant::now();
+    let mut steps = Vec::new();
+    let mut note = |text: String| {
+        steps.push(format!(
+            "takeover +{}ms: {text}",
+            started.elapsed().as_millis()
+        ))
+    };
+    let pid = gpui_local_gxserver_health_pid();
+    let stop = gxserver_post_typed_operation(
+        "/api/control/stop",
+        &serde_json::json!({}),
+        Duration::from_secs(5),
+    );
+    note(format!(
+        "asked gxserver {} of another build to stop: {}",
+        pid.map_or_else(|| "(pid unknown)".to_string(), |pid| pid.to_string()),
+        match &stop {
+            Ok((status, _)) => format!("HTTP {status}"),
+            Err(error) => error.clone(),
+        }
+    ));
+    let mut still_answering = true;
+    for _ in 0..20 {
+        std::thread::sleep(Duration::from_millis(250));
+        match gpui_probe_local_gxserver_health() {
+            GpuiLocalGxserverHealthState::BuildMismatch => {}
+            GpuiLocalGxserverHealthState::Healthy { .. } => {
+                note("the bundled build already answers".to_string());
+                return steps;
+            }
+            GpuiLocalGxserverHealthState::Unreachable
+            | GpuiLocalGxserverHealthState::ProtocolMismatch { .. } => {
+                still_answering = false;
+                break;
+            }
+        }
+    }
+    if still_answering {
+        match pid {
+            Some(pid) => note(match gpui_terminate_local_gxserver_process(pid) {
+                Ok(()) => format!("it kept answering, so process {pid} was ended"),
+                Err(error) => error,
+            }),
+            None => note("it kept answering and reported no pid".to_string()),
+        }
+    }
+    match gpui_spawn_local_gxserver_daemon(binary) {
+        Ok(launch_steps) => steps.extend(launch_steps),
+        Err(error) => steps.push(format!("launcher failed: {error}")),
+    }
+    steps
+}
+
 pub(crate) const GPUI_GXSERVER_DAEMON_TOAST_ID: &str = "toast-gxserver-daemon";
 
 /// How long a freshly spawned gxserver may take to answer its health check before startup counts as failed.

@@ -47,7 +47,10 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::RewindSubmit
         | ActionKind::SavePrompt
         | ActionKind::OpenMarkdownLink
-        | ActionKind::LoadImage => Family::Transcript,
+        | ActionKind::ReviewFileChanges
+        | ActionKind::OpenAgentSession
+        | ActionKind::LoadImage
+        | ActionKind::LoadPageThumbnail => Family::Transcript,
 
         ActionKind::Answer
         | ActionKind::QuestionText
@@ -55,6 +58,10 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::QuestionOption
         | ActionKind::QuestionNext
         | ActionKind::QuestionCancel
+        | ActionKind::FormChoice
+        | ActionKind::FormText
+        | ActionKind::FormSend
+        | ActionKind::FormToggle
         | ActionKind::AsyncQuestionToggle
         | ActionKind::AsyncQuestionNavigate
         | ActionKind::AsyncQuestionText
@@ -104,13 +111,23 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::UseIncomingDraft
         | ActionKind::RetryQueue
         | ActionKind::RemoveQueue
+        | ActionKind::TakeBackQueued
         | ActionKind::SendQueue
         | ActionKind::ReorderQueue
         | ActionKind::MoveQueue
         | ActionKind::ToggleNote
         | ActionKind::EditNote
         | ActionKind::ClearNote
-        | ActionKind::SaveNote => Family::Composer,
+        | ActionKind::SaveNote
+        | ActionKind::CatchUp
+        | ActionKind::CatchUpRefresh
+        | ActionKind::CatchUpClose
+        | ActionKind::FilesLinks
+        | ActionKind::FilesLinksRefresh
+        | ActionKind::FilesLinksClose
+        | ActionKind::FilesLinksFilter
+        | ActionKind::FilesLinksShowAll
+        | ActionKind::FilesLinksJump => Family::Composer,
 
         ActionKind::SelectOption
         | ActionKind::ModelMenuView
@@ -138,6 +155,7 @@ pub fn owner(kind: &ActionKind) -> Option<Family> {
         | ActionKind::ToggleAgentTasksCompleted
         | ActionKind::ToggleCoordinatorThreads
         | ActionKind::ToggleCoordinatorThreadsMore
+        | ActionKind::ToggleBackgroundTasks
         | ActionKind::OpenCoordinatorThread
         | ActionKind::SearchOpen
         | ActionKind::SearchClose
@@ -260,6 +278,7 @@ fn clears_error(kind: &ActionKind) -> bool {
             | ActionKind::ToggleAgentTasksCompleted
             | ActionKind::ToggleCoordinatorThreads
             | ActionKind::ToggleCoordinatorThreadsMore
+            | ActionKind::ToggleBackgroundTasks
             | ActionKind::OpenCoordinatorThread
             | ActionKind::SearchOpen
             | ActionKind::SearchClose
@@ -307,6 +326,7 @@ fn publishes_at_once(kind: &ActionKind) -> bool {
             | ActionKind::ToggleAgentTasksCompleted
             | ActionKind::ToggleCoordinatorThreads
             | ActionKind::ToggleCoordinatorThreadsMore
+            | ActionKind::ToggleBackgroundTasks
             | ActionKind::OpenCoordinatorThread
             | ActionKind::SearchOpen
             | ActionKind::SearchClose

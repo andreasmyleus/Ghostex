@@ -122,46 +122,57 @@ pub(crate) fn build_title_generation_command(
     delimiter: &str,
     prompt: &str,
 ) -> Result<String, String> {
-    Ok(match agent {
+    if let Some(stdin_command) = stdin_title_generation_command(agent, command) {
+        return Ok(create_here_doc_command(&stdin_command, delimiter, prompt));
+    }
+    argument_title_generation_command(agent, command, &quote_shell_arg(prompt))
+        .ok_or_else(|| format!("Unsupported title generation agent: {agent}"))
+}
+
+/// The command for an agent that takes its prompt as an argument (Cursor, Grok, Pi and
+/// Antigravity), with `quoted_prompt` already quoted for the shell that runs it.
+pub(crate) fn argument_title_generation_command(
+    agent: &str,
+    command: &str,
+    quoted_prompt: &str,
+) -> Option<String> {
+    Some(match agent {
+        "cursor" => format!(
+            "{command} --print --yolo --trust --model cursor-grok-4.5-low --output-format text {quoted_prompt}"
+        ),
+        "grok" => format!(
+            "{command} --model grok-4.5 --reasoning-effort low --output-format plain --no-alt-screen --no-plan --no-subagents --disable-web-search --max-turns 1 --single {quoted_prompt}"
+        ),
+        "pi" => format!(
+            "{command} -p --no-session --no-tools --no-context-files --thinking low {quoted_prompt}"
+        ),
+        "antigravity" => format!(
+            "{command} -p {quoted_prompt} --output-format text --effort low --disable-slash-commands"
+        ),
+        _ => return None,
+    })
+}
+
+/// The command for an agent that reads its prompt from stdin (Codex, Claude, Empryo and a custom
+/// command), without the prompt; `None` for the agents that take it as an argument.
+pub(crate) fn stdin_title_generation_command(agent: &str, command: &str) -> Option<String> {
+    Some(match agent {
         "codex" => {
             let command = enforce_required_agent_permission_flag(command, "codex");
-            let command = format!(
+            format!(
                 "{command} exec --ephemeral --skip-git-repo-check -m gpt-6-luna -c 'model_reasoning_effort=\"low\"'"
-            );
-            create_here_doc_command(&command, delimiter, prompt)
+            )
         }
-        "cursor" => format!(
-            "{command} --print --yolo --trust --model cursor-grok-4.5-low --output-format text {}",
-            quote_shell_arg(prompt)
-        ),
         "claude" => {
             let command = enforce_required_agent_permission_flag(command, "claude");
             // CDXC:SessionTitles 2026-10-08 DECISION: User: "I want you to switch from haiku 4.5 to 5.5 for anything we used haiku for in this app (auto title etc)". The explicit id keeps an older CLI, whose `haiku` alias still means 4.5, from titling with 4.5.
-            create_here_doc_command(
-                &format!("{command} -p --model claude-haiku-5-5 --effort low"),
-                delimiter,
-                prompt,
-            )
+            format!("{command} -p --model claude-haiku-5-5 --effort low")
         }
-        "grok" => format!(
-            "{command} --model grok-4.5 --reasoning-effort low --output-format plain --no-alt-screen --no-plan --no-subagents --disable-web-search --max-turns 1 --single {}",
-            quote_shell_arg(prompt)
-        ),
-        "pi" => format!(
-            "{command} -p --no-session --no-tools --no-context-files --thinking low {}",
-            quote_shell_arg(prompt)
-        ),
-        "antigravity" => format!(
-            "{command} -p {} --output-format text --effort low --disable-slash-commands",
-            quote_shell_arg(prompt)
-        ),
-        "empryo" => create_here_doc_command(
-            &format!("{command} --headless --quiet --no-genome --marionette-mode none --max-steps 1"),
-            delimiter,
-            prompt,
-        ),
-        "custom" => create_here_doc_command(command, delimiter, prompt),
-        other => return Err(format!("Unsupported title generation agent: {other}")),
+        "empryo" => {
+            format!("{command} --headless --quiet --no-genome --marionette-mode none --max-steps 1")
+        }
+        "custom" => command.to_string(),
+        _ => return None,
     })
 }
 

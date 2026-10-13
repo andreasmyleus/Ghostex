@@ -97,7 +97,7 @@ fn message_text(message: &Value) -> String {
     };
     let mut parts: Vec<String> = Vec::new();
     if let Some(text) = record.get("text").and_then(Value::as_str) {
-        parts.push(text.to_string());
+        parts.push(crate::transcript::marked_sections::without_section_marks(text));
     }
     if let Some(label) = record
         .get("suppressed")

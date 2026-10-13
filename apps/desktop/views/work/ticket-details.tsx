@@ -31,7 +31,8 @@ import {
   cx,
 } from "./components";
 import { formatDuration, relativeTime } from "./format";
-import { ClampedText, LinkifiedText, MediaPlayer } from "./rich-text";
+import { WorkMarkdown } from "./markdown";
+import { ClampedText, MediaPlayer } from "./rich-text";
 import { SlackThreadCards } from "./slack-threads";
 import { TeamFlowTracker } from "./team-flow";
 import { TeamSessionRows } from "./team-sessions";
@@ -555,7 +556,11 @@ function Comments({
               </span>
             </div>
             <div className="w-comment-text">
-              <LinkifiedText text={comment.body} onOpenUrl={onOpenUrl} />
+              <WorkMarkdown
+                markdown={comment.body}
+                variant="comment"
+                onOpenUrl={onOpenUrl}
+              />
             </div>
           </div>
         </div>
@@ -687,6 +692,15 @@ function PullRequestCard({
                 </span>
               </button>
             ))}
+          </div>
+        ) : null}
+        {pullRequest.body?.trim() ? (
+          <div className="w-pr-body">
+            <ClampedText
+              text={pullRequest.body}
+              limit={400}
+              onOpenUrl={onOpenUrl}
+            />
           </div>
         ) : null}
       </div>

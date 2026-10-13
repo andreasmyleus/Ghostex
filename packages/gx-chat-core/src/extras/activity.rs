@@ -107,6 +107,15 @@ pub fn compute_activity_at(
         Value::Bool(kind == "shells-running"),
     );
     projected.insert(
+        "backgroundTasks".to_string(),
+        crate::extras::background_tasks::background_tasks(
+            activity,
+            now_ms,
+            context.utc_offset_minutes,
+        )
+        .unwrap_or(Value::Null),
+    );
+    projected.insert(
         "hint".to_string(),
         if kind == "compacting" {
             Value::String(

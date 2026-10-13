@@ -22,6 +22,46 @@ pub(super) fn rule_input_region(lines: &[String], markers: &[char]) -> Option<Ra
         .then_some(start..foot)
 }
 
+/// CDXC:AgentScreenDetection 2026-10-11 WHY:
+/// While any background task runs, Antigravity CLI (measured on 1.3.3) draws its active-items list between rules under the input box, one `● [09:47:11] ping -n 900 127.0.0.1 running` row per task. The last rule pair then framed the task rows, so the input box read as missing: every chat send was refused ("The antigravity input box is not on screen yet"), and a model change, and every message held behind it or behind a waking session, waited forever while the terminal took input normally (a 2026-10-11 customer report, reproduced with a dev-server task). The input box is the sandwich above that list; any other block under it still reads as no input box.
+pub(super) fn antigravity_input_region(lines: &[String]) -> Option<Range<usize>> {
+    if let Some(region) = rule_input_region(lines, &['>']) {
+        return Some(region);
+    }
+    let foot = lines.iter().rposition(|line| is_horizontal_rule(line))?;
+    let head = lines[..foot]
+        .iter()
+        .rposition(|line| is_horizontal_rule(line))?;
+    let mut rows = lines[head + 1..foot]
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .peekable();
+    if rows.peek().is_none() || !rows.all(|line| is_antigravity_active_item(line)) {
+        return None;
+    }
+    rule_input_region(&lines[..=head], &['>'])
+}
+
+/// One row of Antigravity's active-items list: a status glyph, the task's start time in brackets,
+/// then its command and state.
+fn is_antigravity_active_item(line: &str) -> bool {
+    let mut chars = line.trim_start().chars();
+    if !chars.next().is_some_and(|glyph| !glyph.is_ascii()) {
+        return false;
+    }
+    let Some(rest) = chars.as_str().strip_prefix(" [") else {
+        return false;
+    };
+    let time = rest.as_bytes();
+    time.len() > 9
+        && time[8] == b']'
+        && time[2] == b':'
+        && time[5] == b':'
+        && [0, 1, 3, 4, 6, 7]
+            .iter()
+            .all(|&index| time[index].is_ascii_digit())
+}
+
 /// CDXC:SessionChat 2026-09-11 WHY:
 /// Clearing must read every logical row: Hermes can prefix its marker with a profile, Pi has no marker, and OMP paints its final input row inside the bottom corners.
 /// Readiness uses these same regions so a populated multiline draft remains eligible for clearing.
@@ -1084,7 +1124,7 @@ pub fn session_chat_composer_input(agent: &str, screen: &str) -> Option<SessionC
     }
     let region = match agent {
         "claude" | "openclaude" => rule_input_region(&plain, CLAUDE_COMPOSER_MARKERS)?,
-        "antigravity" => rule_input_region(&plain, &['>'])?,
+        "antigravity" => antigravity_input_region(&plain)?,
         "cursor" => cursor_input_region(&plain)?,
         "hermes-agent" => hermes_input_region(&plain)?,
         // CDXC:AgentScreenDetection 2026-09-11 DECISION:

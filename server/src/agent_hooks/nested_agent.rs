@@ -1,42 +1,116 @@
 //! Whether a hook was fired by an agent that another agent started from its tool.
 
-/// CDXC:SessionIdentity 2026-10-05 WHY:
-/// A `claude -p` (or `cswap run … claude -p`) an agent starts from its Bash tool inherits the terminal's GHOSTEX_GLOBAL_SESSION_REF, so its hooks posted into the session as if they were the session's own agent: the session took the nested run's conversation id (observed live 2026-10-05: throwaway thread G9c61 held its nested `claude -p`'s id for 1.2s, enough for a report, a title or the chat to follow the wrong transcript), and the nested run's prompt and Stop changed the session's activity mid-turn. Claude rewrites every CLAUDE_* variable for its own hooks, so the environment cannot tell the two apart; the process tree can. `CLAUDE_PID` names the Claude process that fired the hook, and a Claude process with another `claude` above it is a nested run, whose hooks belong to no Ghostex session. A parent link counts only when the parent is not newer than the child, so a reused Windows pid can never make the session's own agent look nested.
+/// Executable names (without extension) of agents that can start another agent from their tools.
+/// Agents that run as a plain `node` or `python` process are missing on purpose: their name is the
+/// runtime's.
+const AGENT_EXECUTABLES: &[&str] = &[
+    "claude",
+    "openclaude",
+    "codex",
+    "grok",
+    "opencode",
+    "droid",
+    "agy",
+    "kiro-cli",
+    "qodercli",
+    "cursor-agent",
+    "empryo",
+    "zcode",
+];
+
+/// CDXC:SessionIdentity 2026-10-11 WHY:
+/// An agent another agent starts from its tool (a thread's `claude -p` or `cswap run … -- -p`, a test Claude, a `codex exec`) inherits the terminal's GHOSTEX_GLOBAL_SESSION_REF and gxserver address, so its hooks posted into the session as if they were the session's own agent: the session took the nested run's conversation id, its chat showed the nested conversation, its activity flipped mid-turn, and an orchestrator thread's report became the nested run's answer (thread G0hhy on 2026-10-04, throwaway G9c61 on 2026-10-05, thread G8x2n on 2026-10-11 on Windows). The environment cannot tell them apart: Claude sets CLAUDE_CODE_CHILD_SESSION, CLAUDECODE and every other CLAUDE_* variable for the hooks of a top-level Claude too. The process tree can. The session's own agent hangs below the session's zmx or wmx daemon through shells and launchers only, so a hook counts only when the agent that fired it reaches the daemon with no other agent in between. Supersedes the 2026-10-05 rule, which dropped a hook only when it saw another `claude` above: on Windows, Git Bash running one MSYS program from another (`timeout 120 claude -p`, `env … claude`, a pipeline's subshell) ends the intermediate Windows process, so the nested Claude's parent chain broke before reaching the parent Claude and the hook counted as the session's (G8x2n). A chain that breaks before the daemon is now not the session's agent either.
+/// The firing agent is `CLAUDE_PID` for Claude and OpenClaude (Claude's own subagents and side queries run inside that same process, so they keep their own rules in notify_runtime.rs), and for the other agents in AGENT_EXECUTABLES the nearest ancestor of the hook process with that agent's executable name. An agent not found that way keeps today's behaviour. A parent link counts only when the parent is not newer than the child, so a reused Windows pid can never graft the session's own agent below another tree.
 /// SEE-ALSO: server/src/agent_hooks/notify_runtime.rs (drops the event), server/src/zmx/process_identity.rs `resolve_process_tree_agent_identity` (the same rule for the live process scan).
-pub(crate) fn claude_hook_is_nested() -> bool {
-    let Some(pid) = std::env::var("CLAUDE_PID")
-        .ok()
-        .and_then(|pid| pid.trim().parse::<u32>().ok())
-        .filter(|pid| *pid > 0)
-    else {
+pub(crate) fn hook_agent_is_nested(agent_key: &str) -> bool {
+    let claude = matches!(agent_key, "claude" | "openclaude");
+    let executable = hook_agent_executable(agent_key);
+    if !claude && executable.is_none() {
+        return false;
+    }
+    let table = ProcessTable::read();
+    let firing = if claude {
+        std::env::var("CLAUDE_PID")
+            .ok()
+            .and_then(|pid| pid.trim().parse::<u32>().ok())
+            .filter(|pid| *pid > 0)
+    } else {
+        executable.and_then(|name| nearest_ancestor_named(&table, std::process::id(), name))
+    };
+    let Some(firing) = firing else {
         return false;
     };
-    has_ancestor_named(pid, "claude")
+    !reaches_session_daemon(&table, firing)
 }
 
-/// Whether a process above `pid` (not `pid` itself) and below its session daemon runs an
-/// executable whose name, without extension, is `name`. Unknown links end the walk, and so does
-/// the zmx or wmx daemon: whatever started the daemon (an agent that launched Ghostex, say) is
-/// not inside the session.
-fn has_ancestor_named(pid: u32, name: &str) -> bool {
-    let table = ProcessTable::read();
+/// The executable a hook's agent runs as, for the agents whose own process carries that name.
+fn hook_agent_executable(agent_key: &str) -> Option<&'static str> {
+    Some(match agent_key {
+        "codex" => "codex",
+        "grok" => "grok",
+        "opencode" => "opencode",
+        "droid" => "droid",
+        "antigravity" => "agy",
+        "kiro" => "kiro-cli",
+        "qoder" => "qodercli",
+        "cursor" => "cursor-agent",
+        _ => return None,
+    })
+}
+
+/// The closest process above `pid` named `name`, below the session daemon.
+fn nearest_ancestor_named(table: &ProcessTable, pid: u32, name: &str) -> Option<u32> {
     let mut current = pid;
     for _ in 0..64 {
+        let parent = table.parent(current)?;
+        let stem = table.executable_stem(parent)?;
+        if is_session_daemon(&stem) {
+            return None;
+        }
+        if stem.eq_ignore_ascii_case(name) {
+            return Some(parent);
+        }
+        current = parent;
+    }
+    None
+}
+
+/// Whether the walk up from `agent` reaches its zmx or wmx daemon without passing another agent.
+/// An unknown or broken link ends the walk short of the daemon. A direct parent with the agent's
+/// own name that really runs a script runtime is the agent's launcher (`node …/codex.js`
+/// renaming itself `codex` before it starts the native `codex`), not a second agent.
+fn reaches_session_daemon(table: &ProcessTable, agent: u32) -> bool {
+    let agent_stem = table.executable_stem(agent);
+    let mut current = agent;
+    for depth in 0..64 {
         let Some(parent) = table.parent(current) else {
             return false;
         };
         let Some(stem) = table.executable_stem(parent) else {
             return false;
         };
-        if stem.eq_ignore_ascii_case("zmx") || stem.eq_ignore_ascii_case("wmx") {
-            return false;
-        }
-        if stem.eq_ignore_ascii_case(name) {
+        if is_session_daemon(&stem) {
             return true;
+        }
+        let launcher = depth == 0
+            && agent_stem
+                .as_deref()
+                .is_some_and(|agent_stem| agent_stem.eq_ignore_ascii_case(&stem))
+            && table.runs_script_runtime(parent);
+        if !launcher
+            && AGENT_EXECUTABLES
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(&stem))
+        {
+            return false;
         }
         current = parent;
     }
     false
+}
+
+fn is_session_daemon(stem: &str) -> bool {
+    stem.eq_ignore_ascii_case("zmx") || stem.eq_ignore_ascii_case("wmx")
 }
 
 #[cfg(windows)]
@@ -94,6 +168,12 @@ impl ProcessTable {
         let (_, exe) = self.rows.get(&pid)?;
         Some(exe.strip_suffix(".exe").unwrap_or(exe).to_string())
     }
+
+    /// Windows names a process by its real executable, so a script runtime never carries an
+    /// agent's name.
+    fn runs_script_runtime(&self, _pid: u32) -> bool {
+        false
+    }
 }
 
 #[cfg(windows)]
@@ -132,6 +212,14 @@ impl ProcessTable {
     pub(super) fn executable_stem(&self, pid: u32) -> Option<String> {
         posix::name(pid)
     }
+
+    /// Whether the process's executable file is a script runtime, whatever name it gave itself.
+    fn runs_script_runtime(&self, pid: u32) -> bool {
+        posix::executable_file_name(pid).is_some_and(|name| {
+            let name = name.to_ascii_lowercase();
+            matches!(name.as_str(), "node" | "bun" | "deno") || name.starts_with("python")
+        })
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -147,6 +235,11 @@ mod posix {
     pub(super) fn name(pid: u32) -> Option<String> {
         let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
         Some(comm.trim().to_string())
+    }
+
+    pub(super) fn executable_file_name(pid: u32) -> Option<String> {
+        let path = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+        Some(path.file_name()?.to_string_lossy().into_owned())
     }
 }
 
@@ -183,6 +276,18 @@ mod posix {
             .map(|byte| *byte as u8)
             .collect::<Vec<_>>();
         let comm = String::from_utf8_lossy(&bytes).into_owned();
+        if executable_path(pid).is_some_and(|path| path.contains("/claude/versions/")) {
+            return Some("claude".to_string());
+        }
+        Some(comm)
+    }
+
+    pub(super) fn executable_file_name(pid: u32) -> Option<String> {
+        let path = executable_path(pid)?;
+        Some(path.rsplit('/').next()?.to_string())
+    }
+
+    fn executable_path(pid: u32) -> Option<String> {
         let mut path = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
         let length = unsafe {
             libc::proc_pidpath(
@@ -191,12 +296,7 @@ mod posix {
                 path.len() as u32,
             )
         };
-        if length > 0
-            && String::from_utf8_lossy(&path[..length as usize]).contains("/claude/versions/")
-        {
-            return Some("claude".to_string());
-        }
-        Some(comm)
+        (length > 0).then(|| String::from_utf8_lossy(&path[..length as usize]).into_owned())
     }
 }
 
@@ -212,6 +312,10 @@ mod posix {
     }
 
     pub(super) fn name(_pid: u32) -> Option<String> {
+        None
+    }
+
+    pub(super) fn executable_file_name(_pid: u32) -> Option<String> {
         None
     }
 }

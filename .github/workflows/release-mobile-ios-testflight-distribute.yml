@@ -1,0 +1,89 @@
+name: Distribute mobile iOS TestFlight build
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: list (show the app, beta groups and builds) or distribute
+        required: true
+        default: list
+        type: choice
+        options:
+          - list
+          - distribute
+      version:
+        description: Mobile semver version (list shows that build; distribute requires it)
+        required: false
+        default: ''
+        type: string
+      group:
+        description: Exact name of the external beta group (distribute)
+        required: false
+        default: ''
+        type: string
+      what_to_test:
+        description: What to Test text for en-US (distribute)
+        required: false
+        default: ''
+        type: string
+      dry_run:
+        description: Distribute without changing anything (no waiting, no writes)
+        required: false
+        default: false
+        type: boolean
+      timeout_minutes:
+        description: How long distribute waits for Apple to finish processing the build
+        required: false
+        default: '90'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mobile-ios-testflight-distribute
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 1
+          submodules: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.13.1
+      - name: Install App Store Connect API key
+        env:
+          ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          ASC_KEY_BASE64: ${{ secrets.APPLE_ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+        run: |
+          test -n "$ASC_ISSUER_ID"
+          test -n "$ASC_KEY_BASE64"
+          test -n "$ASC_KEY_ID"
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "GHOSTEX_ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "GHOSTEX_ASC_KEY_ID=$ASC_KEY_ID" >> "$GITHUB_ENV"
+          echo "GHOSTEX_ASC_ISSUER_ID=$ASC_ISSUER_ID" >> "$GITHUB_ENV"
+      - name: ${{ inputs.mode == 'list' && 'List beta groups and builds' || 'Distribute the build to external testers' }}
+        env:
+          MODE: ${{ inputs.mode }}
+          VERSION: ${{ inputs.version }}
+          GROUP: ${{ inputs.group }}
+          GHOSTEX_WHAT_TO_TEST: ${{ inputs.what_to_test }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          args=("$MODE")
+          if [[ -n "$VERSION" ]]; then args+=(--version "$VERSION"); fi
+          if [[ "$MODE" == distribute ]]; then
+            args+=(--group "$GROUP" --timeout-minutes "$TIMEOUT_MINUTES")
+            if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          fi
+          node tooling/release-mobile/asc-testflight-distribute.mjs "${args[@]}"

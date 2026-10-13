@@ -84,6 +84,12 @@ impl NativeChatView {
         // As React's Send label did: the gesture hints appear only while the draft can queue.
         let label: gpui::SharedString = if stop {
             "Stop the agent".into()
+        } else if has_draft && self.snapshot["working"] == true {
+            format!(
+                "Send ({} interrupts the agent and sends now, right-click for more)",
+                crate::hotkey_label::terminal_overlay_hotkey_chord_label("ctrl+enter")
+            )
+            .into()
         } else if has_draft && self.snapshot["queue"]["capabilities"]["canQueue"] == true {
             format!(
                 "Send (hold to queue, {}-click or right-click for Compact & Send)",

@@ -261,6 +261,7 @@ fn collect(
         let planned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             plan_session(state, &db, &repo, &registry, &snapshot, &detector, &old)
         }));
+        super::limit_wait::settle(state, &repo, pid, sid);
         match planned {
             Ok(Ok(Some(plan))) => plans.push(plan),
             Ok(Ok(None)) => {}
@@ -315,6 +316,7 @@ fn restore_session(
         endpoint::update_session(repo, &session, runtime)?;
         session = repo.get_session(pid, sid)?.unwrap_or(session);
     }
+    super::limit_wait::restore(&session);
     if let Some(since) = time(session.pointer("/runtimeSettings/accountSuppressedUsageNoticeAt")) {
         crate::session_chat_notice::suppress_account_usage_notice(pid, sid, since);
     }
@@ -542,6 +544,27 @@ fn plan_session(
         .and_then(|o| o.selection.model.as_ref())
         .map(|m| m.value.clone())
         .unwrap_or_default();
+    // An account this session automatically left counts again only once a reading taken after it left says so: candidates no longer need a fresh reading (see `trusted_room`), and an older one would bounce the session straight back to the account whose limit it just hit.
+    let left = session
+        .pointer("/runtimeSettings/accountSwitch")
+        .filter(|progress| progress["source"] == "automatic")
+        .and_then(|progress| {
+            Some((
+                progress["fromAccountId"].as_str()?,
+                time(progress.get("updatedAt"))?,
+            ))
+        });
+    let read_since_left = |id: &str| {
+        left.is_none_or(|(from, at)| {
+            id != from
+                || snapshot
+                    .accounts
+                    .iter()
+                    .find(|d| endpoint::account_id(d) == id)
+                    .and_then(reading_time)
+                    .is_some_and(|t| t > at)
+        })
+    };
     // A session on its own login keeps waiting for its limit to reset instead of moving to an account (CDXC:AgentProviders 2026-10-09 in launch.rs).
     let switch_account = if notice.kind == "usageLimit"
         && policy.at_limit == LimitAction::Switch
@@ -555,7 +578,8 @@ fn plan_session(
             &model,
             policy.priority,
         )
-        .first()
+        .into_iter()
+        .find(|account| read_since_left(&account.id))
         .map(|account| account.id.clone())
     } else {
         None
@@ -619,11 +643,41 @@ fn plan_session(
                     })
                     .max()
             });
-            recovery["reason"] = json!(if policy.at_limit == LimitAction::Switch {
-                "Waiting for an eligible account to have capacity."
+            let reason = if policy.at_limit == LimitAction::Switch {
+                super::limit_wait::NO_ROOM
             } else {
                 "Waiting for this account's usage to reset."
-            });
+            };
+            // Once per wait: the 30-second passes re-save the same reason. The 2026-10-11 G9ow7 delay left nothing in gxserver.jsonl to say which account readings held the switch back.
+            if policy.at_limit == LimitAction::Switch && recovery["reason"] != reason {
+                let candidates: Vec<Value> = registry
+                    .accounts
+                    .iter()
+                    .filter(|a| a.provider == provider && a.eligible)
+                    .map(|a| {
+                        let found = snapshot
+                            .accounts
+                            .iter()
+                            .find(|d| endpoint::account_id(d) == a.id);
+                        json!({
+                            "slot": a.selector,
+                            "current": Some(a.id.as_str()) == current_id.as_deref(),
+                            "status": found.map(|d| d.status.as_str()),
+                            "usageError": found.and_then(|d| d.usage_error.as_deref()),
+                            "usageUpdatedAt": found.and_then(|d| d.usage_updated_at.as_deref()),
+                            "maxUsedPercent": found.map(|d| d.usage.iter().filter(|w| relevant(w, &model)).map(|w| w.used_percent).fold(0f64, f64::max)),
+                        })
+                    })
+                    .collect();
+                log(
+                    state,
+                    LogLevel::Warn,
+                    "accountRecoveryNoAccountWithRoom",
+                    None,
+                    json!({ "projectId": pid, "sessionId": sid, "model": model, "accounts": candidates }),
+                );
+            }
+            recovery["reason"] = json!(reason);
             recovery["nextAttemptAt"] = json!(reset
                 .filter(|t| *t > now)
                 .map(|t| if policy.at_limit == LimitAction::Switch {
@@ -635,6 +689,17 @@ fn plan_session(
                 .to_rfc3339());
             // An untracked default login has no trustworthy quota reading. Retry it conservatively rather than inventing an available percentage.
             if current_id.is_some() {
+                if policy.at_limit == LimitAction::Switch {
+                    let wait = super::limit_wait::describe(
+                        &registry,
+                        snapshot,
+                        provider,
+                        current_id.as_deref(),
+                        &model,
+                        now,
+                    );
+                    super::limit_wait::enter(state, repo, &session, &mut recovery, wait);
+                }
                 save(state, repo, &session, recovery)?;
                 return Ok(None);
             }
@@ -691,7 +756,7 @@ fn plan_session(
         prompt: queue.deliverable_head().map(|p| p.id.clone()),
     }))
 }
-fn relevant(window: &UsageWindow, model: &str) -> bool {
+pub(super) fn relevant(window: &UsageWindow, model: &str) -> bool {
     window.model.as_ref().is_none_or(|m| {
         !model.contains("claude")
             && !model.contains("gpt")
@@ -702,20 +767,30 @@ fn relevant(window: &UsageWindow, model: &str) -> bool {
             || m.to_lowercase().contains(&model.to_lowercase())
     })
 }
-fn has_room(account: &DiscoveredAccount, model: &str, now: DateTime<Utc>) -> bool {
+fn reading_time(account: &DiscoveredAccount) -> Option<DateTime<Utc>> {
+    account
+        .usage_updated_at
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|t| t.with_timezone(&Utc))
+}
+/// CDXC:AgentProviders 2026-10-11 WHY:
+/// A switch target used to also need a usage reading under 5 minutes old, but cswap polls an idle account only every 5 to 10 minutes (`poll_policy.py`, kept under the usage endpoint's hourly budget), so a session at its limit sat on "Waiting for an eligible account to have capacity" until cswap next polled the target: G9ow7 waited 2m10s for slot 2's 11:54:15 reading although slot 2 was at 11% and 3%.
+/// cswap already judges whether a reading is trustworthy enough for a switch and reports `unavailable` (which sets `usage_error`) when it is not, so a candidate goes on that judgment alone. The current account keeps the 5-minute rule in `has_room`, because the limit notice is newer evidence than any older reading of it.
+fn trusted_room(account: &DiscoveredAccount, model: &str) -> bool {
     account.status == "ready"
         && account.usage_error.is_none()
-        && account
-            .usage_updated_at
-            .as_ref()
-            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-            .is_some_and(|t| now - t.with_timezone(&Utc) < chrono::Duration::minutes(5))
+        && reading_time(account).is_some()
         && !account.usage.is_empty()
         && account
             .usage
             .iter()
             .filter(|w| relevant(w, model))
             .all(|w| w.used_percent < 100.)
+}
+fn has_room(account: &DiscoveredAccount, model: &str, now: DateTime<Utc>) -> bool {
+    trusted_room(account, model)
+        && reading_time(account).is_some_and(|t| now - t < chrono::Duration::minutes(5))
 }
 pub(super) fn ranked<'a>(
     registry: &'a Registry,
@@ -733,7 +808,7 @@ pub(super) fn ranked<'a>(
             snapshot
                 .accounts
                 .iter()
-                .find(|d| endpoint::account_id(d) == a.id && has_room(d, model, Utc::now()))
+                .find(|d| endpoint::account_id(d) == a.id && trusted_room(d, model))
                 .map(|d| (a, d))
         })
         .collect();
@@ -821,23 +896,24 @@ async fn deliver(state: Arc<AppState>, plan: Plan) {
         let owned = state.clone();
         let pid = plan.project.clone();
         let sid = plan.session.clone();
-        let sender: crate::session_chat_queue::SessionChatQueueSender = Arc::new(move |text| {
-            let state = owned.clone();
-            let pid = pid.clone();
-            let sid = sid.clone();
-            Box::pin(async move {
-                send_session_chat_message_internal(
-                    &state,
-                    &pid,
-                    &sid,
-                    &text,
-                    &[],
-                    SessionChatMessageSource::AutomaticRecovery,
-                )
-                .await
-                .map(|_| ())
-            })
-        });
+        let sender: crate::session_chat_queue::SessionChatQueueSender =
+            Arc::new(move |text, _images| {
+                let state = owned.clone();
+                let pid = pid.clone();
+                let sid = sid.clone();
+                Box::pin(async move {
+                    send_session_chat_message_internal(
+                        &state,
+                        &pid,
+                        &sid,
+                        &text,
+                        &[],
+                        SessionChatMessageSource::AutomaticRecovery,
+                    )
+                    .await
+                    .map(|_| ())
+                })
+            });
         crate::session_chat_queue::deliver_session_chat_queued_prompt(
             &state.paths,
             &state.metadata.server_id,

@@ -352,6 +352,7 @@ impl GhostexGpuiApp {
                             Err(_) => {
                                 for account in this.titlebar_accounts.iter_mut().filter(|a| text(a, "titlebarMachine") == machine) {
                                     account["usageError"] = json!("Could not refresh account usage. Showing the last received snapshot.");
+                                    account["usageStale"] = json!(true);
                                 }
                             }
                         }

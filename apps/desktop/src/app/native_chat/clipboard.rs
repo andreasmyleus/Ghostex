@@ -22,6 +22,18 @@ impl NativeChatView {
         }
     }
 
+    /// Stamps when a `Paste` reached a chat field. The field reads the clipboard off the UI thread
+    /// and hands the result to `paste_handler`, which logs a slow read
+    /// (CDXC:Clipboard in helpers/clipboard_read.rs).
+    pub(super) fn note_paste_started(
+        &mut self,
+        _: &gpui_component::input::Paste,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        self.paste_started = Some(web_time::Instant::now());
+    }
+
     /// Returns whether the paste was taken; `false` lets the field insert the text.
     fn paste_attachments(
         &mut self,
@@ -30,6 +42,9 @@ impl NativeChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(started) = self.paste_started.take() {
+            crate::app::helpers::gpui_note_clipboard_read("chatPaste", started, Some(clipboard));
+        }
         if !self.composer_ready {
             return false;
         }

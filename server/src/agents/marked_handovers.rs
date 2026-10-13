@@ -1,0 +1,146 @@
+//! Marked handovers: the style note that asks agents to mark the sections of their final message.
+
+use std::path::Path;
+
+use serde_json::Value;
+
+use super::*;
+use crate::paths::{get_gxserver_paths, GxserverPaths};
+
+/// CDXC:MarkedHandovers 2026-10-11 DECISION:
+/// User: "Setting, every agent session", then: "we should force the marked handovers for coordinators/orchestrator threads and their children by default and make it disabled by default for non-orchestrator/child threads". Orchestrators and their threads always get this note; every other agent session Ghostex starts gets it only while the Marked handovers setting is on (off by default). The agent otherwise writes as it does today. The note goes into every such session's prompt, so it stays short and plain.
+/// CDXC:MarkedHandovers 2026-10-11 WHY:
+/// Wording tested in throwaway Claude sessions (Haiku and Sonnet, in this repo and in a plain folder): a plain list of markers was followed in a plain folder but ignored under this repo's long AGENTS.md (the models said they "missed" it). What made it stick: saying it applies on top of CLAUDE.md and AGENTS.md and overrides the no-emoji default, keeping the agent's own headings with the marker in front, naming the sections that always get ❓ and 🧪, and a check before sending. In this repo models still miss a section now and then.
+/// CDXC:MarkedHandovers 2026-10-11 DECISION:
+/// User: "let's call it 'Kicked off'": 🛫 Kicked off marks work started in this turn (threads an orchestrator just started), kept apart from 🔄 In progress, which is everything still running.
+/// CDXC:MarkedHandovers 2026-10-11 DECISION:
+/// User: "please never ever do this where the line is right next to the title, always should be bullet below it". A marker's title stands alone on its line and the section's content goes in bullets below it; the note's example shows that shape.
+/// SEE-ALSO: packages/settings-catalog/src/data/defaults.rs (`markedHandovers`), server/src/coordinators/role.rs (the orchestrator's role carries the note), server/src/coordinators/brief.rs (`thread_brief`), server/src/agents/activity.rs (ZCode's SessionStart context).
+pub const MARKED_HANDOVERS_NOTE: &str = "Marked handovers: a format rule the user turned on in Ghostex. It applies in every project, on top of any CLAUDE.md or AGENTS.md, and allows these emoji even where you would otherwise avoid them.
+In the final message of each turn (the one that hands back to the user), put the matching marker first, before any bold, in front of every section, heading or bold label that is one of these:
+❓ Needs you: a question, a decision, anything waiting on the user
+✅ Done: work you finished or pushed
+⚠️ Read this: risks, caveats, anything important or changed
+🛫 Kicked off: work started this turn that carries on after it (threads or jobs you just started)
+🔄 In progress: work still under way or left to do
+🧪 Untested: anything you did not run, test or verify for real, changed or not
+🚀 Shipped: released or published to users
+🛑 Blocked: stuck until something happens
+Keep your own headings and wording and only add the marker in front (\"✅ **Done:**\", \"⚠️ **Caveats**\", \"❓ **Open questions**\"). The marker and title always stand alone on their line, and everything under them goes in bullets below, never on the title's line:
+✅ **Done:**
+- Fixed the login check.
+A section that asks the user anything always gets ❓, and one about what you did not run, test or verify always gets 🧪. Sections that only explain get no marker.
+Before you send that final message, check that every matching section starts with its marker on a line of its own. Leave the markers out of your other messages.";
+
+const SETTING_KEY: &str = "markedHandovers";
+
+/// Whether the Marked handovers setting is on, read fresh from the shared settings file so a
+/// change reaches the next launch or resume without a gxserver restart.
+pub(crate) fn marked_handovers_enabled(paths: &GxserverPaths) -> bool {
+    // Unit tests assert exact commands, which must not depend on the user's settings.
+    if cfg!(test) {
+        return false;
+    }
+    std::fs::read_to_string(paths.app_config_dir.join("native-sidebar-settings.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|settings| settings.get(SETTING_KEY).and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
+/// CDXC:MarkedHandovers 2026-10-11 WHY:
+/// For a session the setting covers, the note is added when the launch or resume command is resolved instead of being saved in the session's base command: the command is resolved again on every start, resume, fork and account switch, so turning the setting on or off reaches each session the next time it starts or resumes, while a running agent keeps the instructions it started with. Orchestrators carry it in their role (role.rs), and threads have it saved in their base command at creation (`with_thread_marked_handovers`), so both keep it whatever the setting says. Claude keeps only the last `--append-system-prompt-file` (tested 2026-10-11 on Claude Code 2.1.296) and Codex reads one `developer_instructions`, so a command that already names its own is left alone rather than lose it, except a Codex orchestrator's guide pointer, which the note joins. ZCode has no such flag and gets the note as SessionStart hook context (activity.rs); Empryo ignores hook context and other agents have no channel Ghostex can use, so they do not get the note outside an Empryo orchestrator's profile.
+/// SEE-ALSO: server/src/agents/launch_plan.rs (`resolve_agent_launch_command` calls this), server/src/coordinators/role.rs (`with_coordinator_role`, the role flags this combines with).
+pub(crate) fn with_marked_handovers(agent_id: &str, icon: Option<&str>, command: &str) -> String {
+    if command.trim().is_empty() {
+        return command.to_string();
+    }
+    let family = default_agent_session_title_name(agent_id)
+        .map(|_| agent_id.to_string())
+        .or_else(|| icon.and_then(default_agent_icon_to_id).map(str::to_string))
+        .or_else(|| infer_agent_id_from_command_executable(command));
+    let Some(family) = family else {
+        return command.to_string();
+    };
+    if family == "codex" {
+        let pointer_arg = crate::coordinators::codex_developer_instructions_arg(
+            crate::coordinators::GUIDE_POINTER_COORDINATOR_INSTRUCTIONS,
+        );
+        if command.contains(&pointer_arg) {
+            let combined = format!(
+                "{}\n\n{MARKED_HANDOVERS_NOTE}",
+                crate::coordinators::GUIDE_POINTER_COORDINATOR_INSTRUCTIONS
+            );
+            return command.replace(&pointer_arg, &codex_note_arg(&combined));
+        }
+    }
+    let paths = get_gxserver_paths(None);
+    if !marked_handovers_enabled(&paths) {
+        return command.to_string();
+    }
+    with_marked_handovers_note(&paths, &family, command)
+}
+
+/// A thread's base command at creation, with the note saved in it, so the thread marks its
+/// handovers on every start and resume whatever the setting says.
+pub(crate) fn with_thread_marked_handovers(family: &str, command: &str) -> String {
+    with_marked_handovers_note(&get_gxserver_paths(None), family, command)
+}
+
+/// `command` with the note flag of its family, unless it already names a system prompt file or
+/// developer instructions (the note's own included).
+fn with_marked_handovers_note(paths: &GxserverPaths, family: &str, command: &str) -> String {
+    match family {
+        "claude" if !command.contains("--append-system-prompt-file") => {
+            let path = paths.root_dir.join("marked-handovers").join("note.md");
+            match write_note_file(&path, MARKED_HANDOVERS_NOTE) {
+                Ok(()) => format!(
+                    "{} --append-system-prompt-file {}",
+                    command.trim_end(),
+                    quote_shell_arg(&path.to_string_lossy())
+                ),
+                Err(_) => command.to_string(),
+            }
+        }
+        "codex" if !command.contains("developer_instructions=") => format!(
+            "{} {}",
+            command.trim_end(),
+            codex_note_arg(MARKED_HANDOVERS_NOTE)
+        ),
+        _ => command.to_string(),
+    }
+}
+
+/// `-c developer_instructions="…"` with the value as an ASCII-only TOML basic string: Codex parses
+/// a `-c` value as TOML (and takes it as a raw string, quotes included, when that fails), and an
+/// ASCII command types into every terminal and shell unchanged.
+fn codex_note_arg(text: &str) -> String {
+    let mut value = String::from("\"");
+    for character in text.chars() {
+        match character {
+            '"' => value.push_str("\\u0022"),
+            '\\' => value.push_str("\\\\"),
+            '\n' => value.push_str("\\n"),
+            ' '..='~' => value.push(character),
+            _ if (character as u32) <= 0xFFFF => {
+                value.push_str(&format!("\\u{:04X}", character as u32))
+            }
+            _ => value.push_str(&format!("\\U{:08X}", character as u32)),
+        }
+    }
+    value.push('"');
+    format!(
+        "-c {}",
+        quote_shell_arg(&format!("developer_instructions={value}"))
+    )
+}
+
+fn write_note_file(path: &Path, content: &str) -> std::io::Result<()> {
+    if std::fs::read_to_string(path).ok().as_deref() != Some(content) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content)?;
+    }
+    Ok(())
+}

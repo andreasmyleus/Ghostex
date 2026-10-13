@@ -53,6 +53,23 @@ pub fn async_drafts_key(session_key: &str) -> StorageKey {
     drafts_key(session_key, ASYNC_PROMPT_KEY)
 }
 
+/// Where one question form's picks are stored: a card record under `form:<id>`.
+pub fn form_drafts_key(session_key: &str, form_id: &str) -> StorageKey {
+    drafts_key(session_key, &format!("{FORM_PROMPT_PREFIX}{form_id}"))
+}
+
+/// The prompt-key prefix of a question form's record.
+pub const FORM_PROMPT_PREFIX: &str = "form:";
+
+/// The form a drafts record belongs to, when it is a question form's.
+pub fn form_of_drafts_key(key: &StorageKey) -> Option<String> {
+    if key.store != DRAFTS_STORE {
+        return None;
+    }
+    decode_drafts_suffix(&key.suffix)
+        .and_then(|(_, prompt)| prompt.strip_prefix(FORM_PROMPT_PREFIX).map(str::to_string))
+}
+
 /// Whether this is the async strip's record rather than a blocking card's.
 pub fn is_async_drafts_key(key: &StorageKey) -> bool {
     decode_drafts_suffix(&key.suffix).is_some_and(|(_, prompt)| prompt == ASYNC_PROMPT_KEY)
@@ -118,6 +135,10 @@ pub fn decode_drafts(raw: &str) -> AnswerDrafts {
             QuestionDraft {
                 indices,
                 other: other.to_string(),
+                other_picked: entry
+                    .get("otherPicked")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             },
         );
     }

@@ -83,6 +83,7 @@ pub(super) fn start_thread(parsed: &ParsedArgs) -> CliResult<()> {
         "agentId": agent_id,
         "launchSettings": launch_settings_for(&agent_rows, &agent_id),
         "title": title,
+        "markedHandovers": true,
     });
     if let Some(model) = flag_text(&parsed.flags, "model") {
         create["agentModel"] = json!(model);
@@ -240,7 +241,8 @@ pub(super) fn set_resolved(parsed: &ParsedArgs, resolved: bool) -> CliResult<()>
     let close_session = resolved && !parsed.flags.truthy("keepOpen");
     // Woken before it is reopened: an open thread whose session is still closed is reported to the
     // coordinator as closed and marked done again.
-    let resumed = !resolved && closed;
+    // CDXC:Coordinators 2026-10-12 WHY: a sleeping thread is woken too; reopen used to wake only a closed (`stopped`) one, so it answered "Reopened" and left a sleeping thread asleep with a message waiting for it.
+    let resumed = !resolved && agents::text(&thread, "lifecycleState") != "running";
     if resumed {
         call_gxserver_rpc("/api/wakeSession", &session, &flags).map_err(|error| {
             CliError::Other(format!(

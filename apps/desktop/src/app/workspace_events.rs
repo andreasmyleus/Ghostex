@@ -345,19 +345,35 @@ impl GhostexGpuiApp {
                 | ProjectWorkareaCefSurfaceSlotKey::Automate,
                 cef::ProjectWorkareaBridgeEvent::ProjectBoardImageRequest(payload),
             ) => {
-                let clipboard_item = if project_board_image_request_needs_clipboard(&payload) {
-                    cx.read_from_clipboard()
-                } else {
-                    None
-                };
-                let response =
-                    project_board_image_bridge_response_for_payload(&payload, clipboard_item);
-                self.dispatch_project_workarea_json_event(
-                    slot_key,
-                    "ghostex-project-board-image-response",
-                    &response.to_string(),
-                    cx,
-                );
+                // The clipboard read and the image file it saves both stay off the UI thread
+                // (CDXC:Clipboard in helpers/clipboard_read.rs).
+                let read = project_board_image_request_needs_clipboard(&payload)
+                    .then(|| gpui_read_clipboard(cx, "projectBoardImagePaste"));
+                let background = cx.background_executor().clone();
+                cx.spawn(async move |this, cx| {
+                    let clipboard_item = match read {
+                        Some(read) => read.await,
+                        None => None,
+                    };
+                    let response = background
+                        .spawn(async move {
+                            project_board_image_bridge_response_for_payload(
+                                &payload,
+                                clipboard_item,
+                            )
+                        })
+                        .await;
+                    this.update(cx, |this, cx| {
+                        this.dispatch_project_workarea_json_event(
+                            slot_key,
+                            "ghostex-project-board-image-response",
+                            &response.to_string(),
+                            cx,
+                        );
+                    })
+                    .ok();
+                })
+                .detach();
             }
             // Same rule as a clicked chat link (CDXC:SessionChat 2026-09-09 in
             // cef/shell/request_handling.rs).

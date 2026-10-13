@@ -71,10 +71,11 @@ pub fn document(state: &ChatState, context: &ChatContext, into: &mut Document) {
     let view = &state.transcript_view;
     into.summary_mode = view.summary_mode;
     into.verbose_override = view.verbose_override;
-    into.final_ids = if view.items.is_empty() {
-        presentation::build(state, context).final_ids
+    (into.final_ids, into.answered_pages) = if view.items.is_empty() {
+        let projection = presentation::build(state, context);
+        (projection.final_ids, projection.answered_pages)
     } else {
-        view.final_ids.clone()
+        (view.final_ids.clone(), view.answered_pages.clone())
     };
     into.deferred_work = view.deferred_work.clone();
     /*

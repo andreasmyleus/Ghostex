@@ -15,9 +15,7 @@ use gpui::{
     App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, KeyDownEvent, ListAlignment,
     ListState, Subscription, Window, px,
 };
-use gpui_component::input::{
-    Escape, IndentInline, InputEvent, OutdentInline, Paste, TextareaState,
-};
+use gpui_component::input::{Escape, IndentInline, InputEvent, OutdentInline, TextareaState};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -571,23 +569,27 @@ impl GpuiGitCommitModalWindow {
     }
 
     /// Plain-text paste into the message drops trailing spaces per line (`handleMessagePaste`);
-    /// a paste that changes nothing is left to the editor.
-    pub(super) fn on_paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.message.read(cx).focus_handle(cx).is_focused(window) {
-            return;
-        }
-        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
-            return;
+    /// a paste that changes nothing is left to the editor. The message field's paste hook, so it
+    /// gets the field's own clipboard read, made off the UI thread (CDXC:Clipboard in
+    /// helpers/clipboard_read.rs).
+    pub(super) fn paste_message(
+        &mut self,
+        item: &ClipboardItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(text) = item.text() else {
+            return false;
         };
         let trimmed = trim_prompt_editor_trailing_spaces(&text);
         if text.is_empty() || trimmed == text {
-            return;
+            return false;
         }
-        cx.stop_propagation();
         self.message.update(cx, |message, cx| {
             message.replace(trimmed, window, cx);
         });
         cx.notify();
+        true
     }
 
     /// A browser textarea hands Tab and Shift+Tab to focus navigation; gpui-component's editor

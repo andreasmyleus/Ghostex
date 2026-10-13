@@ -1,7 +1,8 @@
-//! A finished turn: its "Worked for Xs" heading, the work log behind it, the "N files changed"
-//! fold, the artifacts and answered questions it keeps in view, and the final reply.
+//! A finished turn: its "Worked 2m 5s" summary with the turn's counts beside it, the work log
+//! behind it, the "N files changed" fold, the artifacts and answered questions it keeps in view,
+//! and the final reply. What the summary says is decided in gx-chat-core `work_summary.rs`.
 //!
-//! At rest the row is one column with an 8px gap, React's `.ghostex-chat-completed-turn`. While the
+//! At rest the row is one column with a 10px gap. While the
 //! turn is folding, or its log is opening or closing, `disclosure_motion.rs` reports a frame and
 //! the row is built from the same parts with each gap carried inside the part that owns it, so a
 //! part whose height eases to nothing takes its gap with it and the first and last frames match
@@ -11,15 +12,17 @@ use super::disclosure_body::{DisclosureRail, disclosure_body};
 use super::disclosure_motion::{FoldFrame, FoldMotionKind, motion_clip};
 use super::transcript::text;
 use super::{appearance::ChatAppearance, state::NativeChatView};
+use crate::app::native_chat::cursor::ChatCursor as _;
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, FontWeight, IntoElement, ParentElement as _, Styled as _, Window, div, px,
-    relative,
+    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use serde_json::{Value, json};
 use std::{cell::Cell, rc::Rc};
 
-/// Space between the parts of a finished turn, React's `gap: 0.5rem` on the turn.
-const PART_GAP: f32 = 8.0;
+/// Space between the parts of a finished turn.
+const PART_GAP: f32 = 10.0;
 /// Space between two transcript list items, the `pb(16)` every row wrapper ends with, which the
 /// live rows had between them before they folded.
 const LIVE_ROW_GAP: f32 = 16.0;
@@ -51,45 +54,13 @@ impl NativeChatView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let s = p.scale;
-        let mut work_appearance = p.clone();
-        work_appearance.primary = p.muted;
         let id = format!("work:{}", text(item, "id"));
         let expanded = self.is_expanded(&id, p.verbose);
         self.disclosure_motion
             .borrow_mut()
             .arrived(&id, !expanded, cx.reduce_motion());
         let motion = self.disclosure_frame(&id, expanded, cx);
-        let heading_opacity = motion.map_or(1.0, |frame| frame.heading);
-        let heading = if item["expandable"] == true {
-            let disclosure = self.disclosure(
-                id.clone(),
-                text(item, "label"),
-                expanded,
-                Some(json!({"type":"loadWork","id":item["id"],"work":item["deferred"]}))
-                    .filter(|_| item["deferred"].is_object()),
-                &work_appearance,
-                cx,
-            );
-            div()
-                .text_color(p.muted)
-                .font_weight(FontWeight::MEDIUM)
-                .child(disclosure)
-                .into_any_element()
-        } else {
-            div()
-                .pl(px(24.0 * s))
-                .text_color(p.muted.opacity(0.5))
-                .font_weight(FontWeight::MEDIUM)
-                .child(text(item, "label"))
-                .into_any_element()
-        };
-        let divider = div()
-            .h(px(1.0))
-            .mt(px(2.0 * s))
-            .mb(px(8.0 * s))
-            .w(relative(heading_opacity))
-            .bg(p.border)
-            .into_any_element();
+        let heading = self.work_summary(item, &id, expanded, p, cx);
         // Every row of a finished turn hides its own writes; they belong to the turn's
         // "N files changed" fold below the heading (file_change_card.rs). Rows that are still
         // folding keep theirs until they are gone, as they were a moment ago.
@@ -116,7 +87,7 @@ impl NativeChatView {
             (!log.is_empty()).then(|| {
                 vec![disclosure_body(
                     p,
-                    DisclosureRail::Marker,
+                    DisclosureRail::Work,
                     8.0,
                     id.clone(),
                     "Collapse completed work",
@@ -152,14 +123,137 @@ impl NativeChatView {
                 .flex_col()
                 .w_full()
                 .gap(px(PART_GAP * s))
-                .child(heading)
-                .child(divider);
+                .child(heading);
             if let Some(log) = log {
                 row = row.children(log);
             }
             return row.children(files).children(tail).into_any_element();
         };
-        self.moving_completed_work_row(&id, frame, heading, divider, log, files, tail, s)
+        self.moving_completed_work_row(&id, frame, heading, log, files, tail, s)
+    }
+
+    /// The bar a finished turn folds behind: a chevron, "Worked 2m 5s", and the turn's counts as
+    /// chips, so the closed fold still says what happened. Pressing it opens the log, reading a
+    /// turn whose rows are still on the server first.
+    ///
+    /// CDXC:SessionChat 2026-10-11 DECISION: User: move the count pills to the right side of the "Worked …" row and give them fully rounded (pill) corners. They wrap among themselves, right-aligned, when the row is narrow; the phone's `TranscriptItemRow.tsx` lays them out the same way.
+    fn work_summary(
+        &self,
+        item: &Value,
+        id: &str,
+        expanded: bool,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let s = p.scale;
+        let expandable = item["expandable"] == true;
+        let label = text(item, "label");
+        let stats: Vec<(String, String)> = item["stats"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|stat| (text(stat, "kind"), text(stat, "label")))
+            .collect();
+        let spoken = std::iter::once(label.clone())
+            .chain(stats.iter().map(|(_, label)| label.clone()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let chip = |kind: &str, label: String| {
+            let failed = matches!(kind, "failed" | "recovered");
+            let tone = if failed { p.error() } else { p.card_muted };
+            let icon = match kind {
+                "files" => "titlebar/pencil.svg",
+                "failed" | "recovered" => "titlebar/alert-triangle.svg",
+                _ => "titlebar/tool.svg",
+            };
+            div()
+                .flex()
+                .items_center()
+                .flex_shrink_0()
+                .gap(px(5.0 * s))
+                .px(px(8.0 * s))
+                .py(px(2.0 * s))
+                .rounded_full()
+                .border(px(s))
+                .border_color(p.foreground.opacity(0.1))
+                .text_size(px(11.5 * s))
+                .line_height(px(16.0 * s))
+                .whitespace_nowrap()
+                .text_color(tone)
+                .child(gpui::svg().path(icon).size(px(12.0 * s)).text_color(tone))
+                .child(label)
+        };
+        let mut bar = div()
+            .id(SharedString::from(format!("{id}:summary")))
+            .role(gpui::Role::Button)
+            .aria_label(spoken)
+            .aria_expanded(expanded)
+            .flex()
+            .items_center()
+            .w_full()
+            .gap(px(8.0 * s))
+            .pl(px(8.0 * s))
+            .pr(px(10.0 * s))
+            .py(px(6.0 * s))
+            .rounded(px(10.0 * s))
+            .border(px(s))
+            .border_color(p.foreground.opacity(0.06))
+            .bg(p.input.opacity(0.75))
+            .when(expandable, |bar| {
+                bar.child(
+                    gpui::svg()
+                        .path(if expanded {
+                            "titlebar/chevron-down.svg"
+                        } else {
+                            "titlebar/chevron-right.svg"
+                        })
+                        .size(px(14.0 * s))
+                        .flex_shrink_0()
+                        .text_color(p.muted),
+                )
+            })
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(13.5 * s))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(if expandable { p.foreground } else { p.muted })
+                    .child(label),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_w_0()
+                    .flex_wrap()
+                    .justify_end()
+                    .items_center()
+                    .gap(px(6.0 * s))
+                    .children(stats.into_iter().map(|(kind, label)| chip(&kind, label))),
+            );
+        if expandable {
+            let id = id.to_string();
+            let action = Some(json!({"type":"loadWork","id":item["id"],"work":item["deferred"]}))
+                .filter(|_| item["deferred"].is_object());
+            bar = bar
+                .chat_cursor_pointer()
+                .hover(|style| style.bg(p.input))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.anchor_disclosure_toggle(&id, !expanded);
+                    if expanded {
+                        this.expanded.remove(&id);
+                        this.collapsed.insert(id.clone());
+                    } else {
+                        this.collapsed.remove(&id);
+                        this.expanded.insert(id.clone());
+                        if let Some(action) = &action {
+                            this.invoke(action.clone(), cx);
+                        }
+                    }
+                    cx.notify();
+                }));
+        }
+        bar.into_any_element()
     }
 
     /// The row while it folds, opens or closes. Each part carries the gap above it, so a part
@@ -170,7 +264,6 @@ impl NativeChatView {
         id: &str,
         frame: FoldFrame,
         heading: AnyElement,
-        divider: AnyElement,
         log: Option<Vec<AnyElement>>,
         files: Option<AnyElement>,
         tail: Vec<AnyElement>,
@@ -188,7 +281,6 @@ impl NativeChatView {
                     .opacity(frame.heading)
                     .child(heading),
             )
-            .child(spaced(divider))
             .into_any_element();
         if frame.kind == FoldMotionKind::Fold {
             // The heading did not exist while the turn was live, so it grows in; the rows it

@@ -80,11 +80,20 @@ pub struct Document {
     pub loading_earlier: bool,
     /// The ids of the turns whose reply is final, so the renderer can mark them.
     pub final_ids: Vec<String>,
+    /// The published pages (`ghostex show`) whose answers arrived, so their cards read Answered.
+    pub answered_pages: Vec<String>,
     /// Per completed-work row: the read is in flight, or it failed and offers a retry.
     pub deferred_work: BTreeMap<String, DeferredWorkRow>,
 
     // ---- composer ---------------------------------------------------------
     pub queue: Queue,
+    /// The queued messages Back to composer is offered on, oldest first; the last is the one the
+    /// composer's Up key takes back. Family d.
+    pub queue_take_back_ids: Vec<String>,
+    /// The message a Back to composer is taking back right now, drawn busy. Family d.
+    pub queue_take_back_busy: Option<String>,
+    /// The key Back to composer's tooltip names.
+    pub queue_take_back_hotkey: String,
     pub draft: Draft,
     pub composer_placeholder: String,
     /// Why sending is blocked, or `null` when it is not.
@@ -102,6 +111,12 @@ pub struct Document {
     pub pending_attachments: u32,
     pub incoming_draft: Option<IncomingDraft>,
     pub note: Note,
+    /// The Catch me up button and card. Family d.
+    #[serde(default)]
+    pub catch_up: crate::composer::catch_up::CatchUp,
+    /// The Files and links card. Family d.
+    #[serde(default)]
+    pub files_links: crate::composer::files_links::FilesLinks,
     pub interaction: Interaction,
     /// The toast in the scroll-to-bottom pill's place: "Press Escape again to interrupt" while a
     /// first Escape waits, then the red "Agent was interrupted". Family d.
@@ -117,6 +132,9 @@ pub struct Document {
     // ---- questions and notices -------------------------------------------
     pub question_card: QuestionCard,
     pub async_questions: AsyncQuestions,
+    /// The question forms (```questions blocks) by id, with the reader's picks or the sent answers
+    /// (`questions/forms.rs`); the transcript's Markdown names each by id where it is drawn.
+    pub question_forms: BTreeMap<String, Value>,
     pub notice_visible: bool,
     #[serde(default, skip_serializing_if = "Tri::is_absent")]
     pub notice_error: Tri<String>,

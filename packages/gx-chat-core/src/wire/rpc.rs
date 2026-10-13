@@ -21,6 +21,8 @@ pub enum ChatRpcMethod {
     ReadSessionChatSkills,
     ReadSessionChatFiles,
     ReadSessionChatImage,
+    /// A published page's picture for its chat card (`server/src/visual_pages/thumbnail.rs`).
+    ReadVisualPageThumbnail,
     SendSessionChatMessage,
     InterruptSessionChat,
     AnswerSessionChatPrompt,
@@ -51,6 +53,13 @@ pub enum ChatRpcMethod {
     ReadCoordinatorThreads,
     /// Resumes a coordinator's closed thread before one of its Threads panel rows opens it.
     OpenCoordinatorThread,
+    /// Takes a message the agent CLI queued back out of its queue, for the composer.
+    TakeBackSessionChatQueuedMessage,
+    /// A short summary of where the session stands (`composer/catch_up.rs`).
+    CatchUpSession,
+    /// Every attachment, file and link the session and its threads mentioned
+    /// (`composer/files_links.rs`).
+    ReadSessionFilesLinks,
     /// A method this build does not know; kept verbatim.
     Other(String),
 }
@@ -63,6 +72,7 @@ impl ChatRpcMethod {
             Self::ReadSessionChatSkills => "readSessionChatSkills",
             Self::ReadSessionChatFiles => "readSessionChatFiles",
             Self::ReadSessionChatImage => "readSessionChatImage",
+            Self::ReadVisualPageThumbnail => "readVisualPageThumbnail",
             Self::SendSessionChatMessage => "sendSessionChatMessage",
             Self::InterruptSessionChat => "interruptSessionChat",
             Self::AnswerSessionChatPrompt => "answerSessionChatPrompt",
@@ -89,6 +99,9 @@ impl ChatRpcMethod {
             Self::RunProjectDocsAction => "runProjectDocsAction",
             Self::ReadCoordinatorThreads => "readCoordinatorThreads",
             Self::OpenCoordinatorThread => "openCoordinatorThread",
+            Self::TakeBackSessionChatQueuedMessage => "takeBackSessionChatQueuedMessage",
+            Self::CatchUpSession => "catchUpSession",
+            Self::ReadSessionFilesLinks => "readSessionFilesLinks",
             Self::Other(name) => name.as_str(),
         }
     }
@@ -100,6 +113,7 @@ impl ChatRpcMethod {
             "readSessionChatSkills" => Self::ReadSessionChatSkills,
             "readSessionChatFiles" => Self::ReadSessionChatFiles,
             "readSessionChatImage" => Self::ReadSessionChatImage,
+            "readVisualPageThumbnail" => Self::ReadVisualPageThumbnail,
             "sendSessionChatMessage" => Self::SendSessionChatMessage,
             "interruptSessionChat" => Self::InterruptSessionChat,
             "answerSessionChatPrompt" => Self::AnswerSessionChatPrompt,
@@ -126,6 +140,9 @@ impl ChatRpcMethod {
             "runProjectDocsAction" => Self::RunProjectDocsAction,
             "readCoordinatorThreads" => Self::ReadCoordinatorThreads,
             "openCoordinatorThread" => Self::OpenCoordinatorThread,
+            "takeBackSessionChatQueuedMessage" => Self::TakeBackSessionChatQueuedMessage,
+            "catchUpSession" => Self::CatchUpSession,
+            "readSessionFilesLinks" => Self::ReadSessionFilesLinks,
             other => Self::Other(other.to_string()),
         }
     }

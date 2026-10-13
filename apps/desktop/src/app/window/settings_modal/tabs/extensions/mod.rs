@@ -12,6 +12,7 @@ mod account_usage;
 mod browser;
 mod cards;
 pub(crate) mod data;
+mod delete_view;
 mod detail;
 mod filter_bar;
 mod scope_editor;
@@ -76,6 +77,9 @@ pub(crate) struct ExtensionsTab {
     pub(crate) type_dropdown: DropdownState,
     pub(crate) category_dropdown: DropdownState,
     pub(crate) view_editor: Option<ViewEditorState>,
+    /// The view a Delete is asking about (`delete_view.rs`).
+    pub(crate) delete_view: Option<delete_view::DeleteViewState>,
+    pub(crate) delete_view_focus: FocusHandle,
     pub(crate) scope_editor: Option<ScopeEditorState>,
     pub(crate) scope_targets: DropdownState,
     pub(crate) scope_keep: DropdownState,
@@ -159,6 +163,8 @@ impl ExtensionsTab {
             type_dropdown: DropdownState::default(),
             category_dropdown: DropdownState::default(),
             view_editor: None,
+            delete_view: None,
+            delete_view_focus: cx.focus_handle(),
             scope_editor: None,
             scope_targets: DropdownState::default(),
             scope_keep: DropdownState::default(),
@@ -429,6 +435,21 @@ impl ExtensionsTab {
                     }
                 }
             }
+            "extensions-delete-view" => {
+                let values = self.store.read(cx).values();
+                let editing = self
+                    .view_editor
+                    .as_ref()
+                    .and_then(|editor| editor.id.clone());
+                let Some(view) = custom_views(&values)
+                    .into_iter()
+                    .find(|view| editing.as_ref().is_none_or(|id| *id == view.id()))
+                else {
+                    return;
+                };
+                self.preview_applied = true;
+                self.request_delete_view(view.id(), view.name().to_string(), window, cx);
+            }
             "extensions-store" | "extensions-views" | "extensions-templates" => {
                 if self.browser.catalog.is_none() {
                     return;
@@ -560,6 +581,9 @@ impl Render for ExtensionsTab {
         }
         if let Some(consent) = self.render_consent(&p, window, cx) {
             blocks.push(PageBlock::plain(consent));
+        }
+        if let Some(confirm) = self.render_delete_view(&p, window, cx) {
+            blocks.push(PageBlock::plain(confirm));
         }
         let page = settings_page(&self.store, SettingsTabId::Extensions, &p, blocks, cx);
         let sticky = self.render_sticky_filter_bar(&p, &counts, window, cx);

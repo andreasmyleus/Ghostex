@@ -250,6 +250,8 @@ pub fn settle(state: &mut ChatState, event: &Event, context: &ChatContext) -> Ve
             let claimed = claimed
                 .or_else(|| settle_chrome_refresh(state, *request_id, outcome))
                 .or_else(|| settle_note_read(state, *request_id, outcome))
+                .or_else(|| crate::composer::catch_up::settle(state, *request_id, outcome))
+                .or_else(|| crate::composer::files_links::settle(state, *request_id, outcome))
                 .or_else(|| settle_attachment_import(state, *request_id, outcome))
                 .or_else(|| settle_draft_push(state, *request_id, outcome));
             match claimed {
@@ -257,6 +259,11 @@ pub fn settle(state: &mut ChatState, event: &Event, context: &ChatContext) -> Ve
                 None => settle_catalog(state, *request_id, outcome.as_ref()),
             }
             effects.extend(crate::composer::queue_edit::advance(
+                state,
+                *request_id,
+                outcome,
+            ));
+            effects.extend(crate::composer::queue_take_back::advance(
                 state,
                 *request_id,
                 outcome,
@@ -277,6 +284,7 @@ pub fn settle(state: &mut ChatState, event: &Event, context: &ChatContext) -> Ve
     }
     effects.extend(request_catalogs(state));
     effects.extend(crate::composer::draft_sync::settle(state));
+    effects.extend(crate::composer::files_links::advance_jump(state, context));
     // The two latches `NativeComposerChrome.projection` sets on the way to its answer. They live
     // here because `document()` holds `&ChatState` and could only set them on a clone.
     let note_open = state.composer.note.open;

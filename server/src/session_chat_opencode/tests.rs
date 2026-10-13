@@ -61,7 +61,7 @@ fn mutable_text_reasoning_and_tools_keep_stable_identity() {
     assert_eq!(first[3].id, second[3].id);
     assert_eq!(second[4].role, SessionChatRole::Tool);
     assert!(
-        matches!(&second[4].blocks[0],SessionChatBlock::ToolResult{output,is_error:Some(false), call_id: None } if output=="ok")
+        matches!(&second[4].blocks[0],SessionChatBlock::ToolResult{output,is_error:Some(false), call_id: None, patch: None } if output=="ok")
     );
     for row in second {
         assert_eq!(

@@ -26,6 +26,12 @@ pub enum DiffKind {
 pub struct DiffLine {
     pub kind: DiffKind,
     pub text: String,
+    /// The line's number in the file before the edit, when the agent recorded where it landed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub old: Option<u32>,
+    /// The line's number in the file after the edit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new: Option<u32>,
 }
 
 impl DiffLine {
@@ -33,7 +39,15 @@ impl DiffLine {
         Self {
             kind,
             text: text.into(),
+            old: None,
+            new: None,
         }
+    }
+
+    pub fn numbered(mut self, old: Option<u32>, new: Option<u32>) -> Self {
+        self.old = old;
+        self.new = new;
+        self
     }
 }
 

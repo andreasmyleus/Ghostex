@@ -83,6 +83,7 @@ pub fn decode_zcode_transcript_line(line: &str, fallback_id: &str) -> Option<Ses
                     output: bounded_tool_payload(output),
                     is_error: (status == Some("error")).then_some(true),
                     call_id: None,
+                    patch: None,
                 });
             }
             blocks
@@ -188,7 +189,7 @@ mod tests {
         assert_eq!(thinking.id, "part_test");
         let tool = decode_zcode_transcript_line(&row(json!({"type":"tool","tool":"Bash","state":{"status":"error","input":{"command":"false"},"error":"Exit 1"}})), "fallback").unwrap();
         assert!(
-            matches!(&tool.blocks[1], SessionChatBlock::ToolResult { is_error: Some(true), output, call_id: None } if output == "Exit 1")
+            matches!(&tool.blocks[1], SessionChatBlock::ToolResult { is_error: Some(true), output, call_id: None, patch: None } if output == "Exit 1")
         );
         assert!(decode_zcode_transcript_line(
             &row(json!({"type":"text","text":"hidden","ignored":true})),

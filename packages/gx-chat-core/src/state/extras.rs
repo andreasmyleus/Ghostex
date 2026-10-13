@@ -74,8 +74,9 @@ pub struct PanelsState {
     /// A coordinator's Threads panel is folded to its header; remembered across chats
     /// (`threadsCollapsed`).
     pub threads_collapsed: bool,
-    /// Every thread is listed, not only the working ones and the latest few.
-    pub threads_show_all: bool,
+    /// How far the list is unfolded: 0 in flight only, 1 with the recent ones ("Show recent"),
+    /// 2+ with 30 more rows per step ("N more"). Back to 0 when the panel folds or a chat starts.
+    pub threads_step: u32,
     /// The full thread list "N more" read: the revision it answers and its rows (`Null` when the
     /// read failed, so it is not retried until the list changes). Dropped when the list folds.
     pub threads_all: Option<(String, Value)>,
@@ -83,6 +84,8 @@ pub struct PanelsState {
     pub threads_all_request: Option<(u64, String)>,
     /// The `openCoordinatorThread` in flight for a clicked thread row; a newer click replaces it.
     pub threads_open_request: Option<u64>,
+    /// The grouped background-task row is unfolded to its tasks; folded by default, per chat.
+    pub background_tasks_open: bool,
 }
 
 impl Default for PanelsState {
@@ -93,10 +96,11 @@ impl Default for PanelsState {
             tasks_show_completed: false,
             task_signature: -1,
             threads_collapsed: false,
-            threads_show_all: false,
+            threads_step: 0,
             threads_all: None,
             threads_all_request: None,
             threads_open_request: None,
+            background_tasks_open: false,
         }
     }
 }

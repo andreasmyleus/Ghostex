@@ -78,16 +78,21 @@ pub(crate) fn modal_select_trigger_skinned<V: 'static>(
         .into_any_element()
 }
 
+/// A text field's paste hook: gets the pasted clipboard and returns whether it took the paste.
+pub(crate) type ModalPasteHook =
+    std::rc::Rc<dyn Fn(&gpui::ClipboardItem, &mut Window, &mut App) -> bool>;
+
 /// [`modal_text_area`] with a [`ModalFieldSkin`]. The box keeps `min_height`
 /// and grows with the editor, so create the `TextareaState` with
 /// `.auto_grow(min_rows, max_rows)` to cap the growth the way the React
-/// `max-height` does.
+/// `max-height` does. `on_paste` is the field's paste hook ([`Textarea::on_paste`]).
 pub(crate) fn modal_text_area_skinned(
     p: &ModalPalette,
     state: &gpui::Entity<TextareaState>,
     skin: ModalFieldSkin,
     min_height: f32,
     disabled: bool,
+    on_paste: Option<ModalPasteHook>,
     window: &Window,
     cx: &App,
 ) -> AnyElement {
@@ -112,6 +117,9 @@ pub(crate) fn modal_text_area_skinned(
         .child(
             div().w_full().min_w_0().child(
                 Textarea::new(state)
+                    .when_some(on_paste, |this, on_paste| {
+                        this.on_paste(move |item, window, cx| on_paste(item, window, cx))
+                    })
                     .with_size(ComponentSize::Small)
                     .appearance(false)
                     .bordered(false)

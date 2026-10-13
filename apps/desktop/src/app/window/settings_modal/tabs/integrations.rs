@@ -548,6 +548,9 @@ fn integration_row(
         .into_any_element()
 }
 
+/// Width of an Agent skills row's Install / Reinstall button; fits the longer label.
+const SKILL_MAIN_BUTTON_WIDTH: f32 = 112.0;
+
 /// A 32px ghost icon button with a tooltip (`SettingButton size='icon' variant='ghost'` in an
 /// `AppTooltip`), in `color` (the update button is sky-400).
 #[allow(clippy::too_many_arguments)]
@@ -1221,7 +1224,14 @@ impl IntegrationsTab {
         if (needs_trycua || needs_spaceo) && !installed && !install_disabled {
             install = div().opacity(0.6).child(install).into_any_element();
         }
-        let mut controls = vec![install];
+        // Install and Reinstall share one width so every row's main button ends at the same edge;
+        // a column wrapper stretches the button to it and its label stays centered.
+        let install = v_flex()
+            .flex_shrink_0()
+            .w(px(SKILL_MAIN_BUTTON_WIDTH))
+            .child(install)
+            .into_any_element();
+        let mut controls = Vec::new();
         if installed {
             let skill_id = skill.id.clone();
             controls.push(ghost_icon_button(
@@ -1241,6 +1251,7 @@ impl IntegrationsTab {
                 cx,
             ));
         }
+        controls.push(install);
         integration_row(
             p,
             &format!("skill-{}", skill.id),

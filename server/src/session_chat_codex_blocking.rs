@@ -182,6 +182,8 @@ pub(crate) fn is_codex_modal_footer(line: &str) -> bool {
                     | &"skip"
             )
         ) || action.starts_with(&["go", "back"])
+            // A searched `/resume` list says "esc clear search" until its search is empty.
+            || action.starts_with(&["clear", "search"])
     })
 }
 

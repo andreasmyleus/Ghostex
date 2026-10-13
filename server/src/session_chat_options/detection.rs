@@ -435,6 +435,24 @@ pub fn detect_session_chat_terminal_state(
                     activity,
                 ))
         });
+    let mut activity = activity;
+    // Disk, not screen: the footer says how many background tasks run, the transcript says which.
+    if let Some(work) = activity
+        .as_mut()
+        .and_then(|activity| activity.background.as_mut())
+        .filter(|_| agent == Some(SessionChatOptionAgent::Claude))
+    {
+        if let Some(session) = repository
+            .get_session(project_id, session_id)
+            .ok()
+            .flatten()
+        {
+            work.tasks = crate::session_chat_claude_fleet::read_claude_background_tasks(
+                &session, work.count,
+            )
+            .unwrap_or_default();
+        }
+    }
     let (fleet, fleet_observed) = if crate::session_chat_fleet_status::has_fleet_reader(agent) {
         match repository
             .get_session(project_id, session_id)

@@ -949,6 +949,7 @@ impl ExtensionsTab {
         };
         let remove = {
             let id = id.clone();
+            let name = name.clone();
             settings_square_button(
                 p,
                 SharedString::from(format!("custom-{id}-remove")),
@@ -956,16 +957,11 @@ impl ExtensionsTab {
                 None,
                 SizedButtonVariant::Ghost,
                 24.0,
-                None,
+                Some(SharedString::from(format!("Delete {name}"))),
                 false,
                 None,
-                move |page: &mut Self, _window, cx| {
-                    let values = page.store.read(cx).values();
-                    let views: Vec<_> = custom_views(&values)
-                        .into_iter()
-                        .filter(|candidate| candidate.id() != id)
-                        .collect();
-                    page.save_custom_views(&views, cx);
+                move |page: &mut Self, window, cx| {
+                    page.request_delete_view(id.clone(), name.to_string(), window, cx)
                 },
                 cx,
             )

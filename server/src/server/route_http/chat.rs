@@ -36,6 +36,24 @@ pub(super) async fn route_chat_http(
         "/api/readSessionChat" => {
             handle_read_session_chat_http(&state, endpoint.path, request_id, &body_json).await
         }
+        "/api/catchUpSession" => {
+            crate::session_chat_catch_up::handle_catch_up_session_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
+            .await
+        }
+        "/api/readSessionFilesLinks" => {
+            crate::session_files_links::handle_read_session_files_links_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
+            .await
+        }
         "/api/readSessionChatSkills" => {
             handle_read_session_chat_skills_http(&state, endpoint.path, request_id, &body_json)
                 .await
@@ -116,6 +134,15 @@ pub(super) async fn route_chat_http(
         "/api/replaceSessionChatDraft" => {
             handle_replace_session_chat_draft_http(&state, endpoint.path, request_id, &body_json)
                 .await
+        }
+        "/api/takeBackSessionChatQueuedMessage" => {
+            crate::session_chat_send::handle_take_back_session_chat_queued_message_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
+            .await
         }
         "/api/claimSessionChatLaunchDraft" => handle_claim_session_chat_launch_draft_http(
             &state,
@@ -207,6 +234,22 @@ pub(super) async fn route_chat_http(
         "/api/readSessionTranscriptSizes" => {
             handle_read_session_transcript_sizes_http(&state, endpoint.path, request_id, &body_json)
                 .await
+        }
+        crate::visual_pages::READ_VISUAL_PAGE_THUMBNAIL_ENDPOINT => {
+            crate::visual_pages::handle_read_visual_page_thumbnail_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
+        }
+        crate::visual_pages::STORE_VISUAL_PAGE_THUMBNAIL_ENDPOINT => {
+            crate::visual_pages::handle_store_visual_page_thumbnail_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
         }
         crate::visual_pages::PUBLISH_VISUAL_PAGE_ENDPOINT => {
             crate::visual_pages::handle_publish_visual_page_http(

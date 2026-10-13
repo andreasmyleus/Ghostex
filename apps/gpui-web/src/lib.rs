@@ -133,6 +133,22 @@ pub fn run() -> Result<(), JsValue> {
         unsafe { std::mem::transmute::<WasmApplication, Application>(wasm_app) }
     };
 
+    // `?settings=<url-encoded JSON object>` stands in for the settings the page has no source for
+    // (README, "Settings are empty"), so a setting-driven look can be tested in a browser, for
+    // example `?settings={"markedHandovers":true,"markedHandoversStyle":"badge"}`.
+    if let Some(settings) = web_sys::window()
+        .and_then(|window| window.location().search().ok())
+        .and_then(|search| {
+            search
+                .trim_start_matches('?')
+                .split('&')
+                .find_map(|pair| pair.strip_prefix("settings=").map(str::to_string))
+        })
+        .and_then(|encoded| js_sys::decode_uri_component(&encoded).ok())
+        .and_then(|decoded| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&String::from(decoded)).ok())
+    {
+        shared_settings::install(settings);
+    }
     app.with_assets(assets::GhostexAssets).run(|cx: &mut App| {
         gpui_component::init(cx);
         ui_fonts::register(cx);

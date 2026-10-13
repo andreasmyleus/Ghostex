@@ -261,6 +261,7 @@ fn extended_thinking_dialog(lines: &[String]) -> Option<TerminalDialog> {
         actions: Vec::new(),
         side_question: None,
         blocks: None,
+        picker: None,
     })
 }
 
@@ -331,6 +332,7 @@ fn directory_trust_dialog(content: &[&str]) -> Option<TerminalDialog> {
         actions: Vec::new(),
         side_question: None,
         blocks: None,
+        picker: None,
     })
 }
 
@@ -395,6 +397,7 @@ fn folder_access_trust_dialog(content: &[&str]) -> Option<TerminalDialog> {
         actions: Vec::new(),
         side_question: None,
         blocks: None,
+        picker: None,
     })
 }
 
@@ -820,7 +823,7 @@ pub fn detect_codex_dialog(text: &str) -> Option<TerminalDialog> {
     actions.push("cancel".to_string());
     let identity = content.join("\n") + &footer;
     let id = format!("{:x}", Sha256::digest(identity.as_bytes()));
-    Some(update_prompt_dialog(TerminalDialog {
+    let mut dialog = TerminalDialog {
         id,
         title,
         body: body.trim().to_string(),
@@ -831,7 +834,10 @@ pub fn detect_codex_dialog(text: &str) -> Option<TerminalDialog> {
         actions,
         side_question: None,
         blocks: None,
-    }))
+        picker: None,
+    };
+    dialog.picker = crate::session_chat_resume_picker::codex_resume_picker(&dialog);
+    Some(update_prompt_dialog(dialog))
 }
 
 impl TerminalDialog {

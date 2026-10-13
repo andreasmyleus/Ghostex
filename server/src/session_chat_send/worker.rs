@@ -480,6 +480,22 @@ pub(super) async fn run_session_chat_send_worker(
                         break;
                     }
                 }
+                SessionChatSendStep::VerifyTerminalPicker { agent } => {
+                    let open =
+                        capture_session_terminal_text(&zmx_name)
+                            .await
+                            .is_some_and(|screen| {
+                                crate::session_chat_resume_picker::screen_takes_picker_keys(
+                                    &agent, &screen,
+                                )
+                            });
+                    if !open {
+                        outcome = Err(SessionChatSendError::not_attempted(
+                            "The agent's list closed before the key could be sent.".to_string(),
+                        ));
+                        break;
+                    }
+                }
                 SessionChatSendStep::CloseUnwatchedCodexTranscriptPager => {
                     if let Err(error) = crate::session_chat_codex_pager::close_unwatched_pager(
                         &project_id,
@@ -637,6 +653,31 @@ pub(super) async fn run_session_chat_send_worker(
                                 .then_some(input.text),
                             ..CapturedTerminalDraft::default()
                         });
+                    }
+                }
+                SessionChatSendStep::PullClaudeQueue { transcript } => {
+                    match pull_claude_queue(
+                        &project_id,
+                        &session_id,
+                        &zmx_name,
+                        &source,
+                        &transcript,
+                        &|| job_generation != generation.load(Ordering::SeqCst),
+                    )
+                    .await
+                    {
+                        Ok(queued_messages) => {
+                            if let Some(sink) = captured_draft.take() {
+                                let _ = sink.send(CapturedTerminalDraft {
+                                    queued_messages,
+                                    ..CapturedTerminalDraft::default()
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            outcome = Err(error);
+                            break;
+                        }
                     }
                 }
                 SessionChatSendStep::GuardEmpryoDraft { replacement } => {

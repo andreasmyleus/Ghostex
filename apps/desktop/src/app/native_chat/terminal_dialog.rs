@@ -1,3 +1,4 @@
+use super::tone_card::ToneButton;
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
 use crate::app::native_chat::cursor::ChatCursor as _;
 use gpui::{
@@ -85,8 +86,12 @@ impl NativeChatView {
         let busy = self.snapshot["questionCard"]["busy"] == true;
         if dialog_id == "codex-transcript-pager" {
             body.push(div().child(text(dialog, "body")).into_any_element());
-            actions.push(self.chat_button("restore-chat".into(), if busy { "Restoring chat…" } else { "Restore chat" }.into(),
-                json!({"type":"answer","answer":{"kind":"terminalDialog","dialogId":dialog_id,"dialogAction":"cancel"}}), p, cx));
+            let restore = json!({"type":"answer","answer":{"kind":"terminalDialog","dialogId":dialog_id,"dialogAction":"cancel"}});
+            actions.push(
+                self.tone_button("restore-chat", if busy { "Restoring chat…" } else { "Restore chat" }, None, ToneButton::Primary, None, false, p)
+                    .on_click(cx.listener(move |this, _, _, cx| this.invoke(restore.clone(), cx)))
+                    .into_any_element(),
+            );
             return (body, actions);
         }
         let has_rows = dialog["rows"]
@@ -226,19 +231,17 @@ impl NativeChatView {
                 text(&dialog["presentation"], "submitLabel")
             };
             actions.push(
-                div()
-                    .id("terminal-dialog-submit")
-                    .role(gpui::Role::Button)
-                    .aria_label(submit_label.clone())
-                    .chat_cursor_pointer()
-                    .px(px(8.0 * p.scale))
-                    .py(px(4.0 * p.scale))
-                    .rounded(px(6.0 * p.scale))
-                    .border_1()
-                    .border_color(p.border)
-                    .child(submit_label)
-                    .on_click(cx.listener(|this, _, _, cx| this.submit_terminal_dialog(cx)))
-                    .into_any_element(),
+                self.tone_button(
+                    "terminal-dialog-submit",
+                    &submit_label,
+                    None,
+                    ToneButton::Primary,
+                    None,
+                    false,
+                    p,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.submit_terminal_dialog(cx)))
+                .into_any_element(),
             );
         } else {
             self.terminal_dialog_input = None;
@@ -276,8 +279,20 @@ impl NativeChatView {
             .into_iter()
             .flatten()
         {
-            actions.push(self.chat_button(format!("dialog-action:{}",text(action,"action")),text(action,"label"),
-                json!({"type":"answer","answer":{"kind":"terminalDialog","dialogId":dialog_id,"dialogAction":action["action"]}}),p,cx));
+            let answer = json!({"type":"answer","answer":{"kind":"terminalDialog","dialogId":dialog_id,"dialogAction":action["action"]}});
+            actions.push(
+                self.tone_button(
+                    gpui::SharedString::from(format!("dialog-action:{}", text(action, "action"))),
+                    &text(action, "label"),
+                    None,
+                    ToneButton::Secondary,
+                    None,
+                    false,
+                    p,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| this.invoke(answer.clone(), cx)))
+                .into_any_element(),
+            );
         }
         (body, actions)
     }

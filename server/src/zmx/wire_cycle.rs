@@ -248,24 +248,33 @@ pub(crate) fn cycle_wire_incompatible_zmx_session_daemons(
     let Ok(sessions) = repository.list_sessions(None) else {
         return;
     };
-    for session in sessions {
-        let (Some(project_id), Some(session_id)) = (
-            string_field(&session, "projectId"),
-            string_field(&session, "sessionId"),
-        ) else {
-            continue;
-        };
-        let Ok(zmx_name) = provider_zmx_session_name(&session) else {
-            continue;
-        };
-        // Liveness is the socket file, not an IPC probe: an incompatible daemon
-        // cannot answer, and a busy compatible one must never be mistaken for a
-        // dead one.
-        if zmx_session_daemon_socket_present(&zmx_name) != Some(true) {
-            continue;
-        }
-        let recorded_generation = recorded_zmx_wire_generation(&session);
-        if recorded_generation == Some(current_generation) {
+    // A session stamped with the current generation is compatible whether or not its daemon lives, so only the others are probed.
+    let candidates: Vec<_> = sessions
+        .iter()
+        .filter_map(|session| {
+            let project_id = string_field(session, "projectId")?;
+            let session_id = string_field(session, "sessionId")?;
+            let zmx_name = provider_zmx_session_name(session).ok()?;
+            let recorded_generation = recorded_zmx_wire_generation(session);
+            (recorded_generation != Some(current_generation)).then_some((
+                project_id,
+                session_id,
+                zmx_name,
+                recorded_generation,
+                session,
+            ))
+        })
+        .collect();
+    let live = zmx_session_daemons_present(
+        &candidates
+            .iter()
+            .map(|(_, _, zmx_name, _, _)| zmx_name.as_str())
+            .collect::<Vec<_>>(),
+    );
+    for ((project_id, session_id, zmx_name, recorded_generation, session), live) in
+        candidates.into_iter().zip(live)
+    {
+        if !live {
             continue;
         }
         // A closed session keeps its terminal state; only a session that can be
@@ -320,6 +329,33 @@ pub(crate) fn cycle_wire_incompatible_zmx_session_daemons(
             details: Some(details),
         });
     }
+}
+
+/// Whether each named daemon's socket is present. Liveness is the socket, not
+/// an IPC probe: an incompatible daemon cannot answer, and a busy compatible
+/// one must never be mistaken for a dead one.
+///
+/// CDXC:ZmxWireGeneration 2026-10-12 WHY:
+/// On Windows each check starts a `wmx inspect` process (0.3–0.8 s on the user's machine), and this pass ran it for every one of 1,112 stored sessions one after another before checking the recorded generation, so gxserver held its port without serving for about 150 s on every start: health probes timed out, the app showed its startup diagnostics, and CLI calls failed. Only sessions whose stamp differs are checked now, several at a time.
+fn zmx_session_daemons_present(zmx_names: &[&str]) -> Vec<bool> {
+    const PARALLEL_CHECKS: usize = 16;
+    let mut present = Vec::with_capacity(zmx_names.len());
+    for chunk in zmx_names.chunks(PARALLEL_CHECKS) {
+        std::thread::scope(|scope| {
+            let checks: Vec<_> = chunk
+                .iter()
+                .map(|zmx_name| {
+                    scope.spawn(move || zmx_session_daemon_socket_present(zmx_name) == Some(true))
+                })
+                .collect();
+            present.extend(
+                checks
+                    .into_iter()
+                    .map(|check| check.join().unwrap_or(false)),
+            );
+        });
+    }
+    present
 }
 
 /// Terminates one incompatible daemon and records the ordinary sleeping state.

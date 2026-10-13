@@ -32,6 +32,7 @@ const RULE_KINDS = [
 const stepValidator = v.object({
   id: v.string(),
   label: v.string(),
+  optional: v.optional(v.boolean()),
   rule: v.object({
     kind: v.string(),
     label: v.optional(v.string()),
@@ -66,7 +67,7 @@ function validateSteps(steps: Step[]): Step[] {
       if (states.length === 0) throw new ConvexError(`"${label}" needs the ticket states that count as done.`);
       rule.states = states;
     }
-    return { id, label, rule };
+    return step.optional ? { id, label, optional: true, rule } : { id, label, rule };
   });
 }
 

@@ -1935,14 +1935,23 @@ impl TerminalView {
 
     #[allow(dead_code)] // reached only from the demo binary input path; kept with the rest of the TerminalView input handling
     fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
-        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
-            return;
-        };
-        if text.is_empty() {
-            return;
-        }
-        let _ = self.model.send_paste(&text);
-        self.after_send_input(cx);
+        // Off the UI thread on Windows (CDXC:Clipboard in app/helpers/clipboard_read.rs); this
+        // file is also built into binaries without the app's helpers.
+        let read = cx.read_from_clipboard_async();
+        cx.spawn(async move |this, cx| {
+            let Some(text) = read.await.ok().flatten().and_then(|item| item.text()) else {
+                return;
+            };
+            if text.is_empty() {
+                return;
+            }
+            this.update(cx, |this, cx| {
+                let _ = this.model.send_paste(&text);
+                this.after_send_input(cx);
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Copy from absolute scrollback rows so selections remain stable while

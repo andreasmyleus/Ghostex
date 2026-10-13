@@ -228,11 +228,61 @@ pub(crate) async fn handle_answer_session_chat_prompt_http(
             Err(error) => domain_error_response(endpoint_path, request_id, error),
         };
     }
+    if kind == "terminalKey" {
+        let Some(agent) = crate::agents::identity::normalize_agent_id(
+            session_chat_agent_for_session(&target.session).as_deref(),
+        ) else {
+            return domain_error_response(
+                endpoint_path,
+                request_id,
+                DomainStateError {
+                    code: "invalidParams",
+                    message: "This session has no agent to send keys to.".to_string(),
+                },
+            );
+        };
+        let result =
+            crate::session_chat_resume_picker::answer_terminal_key(&target, &agent, &params).await;
+        // The card draws the screen the key changed; republish it now, not on the next probe.
+        crate::session_chat_options::SessionChatOptionDetector::new(state)
+            .detect(&target.project_id, &target.session_id, Some(&agent), true)
+            .await;
+        crate::session_chat_options::session_chat_terminal_notice_publisher(
+            state,
+            &target.project_id,
+            &target.session_id,
+        )();
+        schedule_session_chat_option_redetect(
+            state,
+            &target.project_id,
+            &target.session_id,
+            Some(&agent),
+        );
+        return match result {
+            Ok(result) => routed_json(
+                Some(endpoint_path),
+                StatusCode::OK,
+                rpc_success(request_id, result),
+            ),
+            Err(error) => domain_error_response(endpoint_path, request_id, error),
+        };
+    }
     if kind == "terminalDialog" {
         let agent = crate::session_chat_options::session_chat_option_agent(
             session_chat_agent_for_session(&target.session).as_deref(),
         );
+        let picker = crate::session_chat_resume_picker::is_picker_answer(&params);
         let (agent_name, result) = match agent {
+            Some(crate::session_chat_options::SessionChatOptionAgent::Codex) if picker => (
+                "codex",
+                crate::session_chat_resume_picker::answer_resume_picker(&target, "codex", &params)
+                    .await,
+            ),
+            Some(crate::session_chat_options::SessionChatOptionAgent::Claude) if picker => (
+                "claude",
+                crate::session_chat_resume_picker::answer_resume_picker(&target, "claude", &params)
+                    .await,
+            ),
             Some(crate::session_chat_options::SessionChatOptionAgent::Codex) => (
                 "codex",
                 crate::session_chat_codex_dialog::answer_codex_dialog(&target, &params).await,

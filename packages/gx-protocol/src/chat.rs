@@ -89,6 +89,9 @@ pub enum ChatBlock {
         /// The id of the call this answers, when the agent records one.
         #[serde(rename = "callId", default, skip_serializing_if = "Option::is_none")]
         call_id: Option<String>,
+        /// The file edit this result made, as the agent recorded it; absent for every other tool.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        patch: Option<ToolPatch>,
     },
     #[serde(rename = "image-ref")]
     ImageRef {
@@ -102,6 +105,36 @@ pub enum ChatBlock {
     /// A block type this client does not know. Its content is dropped.
     #[serde(other, rename = "unknown")]
     Unknown,
+}
+
+/// What a file edit changed, as the agent wrote it in its transcript (Claude's `structuredPatch`).
+///
+/// The tool call only holds the text it replaced, so this is the one place the file's own line
+/// numbers and surrounding lines come from.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolPatch {
+    /// The edit created the file.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub created: bool,
+    #[serde(default, deserialize_with = "crate::de::null_as_default")]
+    pub hunks: Vec<PatchHunk>,
+}
+
+/// One unified-diff hunk: its first line in the old and new file and its lines, each prefixed
+/// with `' '`, `'-'` or `'+'`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchHunk {
+    #[serde(default)]
+    pub old_start: u32,
+    #[serde(default)]
+    pub new_start: u32,
+    /// The nearest line above the hunk that starts a declaration, the way `git diff` heads a hunk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
+    #[serde(default, deserialize_with = "crate::de::null_as_default")]
+    pub lines: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -380,6 +413,10 @@ pub struct ReadSessionChatResult {
     /// and `None` (an older daemon, or a frame) leaves what the core already knows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uses_own_login: Option<bool>,
+    /// Whether the Catch me up setting is on; reads alone carry it, and `None` (an older daemon,
+    /// or a frame) leaves what the core already knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catch_up: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_info: Option<ChatForkInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

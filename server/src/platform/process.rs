@@ -108,6 +108,63 @@ pub(crate) fn process_is_alive(pid: u32) -> bool {
     }
 }
 
+/// Whether `pid` runs an executable named `gxserver.exe` (wherever it lives, including a `.retired-native` copy), so a recorded pid that Windows has since reused is never mistaken for a daemon.
+#[cfg(windows)]
+pub(crate) fn process_runs_gxserver(pid: u32) -> bool {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::Threading::{
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+            PROCESS_QUERY_LIMITED_INFORMATION,
+        },
+    };
+    if pid == 0 {
+        return false;
+    }
+    let mut name = vec![0u16; 32_768];
+    let mut length = name.len() as u32;
+    let read = unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return false;
+        }
+        let read =
+            QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, name.as_mut_ptr(), &mut length);
+        CloseHandle(process);
+        read
+    };
+    read != 0
+        && std::path::PathBuf::from(std::ffi::OsString::from_wide(&name[..length as usize]))
+            .file_name()
+            .is_some_and(|file| file.eq_ignore_ascii_case("gxserver.exe"))
+}
+
+/// Ends `pid` at once and waits up to `wait` for it to be gone; `true` once it has exited.
+#[cfg(windows)]
+pub(crate) fn terminate_process(pid: u32, wait: std::time::Duration) -> bool {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, WAIT_OBJECT_0},
+        System::Threading::{
+            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            PROCESS_TERMINATE,
+        },
+    };
+    if pid == 0 || pid == std::process::id() {
+        return false;
+    }
+    unsafe {
+        let process = OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, 0, pid);
+        if process.is_null() {
+            return !process_is_alive(pid);
+        }
+        TerminateProcess(process, 1);
+        let waited = WaitForSingleObject(process, wait.as_millis().min(u32::MAX as u128) as u32);
+        CloseHandle(process);
+        waited == WAIT_OBJECT_0
+    }
+}
+
 /// Whether this process runs an executable image that is no longer the installed file at its path.
 ///
 /// CDXC:ServerDaemon 2026-09-28 WHY:

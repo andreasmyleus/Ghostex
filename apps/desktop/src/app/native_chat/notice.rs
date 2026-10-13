@@ -1,3 +1,4 @@
+use super::tone_card::{ToneBodyMotion, ToneButton, ToneCardParts, tone_look};
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
 use crate::app::native_chat::cursor::ChatCursor as _;
 use gpui::prelude::FluentBuilder as _;
@@ -8,7 +9,7 @@ use gpui::{
 use serde_json::json;
 
 impl NativeChatView {
-    /// CDXC:SessionChat 2026-09-16 DECISION: User: notices are the shared status card. Actions sit right-aligned in the footer band with a keyed action on the left; the 2026-09-07 20px padding rule is superseded by the card's shared padding. User: no "Selected in terminal" badge on any picker row, in any state.
+    /// CDXC:SessionChat 2026-10-11 DECISION: User picked the proposed notices design: a notice is a tone card (tone_card.rs) washed in the tone the chat core gives it, with its actions in the footer (the account switch first and filled, Terminal view beside it, Dismiss quiet at the right end); this supersedes the 2026-09-16 rule that notices are the shared status card. The `/resume` picker, pass-through and side-question cards keep their own shells. User (2026-09-16): no "Selected in terminal" badge on any picker row, in any state.
     pub(crate) fn render_notice(
         &mut self,
         p: &ChatAppearance,
@@ -19,7 +20,16 @@ impl NativeChatView {
         let notice = &snapshot["terminalNotice"];
         if !notice.is_object() || snapshot["noticeVisible"] != true {
             self.terminal_dialog_input = None;
+            self.terminal_picker_input = None;
             return None;
+        }
+        if notice["dialog"]["presentation"]["picker"].is_object() {
+            self.terminal_dialog_input = None;
+            return Some(self.terminal_picker_card(notice, p, window, cx));
+        }
+        self.terminal_picker_input = None;
+        if notice["passthrough"].is_object() {
+            return Some(self.passthrough_card(notice, p, cx));
         }
         let key = format!(
             "notice:{}:{}",
@@ -40,7 +50,10 @@ impl NativeChatView {
             text(choice, "label").starts_with("Wait here, then continue automatically")
         });
         let mut body = Vec::new();
+        // The notice's own actions lead the footer; a live dialog's buttons and Dismiss sit at its
+        // right end.
         let mut actions = Vec::new();
+        let mut footer_end = Vec::new();
         if notice["dialog"].is_object()
             && notice["dialog"]["rows"]
                 .as_array()
@@ -53,17 +66,24 @@ impl NativeChatView {
             let (body, actions) = self.render_terminal_dialog(&notice["dialog"], p, window, cx);
             let copy_title = text(&notice["dialog"]["presentation"]["copy"], "title");
             let panel_title = text(&notice["dialog"]["presentation"], "title");
-            return Some(self.status_card(
-                if !copy_title.is_empty() {
-                    copy_title
-                } else if !panel_title.is_empty() {
-                    panel_title
-                } else {
-                    text(&notice["dialog"], "title")
+            return Some(self.tone_card(
+                ToneCardParts {
+                    look: tone_look(&text(notice, "tone"), p),
+                    title: if !copy_title.is_empty() {
+                        copy_title
+                    } else if !panel_title.is_empty() {
+                        panel_title
+                    } else {
+                        text(&notice["dialog"], "title")
+                    },
+                    detail: String::new(),
+                    trailing: Vec::new(),
+                    body,
+                    footer_start: Vec::new(),
+                    footer_end: actions,
                 },
-                "titlebar/terminal-2.svg",
-                body,
-                actions,
+                None,
+                None,
                 p,
             ));
         }
@@ -180,7 +200,7 @@ impl NativeChatView {
             let (dialog_body, dialog_actions) =
                 self.render_terminal_dialog(&notice["dialog"], p, window, cx);
             body.extend(dialog_body);
-            actions.extend(dialog_actions);
+            footer_end.extend(dialog_actions);
         }
         if !collapsed && !text(notice, "screenTail").is_empty() {
             // CDXC:SessionChat 2026-09-13 DECISION: User: always hide the terminal-output disclosure in narrow chats. Use the shared narrow-chat breakpoint and hide already-expanded output as well.
@@ -265,32 +285,19 @@ impl NativeChatView {
             && matches!(notice["kind"].as_str(), Some("loginExpired" | "usageLimit"))
         {
             actions.push(
-                div()
-                    .id("notice-switch-account")
-                    .role(gpui::Role::Button)
-                    .aria_label("Switch account")
-                    .chat_cursor_pointer()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0 * p.scale))
-                    .px(px(8.0 * p.scale))
-                    .py(px(4.0 * p.scale))
-                    .rounded(px(6.0 * p.scale))
-                    .border_1()
-                    .border_color(p.border)
-                    .text_color(p.primary)
-                    .hover(|style| style.bg(p.border))
-                    .child(
-                        gpui::svg()
-                            .path("titlebar/switch-horizontal.svg")
-                            .size(px(14.0 * p.scale))
-                            .text_color(p.primary),
-                    )
-                    .child("Switch account")
-                    .on_click(cx.listener(|this, event: &gpui::ClickEvent, window, cx| {
-                        this.show_account_panel(event.position(), window, cx)
-                    }))
-                    .into_any_element(),
+                self.tone_button(
+                    "notice-switch-account",
+                    "Switch account",
+                    Some("titlebar/switch-horizontal.svg"),
+                    ToneButton::Primary,
+                    None,
+                    false,
+                    p,
+                )
+                .on_click(cx.listener(|this, event: &gpui::ClickEvent, window, cx| {
+                    this.show_account_panel(event.position(), window, cx)
+                }))
+                .into_any_element(),
             );
         }
         // Trust and Remember stays reachable on a collapsed picker, as on
@@ -303,57 +310,60 @@ impl NativeChatView {
         {
             if action["kind"] == "switchToTerminal" {
                 actions.push(
-                    div()
-                        .id("notice-terminal-view")
-                        .role(gpui::Role::Button)
-                        .aria_label("Terminal View")
-                        .chat_cursor_pointer()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.0 * p.scale))
-                        .px(px(8.0 * p.scale))
-                        .py(px(4.0 * p.scale))
-                        .rounded(px(6.0 * p.scale))
-                        .border_1()
-                        .border_color(p.border)
-                        .text_color(p.primary)
-                        .hover(|style| style.bg(p.border))
-                        .child(
-                            gpui::svg()
-                                .path("titlebar/terminal-2.svg")
-                                .size(px(14.0 * p.scale))
-                                .text_color(p.primary),
-                        )
-                        .child("Terminal View")
-                        .on_click(cx.listener(|this, event: &gpui::ClickEvent, window, cx| {
-                            this.perform_composer_action(
-                                "terminalView",
-                                event.position(),
-                                window,
-                                cx,
-                            )
-                        }))
-                        .into_any_element(),
+                    self.tone_button(
+                        "notice-terminal-view",
+                        "Terminal view",
+                        Some("titlebar/terminal-2.svg"),
+                        ToneButton::Secondary,
+                        None,
+                        false,
+                        p,
+                    )
+                    .on_click(cx.listener(|this, event: &gpui::ClickEvent, window, cx| {
+                        this.perform_composer_action("terminalView", event.position(), window, cx)
+                    }))
+                    .into_any_element(),
                 );
             } else {
-                let answer = action["answer"].clone();
-                actions.push(self.chat_button(
-                    format!("notice-action:{}", text(action, "id")),
-                    text(action, "label"),
-                    json!({"type":"answer","answer":answer}),
-                    p,
-                    cx,
-                ));
+                // The first action the chat can answer itself is the card's one filled button
+                // when no account switch already took that place.
+                let kind = if actions.is_empty() {
+                    ToneButton::Primary
+                } else {
+                    ToneButton::Secondary
+                };
+                let answer = json!({"type":"answer","answer":action["answer"].clone()});
+                actions.push(
+                    self.tone_button(
+                        gpui::SharedString::from(format!("notice-action:{}", text(action, "id"))),
+                        &text(action, "label"),
+                        None,
+                        kind,
+                        None,
+                        false,
+                        p,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| this.invoke(answer.clone(), cx)))
+                    .into_any_element(),
+                );
             }
         }
         if notice["choices"].is_null() && notice["dialog"].is_null() {
-            actions.push(self.chat_button(
-                "dismiss-notice".into(),
-                "Dismiss".into(),
-                json!({"type":"dismissNotice"}),
-                p,
-                cx,
-            ));
+            footer_end.push(
+                self.tone_button(
+                    "dismiss-notice",
+                    "Dismiss",
+                    None,
+                    ToneButton::Ghost,
+                    None,
+                    false,
+                    p,
+                )
+                .on_click(
+                    cx.listener(|this, _, _, cx| this.invoke(json!({"type":"dismissNotice"}), cx)),
+                )
+                .into_any_element(),
+            );
         }
         if let Some(error) = snapshot["noticeError"].as_str() {
             body.push(
@@ -367,78 +377,59 @@ impl NativeChatView {
                     .into_any_element(),
             );
         }
-        let icon = match notice["severity"].as_str() {
-            Some("error") => "titlebar/alert-circle.svg",
-            Some("warning") => "titlebar/alert-triangle.svg",
-            _ => "titlebar/info-circle.svg",
-        };
-        let header = div()
-            .id("notice-header")
-            .flex()
-            .items_start()
-            .gap(px(8.0 * p.scale))
-            .child(
-                gpui::svg()
-                    .path(icon)
-                    .size(px(14.0 * p.scale))
-                    .mt(px(4.0 * p.scale))
-                    .text_color(p.muted)
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .text_color(p.foreground)
-                    .child(text(notice, "title")),
-            )
-            .when(answerable, |header| {
-                header
-                    .mx(px(-16.0 * p.scale))
-                    .mt(px(-12.0 * p.scale))
-                    .mb(px(-2.0 * p.scale))
-                    .px(px(16.0 * p.scale))
-                    .pt(px(12.0 * p.scale))
-                    .pb(px(6.0 * p.scale))
-                    .rounded_t(px(12.0 * p.scale - 1.0))
-                    .hover(|style| style.bg(super::cards::card_hover_fill(p)))
-                    .tab_index(0)
-                    .role(gpui::Role::Button)
-                    .aria_label(if collapsed {
-                        "Show all options"
-                    } else {
-                        "Show less"
-                    })
-                    .chat_cursor_pointer()
-                    .child(
-                        gpui::svg()
-                            .path(if collapsed {
-                                "titlebar/chevron-right.svg"
-                            } else {
-                                "titlebar/chevron-down.svg"
-                            })
-                            .size(px(14.0 * p.scale))
-                            .mt(px(4.0 * p.scale))
-                            .text_color(p.muted)
-                            .flex_shrink_0(),
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if !this.expanded.remove(&key) {
-                            this.expanded.insert(key.clone());
-                        }
-                        cx.notify();
-                    }))
+        let press: Option<Box<dyn FnOnce(gpui::Div) -> gpui::Stateful<gpui::Div>>> = answerable
+            .then(|| {
+                let toggle = cx.listener(move |this, _: &gpui::ClickEvent, _, cx| {
+                    if !this.expanded.remove(&key) {
+                        this.expanded.insert(key.clone());
+                    }
+                    cx.notify();
+                });
+                Box::new(move |row: gpui::Div| {
+                    row.id("notice-header")
+                        .tab_index(0)
+                        .role(gpui::Role::Button)
+                        .aria_label(if collapsed {
+                            "Show all options"
+                        } else {
+                            "Show less"
+                        })
+                        .chat_cursor_pointer()
+                        .on_click(toggle)
+                }) as Box<dyn FnOnce(gpui::Div) -> gpui::Stateful<gpui::Div>>
             });
-        Some(self.status_card_with_header_motion(
-            super::cards::CardBodyMotion {
+        let trailing = if answerable {
+            vec![
+                gpui::svg()
+                    .path(if collapsed {
+                        "titlebar/chevron-right.svg"
+                    } else {
+                        "titlebar/chevron-down.svg"
+                    })
+                    .size(px(14.0 * p.scale))
+                    .text_color(p.muted)
+                    .flex_shrink_0()
+                    .into_any_element(),
+            ]
+        } else {
+            Vec::new()
+        };
+        Some(self.tone_card(
+            ToneCardParts {
+                look: tone_look(&text(notice, "tone"), p),
+                title: text(notice, "title"),
+                detail: String::new(),
+                trailing,
+                body,
+                footer_start: actions,
+                footer_end,
+            },
+            Some(ToneBodyMotion {
                 key: &body_key,
                 frame: motion,
-                shut_body: true,
                 shut: collapsed,
-            },
-            header.into_any_element(),
-            body,
-            actions,
+            }),
+            press,
             p,
         ))
     }

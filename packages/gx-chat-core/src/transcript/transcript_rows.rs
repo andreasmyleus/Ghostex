@@ -6,10 +6,14 @@
 //! rows out (`apps/desktop/src/app/native_chat/tool_run.rs`, `file_change_card.rs`,
 //! `terminal_tool_row.rs`).
 
+use std::collections::HashMap;
+
+use ghostex_gx_protocol::ChatBlock;
 use serde_json::{json, Map, Value};
 
 use crate::transcript::file_change_rows::{
-    file_change_counts, file_change_expandable, file_change_path_parts,
+    file_change_bars, file_change_counts, file_change_expandable, file_change_path_parts,
+    file_change_show_all_label,
 };
 use crate::transcript::file_changes::FileChange;
 use crate::transcript::question_exchange::answered_question_exchange;
@@ -20,6 +24,7 @@ use crate::transcript::tool_rows::{
     clip_tool_body, is_command_tool, tool_glyph, tool_preview, tool_run_fold,
 };
 use crate::transcript::tool_summary::{command_detail, format_tool_input};
+use crate::transcript::work_summary::{failure_note, tool_duration_label};
 
 /// The arguments an open tool row shows: a command tool's command line, or the input as text.
 fn tool_input_text(pair: &ToolPair<'_>) -> String {
@@ -80,11 +85,12 @@ pub fn open_tool_detail(pair: &ToolPair<'_>) -> Value {
 /// One row per tool pair.
 ///
 /// The arguments and result stay behind: GPUI asks for them only while the row is open
-/// (`row_details.rs`).
+/// (`row_details.rs`). `durations` is how long each call ran, by call id (`work_summary.rs`).
 pub fn tool_rows(
     pairs: &[ToolPair<'_>],
     agent_path: &str,
     working_directory: Option<&str>,
+    durations: &HashMap<String, i64>,
 ) -> Vec<Value> {
     pairs
         .iter()
@@ -136,6 +142,33 @@ pub fn tool_rows(
                 tool_preview(pair, working_directory).into(),
             );
             row.insert("failed".to_string(), pair.result_is_error().into());
+            // The row's right edge: a check once the call answered, a cross when it failed, and
+            // nothing while it runs; then what failed, and how long the call took.
+            row.insert(
+                "status".to_string(),
+                match (pair.result.is_some(), pair.result_is_error()) {
+                    (_, true) => "failed",
+                    (true, false) => "done",
+                    (false, false) => "running",
+                }
+                .into(),
+            );
+            row.insert(
+                "failure".to_string(),
+                if pair.result_is_error() {
+                    failure_note(pair.result_output().unwrap_or_default())
+                } else {
+                    String::new()
+                }
+                .into(),
+            );
+            let duration = match pair.call {
+                Some(ChatBlock::ToolCall {
+                    call_id: Some(id), ..
+                }) => durations.get(id).map(|ms| tool_duration_label(*ms)),
+                _ => None,
+            };
+            row.insert("duration".to_string(), duration.unwrap_or_default().into());
             row.insert("hasDetail".to_string(), has_detail.into());
             row.insert("subagent".to_string(), subagent);
             Value::Object(row)
@@ -186,9 +219,12 @@ pub fn file_rows(
                 "codeLines": counts.code,
                 "failed": failed,
                 "error": if failed { change.result_output() } else { "" },
-                // GPUI owns the "previews enabled" setting, so it only needs the half of the rule
-                // it cannot see.
-                "expandableWithPreviews": file_change_expandable(counts, true, failed),
+                "status": change.status,
+                "bars": file_change_bars(counts.added, counts.removed),
+                // The preview already shows everything a short change has; otherwise the row
+                // offers this under it.
+                "hasMore": file_change_expandable(counts, true, failed),
+                "showAllLabel": file_change_show_all_label(counts.added + counts.removed),
             })
         })
         .collect()

@@ -34,6 +34,24 @@ extern "system" {
     ) -> i32;
     fn CloseHandle(handle: *mut c_void) -> i32;
     fn ProcessIdToSessionId(pid: u32, session_id: *mut u32) -> i32;
+    fn TerminateProcess(process: *mut c_void, exit_code: u32) -> i32;
+    fn WaitForSingleObject(handle: *mut c_void, milliseconds: u32) -> u32;
+}
+
+const PROCESS_TERMINATE: u32 = 0x0001;
+const SYNCHRONIZE: u32 = 0x0010_0000;
+const WAIT_OBJECT_0: u32 = 0;
+
+/// Ends `pid` and waits up to `wait_ms` for it to exit; `true` once it is gone.
+pub fn terminate_process(pid: u32, wait_ms: u32) -> bool {
+    let process = unsafe { OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, 0, pid) };
+    if process.is_null() {
+        return false;
+    }
+    unsafe { TerminateProcess(process, 1) };
+    let waited = unsafe { WaitForSingleObject(process, wait_ms) };
+    unsafe { CloseHandle(process) };
+    waited == WAIT_OBJECT_0
 }
 
 /// The (owning pid, port) of every IPv4 TCP listener bound to 127.0.0.1.

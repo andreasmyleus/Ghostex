@@ -104,6 +104,8 @@ pub(crate) struct NativeChatView {
     pub(super) context_status_measurements: Option<Value>,
     pub(crate) composer_measurements: Option<Value>,
     pub(super) composer_held_key: Option<String>,
+    /// When the last `Paste` reached a chat field, for the slow clipboard read log (clipboard.rs).
+    pub(super) paste_started: Option<web_time::Instant>,
     /// The chat box's height tween and the arrival fade of the controls an expansion brings back.
     pub(super) composer_animation: super::composer_animation::ComposerAnimation,
     /// Whether this session's status line holds its row of space, remembered across view
@@ -142,12 +144,19 @@ pub(crate) struct NativeChatView {
     pub(crate) answer_subscription: Option<Subscription>,
     pub(super) terminal_dialog_input: Option<super::terminal_dialog::TerminalDialogInput>,
     pub(super) terminal_dialog_key_focus: gpui::FocusHandle,
+    pub(super) terminal_picker_input: Option<super::terminal_picker::TerminalPickerInput>,
     pub(crate) note_input: Option<Entity<TextareaState>>,
     pub(crate) note_subscription: Option<Subscription>,
+    /// The note and text boxes of the open question forms, by `<form id>:<question>`.
+    pub(super) form_inputs: std::collections::HashMap<String, super::question_form::FormInput>,
     /// Transcript search (Cmd+F): the field, and the navigation it last scrolled to.
     pub(super) search_input: Option<Entity<InputState>>,
     pub(super) search_subscription: Option<Subscription>,
     pub(super) search_scrolled_revision: i64,
+    /// Files and links: the card's filter field, and the jump it last scrolled to (files_links.rs).
+    pub(super) files_links_input: Option<Entity<InputState>>,
+    pub(super) files_links_subscription: Option<Subscription>,
+    pub(super) files_links_jump_revision: u64,
     /// The find the row being drawn gives its text views, set only while a searched row is drawn
     /// (search.rs, `begin_row_find`).
     pub(super) row_find: Option<gpui_component::text::TextFind>,
@@ -360,6 +369,7 @@ impl NativeChatView {
             stop_cooldown_task: None,
             composer_measurements: None,
             composer_held_key: None,
+            paste_started: None,
             composer_animation: Default::default(),
             context_status_measurements: None,
             bounds: Default::default(),
@@ -385,11 +395,16 @@ impl NativeChatView {
             answer_subscription: None,
             terminal_dialog_input: None,
             terminal_dialog_key_focus: cx.focus_handle(),
+            terminal_picker_input: None,
             note_input: None,
             note_subscription: None,
+            form_inputs: Default::default(),
             search_input: None,
             search_subscription: None,
             search_scrolled_revision: -1,
+            files_links_input: None,
+            files_links_subscription: None,
+            files_links_jump_revision: 0,
             row_find: None,
             issue_link_base: None,
             search_pending_open: None,
@@ -912,6 +927,8 @@ impl NativeChatView {
                         });
                     }
                 }
+                // The page card's picture (`page_card.rs`), which the view keeps for itself.
+                Some("host") if request["method"] == "pageThumbnail" => self.receive_page_thumbnail(&request["params"], cx),
                 Some("host") => self.host(request["method"].as_str().unwrap_or_default(), request["params"].clone(), cx),
                 Some("chatImage") => {
                     if self.host_composer {

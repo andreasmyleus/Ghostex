@@ -14,6 +14,7 @@ use gpui::Window;
 use gpui::div;
 use gpui::prelude::FluentBuilder as _;
 use gpui::px;
+use gpui_component::ElementExt as _;
 
 use crate::app::actions::{CloseAgentsPane, MergeAllTabsForPane};
 use crate::app::context_menu::GpuiContextMenu;
@@ -73,12 +74,16 @@ impl GhostexGpuiApp {
         let session_id = leaf.tab_group.active_session_id();
         let focused = self.agents_workspace.focused_pane == pane_id;
         let view = cx.entity().downgrade();
+        let grip_bounds =
+            std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+        let menu_bounds = grip_bounds.clone();
         let title = session_id
             .map(|session_id| self.agents_workspace_tab_display_title(session_id))
             .unwrap_or_default();
         Some(
             div()
                 .id(format!("ghostex-gpui-workspace-pane-grip-{}", pane_id.0))
+                .on_prepaint(move |bounds, _, _| grip_bounds.set(Some(bounds)))
                 .group(WORKSPACE_PANE_GRIP_GROUP)
                 .flex_shrink_0()
                 .w_full()
@@ -110,7 +115,7 @@ impl GhostexGpuiApp {
                 .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
                     cx.stop_propagation();
                     this.focus_agents_pane(pane_id, cx);
-                    this.show_workspace_pane_grip_menu(pane_id, window, cx);
+                    this.show_workspace_pane_grip_menu(pane_id, menu_bounds.get(), window, cx);
                 }))
                 .when_some(session_id, |grip, session_id| {
                     grip.on_drag(
@@ -129,13 +134,15 @@ impl GhostexGpuiApp {
         )
     }
 
+    /// Hung below the grip and toggled by it: a click on the grip while its menu is open closes it.
     fn show_workspace_pane_grip_menu(
         &self,
         pane_id: WorkspacePaneId,
+        grip: Option<gpui::Bounds<gpui::Pixels>>,
         window: &mut Window,
         cx: &mut gpui::Context<Self>,
     ) {
-        GpuiContextMenu::new()
+        let menu = GpuiContextMenu::new()
             .menu(
                 "Close Pane",
                 Box::new(CloseAgentsPane { pane_id: pane_id.0 }),
@@ -143,8 +150,11 @@ impl GhostexGpuiApp {
             .menu(
                 "Merge All Panes",
                 Box::new(MergeAllTabsForPane { pane_id: pane_id.0 }),
-            )
-            .show(window.mouse_position(), window, cx);
+            );
+        match grip {
+            Some(grip) => menu.toggle_below(grip, window, cx),
+            None => menu.show(window.mouse_position(), window, cx),
+        }
     }
 
     /// Close Pane from the grip menu: the sessions it held keep running in the neighbouring pane.

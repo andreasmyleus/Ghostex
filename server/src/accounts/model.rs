@@ -159,6 +159,8 @@ pub(crate) struct DiscoveredAccount {
     pub reset_credits_error: Option<String>,
     pub usage_updated_at: Option<String>,
     pub usage_error: Option<String>,
+    /// `usage` is the last reading that refreshed successfully, not a current one; `usage_updated_at` is when that reading was taken.
+    pub usage_stale: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

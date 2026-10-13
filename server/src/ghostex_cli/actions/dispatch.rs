@@ -151,6 +151,10 @@ pub fn send_gxserver_cli_action(action: &str, payload: &Value, flags: &Flags) ->
             let params = with_resolved_gxserver_session_params(payload, flags)?;
             rpc::call_gxserver_rpc("/api/readSessionChatFiles", &params, flags)
         }
+        "readSessionFilesLinks" => {
+            let params = with_resolved_gxserver_session_params(payload, flags)?;
+            rpc::call_gxserver_rpc("/api/readSessionFilesLinks", &params, flags)
+        }
         "selectSessionChatModel" => {
             let params = with_resolved_gxserver_session_params(payload, flags)?;
             rpc::call_gxserver_rpc("/api/selectSessionChatModel", &params, flags)

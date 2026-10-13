@@ -493,10 +493,16 @@ impl NativeChatView {
             .map(|input| input.focus_handle(cx))
             .chain(self.search_input.iter().map(|input| input.focus_handle(cx)))
             .chain(
+                self.files_links_input
+                    .iter()
+                    .map(|input| input.focus_handle(cx)),
+            )
+            .chain(
                 self.terminal_dialog_input
                     .iter()
                     .map(|dialog| dialog.field.focus_handle(cx)),
             )
+            .chain(self.terminal_picker_focus_handle(cx))
             .any(|focus| focus.is_focused(window))
             || self.terminal_dialog_key_focus.is_focused(window)
     }

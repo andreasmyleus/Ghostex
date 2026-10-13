@@ -133,6 +133,9 @@ fn route(state: &mut ChatState, event: &Event, context: &ChatContext) -> Vec<Eff
         Event::SettingsChanged(settings) => {
             state.core.hide_account_emails = settings.hide_account_emails;
             state.core.title = settings.title.clone();
+            if let Some(catch_up) = settings.catch_up {
+                state.core.catch_up_enabled = catch_up;
+            }
             Vec::new()
         }
         _ => Vec::new(),
@@ -213,6 +216,9 @@ pub fn boot_read(
     if let Ok(settings) = serde_json::from_value::<ChatSettings>(read.chat_settings.clone()) {
         state.core.hide_account_emails = settings.hide_account_emails;
         state.core.title = settings.title;
+        if let Some(catch_up) = settings.catch_up {
+            state.core.catch_up_enabled = catch_up;
+        }
     }
     let config = state.session.boot_config.clone().unwrap_or_default();
     // The `sessionChanged` branch of the subscribe effect (`controller.ts:853`): the agent

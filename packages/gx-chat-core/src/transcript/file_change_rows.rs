@@ -4,6 +4,8 @@
 //! (`native_chat/file_change_card.rs`, through the projection) reads these, so a card cannot count
 //! or shorten differently from one platform to the next.
 
+use serde_json::Value;
+
 use crate::transcript::diff::{DiffKind, DiffLine};
 use crate::transcript::jsstr::utf16_len;
 
@@ -205,4 +207,122 @@ pub fn file_change_path_parts(
         parent,
         filename,
     }
+}
+
+/// How many blocks a file row's change bar has.
+pub const FILE_CHANGE_BAR_BLOCKS: usize = 5;
+
+/// A file row's change bar, block by block: `add`, `del`, or `none` for an unfilled block. GitHub's
+/// rule: a change of five lines or more fills every block, split by its share of added and removed
+/// lines, and a smaller one fills one block per line.
+pub fn file_change_bars(added: usize, removed: usize) -> Vec<&'static str> {
+    let total = added + removed;
+    let filled = total.min(FILE_CHANGE_BAR_BLOCKS);
+    let mut green = if total == 0 {
+        0
+    } else {
+        (filled * added + total / 2) / total
+    };
+    if added > 0 && green == 0 {
+        green = 1;
+    }
+    if removed > 0 && green == filled && filled > 1 {
+        green = filled - 1;
+    }
+    (0..FILE_CHANGE_BAR_BLOCKS)
+        .map(|block| {
+            if block < green {
+                "add"
+            } else if block < filled {
+                "del"
+            } else {
+                "none"
+            }
+        })
+        .collect()
+}
+
+/// How many of a diff's lines its preview shows: up to and including its seventh code line, with
+/// the `@@` lines between them.
+pub fn file_change_preview_end(lines: &[DiffLine]) -> usize {
+    let mut code = 0;
+    for (index, line) in lines.iter().enumerate() {
+        if line.kind == DiffKind::Meta {
+            continue;
+        }
+        code += 1;
+        if code == FILE_CHANGE_PREVIEW_LINES {
+            return index + 1;
+        }
+    }
+    lines.len()
+}
+
+/// "Show all 41 changed lines": the button under a preview that has more to show.
+pub fn file_change_show_all_label(changed: usize) -> String {
+    format!(
+        "Show all {changed} changed {}",
+        if changed == 1 { "line" } else { "lines" }
+    )
+}
+
+/// The folder every row's file sits in, written the way the rows write their own folders.
+fn common_folder(files: &[Value]) -> String {
+    let mut common: Option<Vec<&str>> = None;
+    for file in files {
+        let parent = file
+            .get("parent")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let segments: Vec<&str> = parent
+            .split(['/', '\\'])
+            .filter(|segment| !segment.is_empty())
+            .collect();
+        common = Some(match common {
+            None => segments,
+            Some(known) => known
+                .into_iter()
+                .zip(segments)
+                .take_while(|(left, right)| left == right)
+                .map(|(left, _)| left)
+                .collect(),
+        });
+    }
+    common.unwrap_or_default().join("/")
+}
+
+/// CDXC:SessionChat 2026-10-11 DECISION:
+/// User picked the proposed file change card from the chat-cards question page
+/// (docs/2026-10-10/chat-cards-questions/04-file-changes.html): one card per message with a header
+/// that sums up the edit (how many files, the folder they share, total +/-, a ratio bar and Review
+/// all), then a row per file with an icon, the filename before its folder, the counts and a
+/// five-block change bar. A row opens to a diff with the file's own line numbers and each hunk's
+/// heading, with "Show all N changed lines" and Open file under the preview. Simple mode keeps its
+/// "Edited N files" fold, which opens to this card. It replaces the activity-rail stack of one card
+/// per file. The rows had an Edited/New/Deleted tag until the user said "remove Edit/New etc next
+/// to the file names please, no need"; the file icon's colour still tells them apart.
+/// SEE-ALSO: apps/desktop/src/app/native_chat/file_change_card.rs,
+/// apps/mobile/app/src/chat/native/transcript/FileChanges.tsx, server/src/session_chat_file_patch.rs.
+pub fn file_change_card(files: &[Value]) -> Value {
+    let mut paths: Vec<&str> = Vec::new();
+    let (mut added, mut removed) = (0u64, 0u64);
+    for file in files {
+        if let Some(path) = file.get("path").and_then(Value::as_str) {
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+        added += file.get("added").and_then(Value::as_u64).unwrap_or(0);
+        removed += file.get("removed").and_then(Value::as_u64).unwrap_or(0);
+    }
+    let total = added + removed;
+    serde_json::json!({
+        "title": crate::transcript::simple::simple_edit_label(paths.len()),
+        "folder": common_folder(files),
+        "added": added,
+        "removed": removed,
+        // The ratio bar's green share; 0 for a card that changed no lines.
+        "addShare": if total == 0 { 0.0 } else { added as f64 / total as f64 },
+        "paths": paths,
+    })
 }

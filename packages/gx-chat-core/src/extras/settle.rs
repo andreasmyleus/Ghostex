@@ -113,15 +113,18 @@ fn settle_with_ids(
             }
         }
         // The Tasks and Threads panels' remembered folds, read once when the chat starts, so a chat
-        // reopens them the way the user left them.
-        Event::Start(_) => effects.extend([
-            Effect::ReadStorage {
-                key: panels::tasks_collapsed_key(),
-            },
-            Effect::ReadStorage {
-                key: coordinator_threads::threads_collapsed_key(),
-            },
-        ]),
+        // reopens them the way the user left them. The Threads list starts back at its first step.
+        Event::Start(_) => {
+            coordinator_threads::set_step(&mut state.extras.panels, 0);
+            effects.extend([
+                Effect::ReadStorage {
+                    key: panels::tasks_collapsed_key(),
+                },
+                Effect::ReadStorage {
+                    key: coordinator_threads::threads_collapsed_key(),
+                },
+            ]);
+        }
         Event::StorageLoaded { key, value } if *key == panels::tasks_collapsed_key() => {
             state.extras.panels.tasks_collapsed = panels::read_tasks_collapsed(value.as_deref());
         }
@@ -171,7 +174,10 @@ fn settle_activity_clock(state: &mut ChatState, context: &ChatContext) {
         return;
     }
     let activity = state.session.terminal_activity.as_ref();
-    let has_clock = activity.is_some_and(|activity| activity.get("elapsedSeconds").is_some());
+    let has_clock = activity.is_some_and(|activity| {
+        activity.get("elapsedSeconds").is_some()
+            || crate::extras::background_tasks::has_background_task_clock(activity)
+    });
     let detected_at = activity
         .and_then(|activity| activity.get("detectedAt"))
         .and_then(Value::as_str)

@@ -201,6 +201,10 @@ pub(crate) fn normalize_worktree_session_create_request(
     {
         agent_session_params.insert("launchSettings".to_string(), launch_settings.clone());
     }
+    // A thread's marked handovers (CDXC:MarkedHandovers in agents/launch_plan.rs).
+    if params.get("markedHandovers").and_then(Value::as_bool) == Some(true) {
+        agent_session_params.insert("markedHandovers".to_string(), Value::Bool(true));
+    }
     Ok(WorktreeSessionCreateRequest {
         agent_id,
         base_branch,

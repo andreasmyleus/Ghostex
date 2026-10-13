@@ -1,135 +1,117 @@
+use super::tone_card::{ToneButton, ToneCardParts, command_box, tone_look};
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
-use crate::app::native_chat::cursor::ChatCursor as _;
-use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px, svg,
-};
+use gpui::{AnyElement, Context, IntoElement, ParentElement as _, StatefulInteractiveElement as _};
 use serde_json::{Value, json};
 
 impl NativeChatView {
+    /// The approval card, in the tone card's approval tone: a plain-words title from the chat core
+    /// ("Claude Code wants to run a command"), the tool and folder under it, the command, then
+    /// Copy on the left and Deny / Allow on the right with their keyboard hints (keyboard.rs).
     pub(super) fn render_approval(
         &self,
         prompt: &Value,
         p: &ChatAppearance,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let s = p.scale;
-        let busy = self.snapshot["questionCard"]["busy"] == true;
-        let header = div()
-            .h(px(22.75 * s))
-            .flex()
-            .items_start()
-            .gap(px(8.0 * s))
-            .child(
-                svg()
-                    .path("titlebar/shield-check.svg")
-                    .size(px(14.0 * s))
-                    .mt(px(4.375 * s))
-                    .text_color(p.muted)
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .text_color(p.foreground)
-                    .child("Approval request"),
-            )
-            // CDXC:SessionChat 2026-09-07 DECISION: User: card X buttons match Open terminal's color, outline and background, rather than a custom border and background of their own.
-            .child(
-                div()
-                    .id("approval-cancel")
-                    .role(gpui::Role::Button)
-                    .aria_label("Dismiss")
-                    .size(px(24.0 * s))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(p.control_border.opacity(0.65))
-                    .bg(p.background.opacity(0.4))
-                    .chat_cursor_pointer()
-                    .hover(|style| style.bg(p.background.opacity(0.7)).text_color(p.foreground))
-                    .child(
-                        svg()
-                            .path("titlebar/x.svg")
-                            .size(px(14.0 * s))
-                            .text_color(p.muted),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.invoke(json!({"type":"questionCancel"}), cx)
-                    })),
-            )
-            .into_any_element();
-        let ask = Some(text(&self.snapshot["questionCard"], "approvalAsk"))
-            .filter(|ask| !ask.is_empty())
-            .unwrap_or_else(|| "Allow this command?".to_string());
-        let mut body = vec![
-            div()
-                .flex()
-                .items_baseline()
-                .justify_between()
-                .gap(px(12.0 * s))
-                .child(
-                    div()
-                        .min_w_0()
-                        .text_color(p.card_muted)
-                        .line_height(px(19.6 * s))
-                        .child(ask),
-                )
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .text_size(px(12.0 * s))
-                        .line_height(px(18.0 * s))
-                        .child(text(prompt, "tool")),
-                )
-                .into_any_element(),
-        ];
+        let card = &self.snapshot["questionCard"];
+        let busy = card["busy"] == true;
+        let title = Some(text(card, "approvalTitle"))
+            .filter(|title| !title.is_empty())
+            .unwrap_or_else(|| "Approval request".to_string());
         let summary = text(prompt, "summary");
+        let tool = text(prompt, "tool");
+        let mut body = Vec::new();
+        if summary.is_empty() {
+            // Nothing to show but the question itself, so the body asks it.
+            let ask = Some(text(card, "approvalAsk"))
+                .filter(|ask| !ask.is_empty())
+                .unwrap_or_else(|| "Allow this tool?".to_string());
+            body.push(gpui::div().child(ask).into_any_element());
+        } else {
+            body.push(command_box(
+                summary.clone(),
+                crate::app::native_chat::tone_card::is_shell_tool(&tool),
+                p,
+            ));
+        }
+        let mut footer_start = Vec::new();
         if !summary.is_empty() {
-            body.push(
-                div()
-                    .min_w_0()
-                    .p(px(12.0 * s))
-                    .border_1()
-                    .border_color(p.control_border.opacity(0.65))
-                    .rounded(px(8.0 * s))
-                    .bg(p.background.opacity(0.7))
-                    .child(
-                        div()
-                            .id("approval-command")
-                            .max_h(px(160.0 * s))
-                            .overflow_y_scroll()
-                            .font_family(crate::app::native_chat::fonts::CHAT_MONO)
-                            .text_size(px(14.0 * s))
-                            .line_height(px(22.75 * s))
-                            .text_color(p.card_muted)
-                            .child(summary),
-                    )
-                    .into_any_element(),
+            footer_start.push(
+                self.tone_button(
+                    "approval-copy",
+                    "Copy",
+                    Some("titlebar/copy.svg"),
+                    ToneButton::Ghost,
+                    None,
+                    false,
+                    p,
+                )
+                .on_click(move |_, _, cx| {
+                    crate::app::helpers::gpui_copy_to_clipboard(
+                        gpui::ClipboardItem::new_string(summary.clone()),
+                        cx,
+                    );
+                })
+                .into_any_element(),
             );
         }
-        let actions = [
-            ("approval-deny", "Deny", ""),
-            ("approval-allow", "Allow", "1"),
+        let hints = self.snapshot["showShortcutLabels"] != false;
+        let footer_end = [
+            ("approval-deny", "Deny", ToneButton::Secondary, "Esc", ""),
+            (
+                "approval-allow",
+                "Allow",
+                ToneButton::Primary,
+                if cfg!(target_os = "macos") {
+                    "⌘ ↵"
+                } else {
+                    "Ctrl ↵"
+                },
+                "1",
+            ),
         ]
         .into_iter()
-        .map(|(id, label, send)| {
-            self.question_button(
+        .map(|(id, label, kind, hint, send)| {
+            let button = self.tone_button(
                 id,
                 label,
-                json!({"type":"answer","answer":{"kind":"approval","approvalSend":send}}),
+                None,
+                kind,
+                hints.then(|| hint.to_string()),
                 busy,
-                false,
                 p,
-                cx,
-            )
-            .into_any_element()
+            );
+            if busy {
+                button.into_any_element()
+            } else {
+                let action =
+                    json!({"type":"answer","answer":{"kind":"approval","approvalSend":send}});
+                button
+                    .on_click(cx.listener(move |this, _, _, cx| this.invoke(action.clone(), cx)))
+                    .into_any_element()
+            }
         })
         .collect();
-        self.status_card_with_header(header, body, actions, p)
+        // CDXC:SessionChat 2026-09-07 DECISION: User: card X buttons match Open terminal's color, outline and background, rather than a custom border and background of their own.
+        let dismiss = self
+            .tone_icon_button("approval-cancel", "titlebar/x.svg", "Dismiss", p)
+            .on_click(
+                cx.listener(|this, _, _, cx| this.invoke(json!({"type":"questionCancel"}), cx)),
+            )
+            .into_any_element();
+        self.tone_card(
+            ToneCardParts {
+                look: tone_look("approval", p),
+                title,
+                detail: text(card, "approvalDetail"),
+                trailing: vec![dismiss],
+                body,
+                footer_start,
+                footer_end,
+            },
+            None,
+            None,
+            p,
+        )
     }
 }

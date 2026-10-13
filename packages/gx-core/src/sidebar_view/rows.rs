@@ -267,6 +267,8 @@ pub(crate) fn session_row(
         delayed_send: delayed,
         close_after_done: close_after_done.cloned(),
         is_generating_first_prompt_title: session.is_generating_first_prompt_title,
+        rename_failed_title: session.rename_failed_title.clone(),
+        rename_failed_at: session.rename_failed_at.clone(),
         menu_facts: SessionMenuFacts {
             agent_name: session
                 .agent_name

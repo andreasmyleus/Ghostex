@@ -211,12 +211,15 @@ async fn send_session_chat_message_attempt(
         Ok(version) => version,
         Err(error) => return domain_error_response(endpoint_path, request_id, error),
     };
+    // Interrupt and send (chat Ctrl+Enter): stop the agent's running turn and send this message
+    // now. A draft or a waking session has no turn to stop, so the paths below that start one
+    // ignore it.
+    let interrupt = params.get("interrupt").and_then(Value::as_bool) == Some(true);
     // CDXC:SessionChat 2026-09-09 DECISION:
     // User: sending in a new chat is immediate, but delivery waits for the agent's input box. A durable queue receipt lets both apps clear the composer while startup continues.
     // A draft whose Run on row picked a box has no agent to wait for: its first message starts the
     // box (agents/draft_run_location.rs), so it takes the direct send below.
     if crate::agents::session_is_draft(&target.session)
-        && image_paths.is_empty()
         && crate::agentbox::pending_session_agentbox(&target.session).is_none()
     {
         let queued = crate::session_chat_send_wake::queue_startup_send(
@@ -243,23 +246,13 @@ async fn send_session_chat_message_attempt(
             &target.session_id,
         )
     {
-        if image_paths.is_empty() {
-            return crate::session_chat_send_wake::queue_startup_send(
-                state,
-                endpoint_path,
-                request_id,
-                &params,
-                &target,
-                &text,
-            );
-        }
-        return domain_error_response(
+        return crate::session_chat_send_wake::queue_startup_send(
+            state,
             endpoint_path,
             request_id,
-            DomainStateError {
-                code: "invalidState",
-                message: "The model change you picked has not applied yet, so this message was not sent. It is still in the chat box.".to_string(),
-            },
+            &params,
+            &target,
+            &text,
         );
     }
     match crate::session_chat_queue_runtime::send_session_chat_message_with_draft(
@@ -270,6 +263,7 @@ async fn send_session_chat_message_attempt(
         &image_paths,
         SessionChatMessageSource::Composer,
         draft_version.as_ref(),
+        interrupt,
     )
     .await
     {
@@ -284,20 +278,65 @@ async fn send_session_chat_message_attempt(
         Err(error)
             if error.code == crate::session_chat_send_wake::SESSION_CHAT_SESSION_STARTING =>
         {
-            crate::session_chat_send_wake::deliver_when_started(
+            crate::session_chat_send_wake::queue_startup_send(
                 state,
                 endpoint_path,
                 request_id,
                 &params,
                 &target,
                 &text,
-                &image_paths,
-                draft_version.as_ref(),
             )
-            .await
+        }
+        Err(error) if crate::session_chat_send_wake::holds_until_agent_takes_input(&error) => {
+            crate::session_chat_send_diagnostics::record_send_recovery(
+                state,
+                "sessionChatSendHeldForInputBox",
+                &target.project_id,
+                &target.session_id,
+                &error.message,
+                &[],
+            );
+            crate::session_chat_send_wake::queue_startup_send(
+                state,
+                endpoint_path,
+                request_id,
+                &params,
+                &target,
+                &text,
+            )
         }
         Err(error) => domain_error_response(endpoint_path, request_id, error),
     }
+}
+
+/// What a chat interrupt changes besides the keys it types: shared by Stop and by interrupt and
+/// send.
+pub(crate) fn record_session_chat_interrupt(
+    state: &AppState,
+    target: &SessionChatSendTarget,
+    request_id: &str,
+) {
+    // The interrupt is an Escape as far as the activity state machine is
+    // concerned: it ends the hook-backed working claim the way the
+    // terminal-pane Escape key does (see the escape branch in
+    // session_status/transition.rs), because no agent hook reports an interrupted turn.
+    let _ =
+        crate::accounts::recovery::user_action(state, &target.project_id, &target.session_id, true);
+    let mut escape_params = Map::new();
+    escape_params.insert("projectId".to_string(), json!(target.project_id));
+    escape_params.insert("sessionId".to_string(), json!(target.session_id));
+    escape_params.insert("event".to_string(), json!("escape"));
+    let _ = crate::server::dispatch_agent_http_blocking(
+        state,
+        "/api/updateAgentActivity".to_string(),
+        request_id.to_string(),
+        escape_params,
+    );
+    crate::session_chat_interactive::retire_interrupted_session_chat_prompt(
+        state,
+        &target.project_id,
+        &target.session_id,
+    );
 }
 
 pub(crate) async fn handle_interrupt_session_chat_http(
@@ -386,27 +425,7 @@ pub(crate) async fn handle_interrupt_session_chat_http(
         "session-chat-interrupt",
         steps,
     );
-    // The interrupt is an Escape as far as the activity state machine is
-    // concerned: it ends the hook-backed working claim the way the
-    // terminal-pane Escape key does (see the escape branch in
-    // session_status/transition.rs), because no agent hook reports an interrupted turn.
-    let _ =
-        crate::accounts::recovery::user_action(state, &target.project_id, &target.session_id, true);
-    let mut escape_params = Map::new();
-    escape_params.insert("projectId".to_string(), json!(target.project_id));
-    escape_params.insert("sessionId".to_string(), json!(target.session_id));
-    escape_params.insert("event".to_string(), json!("escape"));
-    let _ = crate::server::dispatch_agent_http_blocking(
-        state,
-        "/api/updateAgentActivity".to_string(),
-        request_id.clone(),
-        escape_params,
-    );
-    crate::session_chat_interactive::retire_interrupted_session_chat_prompt(
-        state,
-        &target.project_id,
-        &target.session_id,
-    );
+    record_session_chat_interrupt(state, &target, &request_id);
     // Claude Code may answer this Escape by handing the prompt back to its
     // composer; the detector decides after the write lands (CDXC:SessionChat
     // in session_chat_returned_prompt.rs).

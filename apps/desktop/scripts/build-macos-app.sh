@@ -715,7 +715,7 @@ resolve_local_start_remote_gxserver_linux_package() {
 	if [[ -f "$default_source/build-identity.json" ]]; then
 		revision="$(sed -n 's/.*"sourceRevision": *"\([0-9a-f]\{40\}\)".*/\1/p' "$default_source/build-identity.json" | head -n 1)"
 		if [[ -n "$revision" ]] && git -C "$REPO_ROOT" diff --quiet "$revision" -- \
-			server packages/paths packages/find packages/settings-catalog packages/project-docs packages/agent-sync packages/editor-client .dependencies/zmx 2>/dev/null; then
+			server packages/paths packages/find packages/settings-catalog packages/project-docs packages/agent-sync packages/editor-client packages/gx-chat-core packages/gx-protocol .dependencies/zmx 2>/dev/null; then
 			printf '%s\n' "$default_source"
 			return 0
 		fi

@@ -8,11 +8,11 @@ use super::native_modal_kit::*;
 use gpui::Focusable as _;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, FocusHandle, FontWeight,
+    AnyElement, App, AppContext as _, ClickEvent, ClipboardItem, Context, FocusHandle, FontWeight,
     InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px, rgb,
 };
-use gpui_component::input::{InputEvent, InputState, Paste, TextareaState};
+use gpui_component::input::{InputEvent, InputState, TextareaState};
 use gpui_component::{h_flex, v_flex};
 use std::hash::{BuildHasher as _, Hasher as _};
 use std::rc::Rc;
@@ -826,19 +826,24 @@ impl GpuiCreateWorktreeModalWindow {
 
     /// Plain-text paste into the prompt drops trailing spaces per line
     /// (`handlePaste`); a paste that changes nothing is left to the editor.
-    fn on_paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.prompt.read(cx).focus_handle(cx).is_focused(window) {
-            return;
-        }
-        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
-            return;
+    /// The prompt field's paste hook, so it gets the field's own clipboard
+    /// read, made off the UI thread (CDXC:Clipboard in
+    /// helpers/clipboard_read.rs).
+    fn paste_prompt(
+        &mut self,
+        item: &ClipboardItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(text) = item.text() else {
+            return false;
         };
         let trimmed = trim_prompt_editor_trailing_spaces(&text);
         if text.is_empty() || trimmed == text {
-            return;
+            return false;
         }
-        cx.stop_propagation();
         self.insert_prompt_text(trimmed, window, cx);
+        true
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -1134,6 +1139,14 @@ impl GpuiCreateWorktreeModalWindow {
                 self.field_skin(),
                 TEXTAREA_MIN_HEIGHT,
                 false,
+                Some({
+                    let modal = cx.entity().downgrade();
+                    Rc::new(move |item, window, cx| {
+                        modal
+                            .update(cx, |modal, cx| modal.paste_prompt(item, window, cx))
+                            .unwrap_or(false)
+                    })
+                }),
                 window,
                 cx,
             ),
@@ -1443,7 +1456,6 @@ impl Render for GpuiCreateWorktreeModalWindow {
             menu,
             cx,
         )
-        .capture_action(cx.listener(Self::on_paste))
     }
 }
 

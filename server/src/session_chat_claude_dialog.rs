@@ -468,6 +468,11 @@ pub fn detect_claude_dialog(text: &str) -> Option<TerminalDialog> {
             }
         })
         .collect();
+    let picker = crate::session_chat_resume_picker::claude_resume_picker(&title, remainder);
+    // The picker's footer names no Enter key, but Enter resumes the highlighted conversation.
+    if picker.is_some() && !actions.contains(&"confirm") {
+        actions.push("confirm");
+    }
     Some(TerminalDialog {
         id: format!("{:x}", Sha256::digest(identity.join("\n").as_bytes())),
         title,
@@ -479,6 +484,7 @@ pub fn detect_claude_dialog(text: &str) -> Option<TerminalDialog> {
         actions: actions.into_iter().map(str::to_string).collect(),
         side_question: None,
         blocks: None,
+        picker,
     })
 }
 

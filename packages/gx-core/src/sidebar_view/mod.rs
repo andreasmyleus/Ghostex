@@ -82,5 +82,5 @@ pub use view::{
     CollectionView, CoordinatorBadge, CoordinatorBadgeTone, DelayedSendView, RowNesting, ThreadTally, EmptyState, GroupCore, GroupSummary, GroupView, LabelDeadline,
     MachineNotice, MachineSummary, MachineTabView, OrderItem, OrderKind, ProjectContextView, RemoteMachineView,
     SectionView, SessionMenuFacts, SessionRow, SessionTiming, SessionView, SidebarView, SpaceView,
-    WorktreeView,
+    WorktreeView, rename_shake_key, RENAME_SHAKE_FRESH_MS,
 };

@@ -32,11 +32,18 @@ use crate::state::{ChatContext, ChatState};
 /// `queue.capabilities.supported` stays false until family a has folded a `queue` field, even an
 /// empty one: that presence is the daemon capability probe, and every control hides rather than
 /// calling an endpoint that would answer 404.
-pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) {
+pub fn document(state: &ChatState, context: &ChatContext, into: &mut Document) {
     let composer = &state.composer;
     let notice = TerminalNotice::parse(state.session.terminal_notice.as_ref());
 
     into.queue = queue(state);
+    into.queue_take_back_ids = crate::composer::queue_take_back::takeable_ids(state);
+    into.queue_take_back_busy = composer
+        .queue_take_back
+        .as_ref()
+        .map(|take_back| take_back.message_id.clone());
+    into.queue_take_back_hotkey =
+        crate::composer::queue_take_back::TAKE_BACK_HOTKEY_LABEL.to_string();
     into.draft = Draft {
         can_sync: into.queue.capabilities.can_sync_draft,
         client_id: state.identity.client_id.clone(),
@@ -87,11 +94,14 @@ pub fn document(state: &ChatState, _context: &ChatContext, into: &mut Document) 
         stash: composer.actions.stash,
         attach: composer.actions.attach,
         terminal: composer.actions.terminal,
+        files: state.session.agent_session_id.is_some(),
     };
     into.composer_chrome = composer
         .chrome
         .projection(&composer.note, state.transcript_view.summary_mode);
     into.note = composer.note.document();
+    into.catch_up = crate::composer::catch_up::document(state);
+    into.files_links = crate::composer::files_links::document(state, context);
 
     let card_visible = notice_visible(state);
     let choice_pending = terminal_choice_pending(state, notice.as_ref());
@@ -226,7 +236,14 @@ fn queueing_prompts(state: &ChatState, queued: &[QueuedPrompt]) -> Vec<QueuedPro
 
 fn queued_prompt(prompt: &Value) -> QueuedPrompt {
     let mut row: QueuedPrompt = serde_json::from_value(prompt.clone()).unwrap_or_default();
-    row.preview = queue_row_preview(&row.text);
+    // Answers a page or question form queued (`transcript/page_answers.rs`) read as what they are,
+    // not as their envelope.
+    row.preview = match crate::transcript::page_answers::split_page_answers(&row.text) {
+        Some((answers, rest)) if rest.is_empty() => {
+            queue_row_preview(&format!("Answers to \u{201c}{}\u{201d}", answers.title))
+        }
+        _ => queue_row_preview(&row.text),
+    };
     row.busy = is_queue_row_busy(&row.state);
     row
 }

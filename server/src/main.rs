@@ -19,4 +19,6 @@ fn main() {
             std::process::exit(1);
         }
     });
+    // Dropping the runtime waits for every blocking task without limit, and one stuck on a hung child or drive kept finished processes alive for hours.
+    runtime.shutdown_timeout(std::time::Duration::from_secs(2));
 }

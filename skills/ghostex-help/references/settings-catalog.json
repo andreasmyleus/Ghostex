@@ -1026,6 +1026,76 @@
       "agentWritable": true
     },
     {
+      "key": "chatCatchMeUp",
+      "title": "Catch me up button",
+      "subtitle": "Show a Catch me up button at the top right of the chat box while it is empty. It has your Title Generation Agent (a small, cheap model) read the session's last 30 agent messages and shows where the session stands: what needs you, what is done, in progress or untested.",
+      "tab": "settings",
+      "tabTitle": "General",
+      "group": "chat",
+      "groupTitle": "Chat",
+      "section": "chat",
+      "sectionTitle": "Chat",
+      "type": "boolean",
+      "default": false,
+      "agentWritable": true
+    },
+    {
+      "key": "markedHandovers",
+      "title": "Marked handovers in every session",
+      "subtitle": "Orchestrators and their threads always start each part of the message they hand back with a marker such as ❓ Needs you, ✅ Done, ⚠️ Read this, 🧪 Untested or 🛑 Blocked, so a quick skim shows what needs you. Turn this on to have every other agent session do the same. Applies to sessions started or resumed after you change it.",
+      "tab": "settings",
+      "tabTitle": "General",
+      "group": "chat",
+      "groupTitle": "Chat",
+      "section": "chat",
+      "sectionTitle": "Chat",
+      "type": "boolean",
+      "default": false,
+      "agentWritable": true
+    },
+    {
+      "key": "markedHandoversStyle",
+      "title": "Marked sections style",
+      "subtitle": "How the chat colours the sections an agent marks: coloured labels, a thin left rule, or a coloured badge in place of the emoji. Shown while Marked handovers is on.",
+      "tab": "settings",
+      "tabTitle": "General",
+      "group": "chat",
+      "groupTitle": "Chat",
+      "section": "chat",
+      "sectionTitle": "Chat",
+      "type": "enum",
+      "default": "labels",
+      "options": [
+        {
+          "label": "Coloured labels",
+          "value": "labels"
+        },
+        {
+          "label": "Thin left rule",
+          "value": "rule"
+        },
+        {
+          "label": "Coloured badge",
+          "value": "badge"
+        }
+      ],
+      "agentWritable": true
+    },
+    {
+      "key": "markedHandoversEmoji",
+      "title": "Show marker emojis",
+      "subtitle": "Show the marker emoji (❓ ✅ ⚠️ and the rest) at the start of each coloured section, in every style. Off: the colour and the label show the kind. Shown while Marked handovers is on.",
+      "tab": "settings",
+      "tabTitle": "General",
+      "group": "chat",
+      "groupTitle": "Chat",
+      "section": "chat",
+      "sectionTitle": "Chat",
+      "type": "boolean",
+      "default": false,
+      "agentWritable": true
+    },
+    {
       "key": "sessionChatVerboseMode",
       "title": "Verbose mode",
       "subtitle": "Expand thinking blocks to show their tool calls by default. Each chat can override it from its composer.",

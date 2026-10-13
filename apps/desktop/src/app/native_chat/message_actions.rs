@@ -217,6 +217,25 @@ impl NativeChatView {
         // React passed `onSavePrompt` only when the host had a stash bridge, the same capability
         // behind the composer's Stash control, so a host without one offers Copy alone.
         let savable = self.snapshot["composerActions"]["stash"] == true;
+        // A message gxserver still holds for the agent can be taken back the way a queued row can
+        // (CDXC:SessionChat 2026-10-11 in server/src/session_chat_send_wake.rs).
+        let waiting = &message["startupDelivery"];
+        let waiting_prompt = (waiting["state"] == "queued").then(|| waiting["promptId"].clone());
+        let queue_capabilities = &self.snapshot["queue"]["capabilities"];
+        let editable = waiting_prompt.is_some() && queue_capabilities["canEdit"] == true;
+        let removable = waiting_prompt.is_some() && queue_capabilities["canRemove"] == true;
+        // A message the agent itself queued comes back to the composer (CDXC:SessionChat 2026-10-11
+        // in packages/gx-chat-core/src/composer/queue_take_back.rs); the composer's Up key takes the
+        // newest one back (keyboard.rs).
+        let takeable = !self.in_subagent
+            && self.snapshot["queueTakeBackIds"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|queued| queued == &message["id"]));
+        let taking_back = self.snapshot["queueTakeBackBusy"] == message["id"];
+        let take_back_label = format!(
+            "Back to composer ({})",
+            text(&self.snapshot, "queueTakeBackHotkey")
+        );
         /*
         CDXC:SessionChat 2026-09-19 SEE-ALSO:
         `.ghostex-chat-message-actions` in packages/core-ui/styles/chat.css (deleted 2026-09-25)
@@ -224,48 +243,44 @@ impl NativeChatView {
         was sent, in the order Rewind, Save prompt, Copy, so Copy lands at the bubble's edge.
         */
         let button = |key: &str, label: String, icon: &'static str, action: Value| {
-            let icon_color = p.muted;
-            div()
-                .id(gpui::SharedString::from(format!("{key}:{id}")))
-                .group("native-chat-user-action")
-                .role(gpui::Role::Button)
-                .aria_label(label.clone())
-                .tab_index(0)
-                .size(px(24.0 * p.scale))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0 * p.scale))
-                .chat_cursor_pointer()
-                .hover(|style| style.bg(p.border.opacity(0.4)))
-                .tooltip(move |window, cx| {
-                    gpui_component::tooltip::Tooltip::new(label.clone()).build(window, cx)
-                })
-                .child(
-                    svg()
-                        .path(icon)
-                        .size(px(12.0 * p.scale))
-                        .text_color(icon_color)
-                        .group_hover("native-chat-user-action", |style| {
-                            style.text_color(p.foreground)
-                        }),
-                )
-                .on_click(cx.listener(move |chat, _, _, cx| {
-                    if action["type"] == "copyPrompt" {
-                        crate::app::helpers::gpui_copy_to_clipboard(
-                            gpui::ClipboardItem::new_string(text(&action, "text")),
-                            cx,
-                        );
-                    } else {
-                        chat.invoke(action.clone(), cx);
-                    }
-                }))
+            Self::user_action_button(&id, key, label, icon, action, p, cx)
         };
         let buttons = div()
             .flex()
             .items_center()
             .gap(px(2.0 * p.scale))
+            .when(editable, |buttons| {
+                buttons.child(button(
+                    "edit-waiting",
+                    "Edit message".into(),
+                    "titlebar/pencil.svg",
+                    json!({"type":"removeQueue","promptId":waiting_prompt.clone(),"edit":true}),
+                ))
+            })
+            .when(takeable, |buttons| {
+                buttons.child(button(
+                    "take-back",
+                    if taking_back {
+                        "Taking the message back…".into()
+                    } else {
+                        take_back_label.clone()
+                    },
+                    if taking_back {
+                        "titlebar/loader2.svg"
+                    } else {
+                        "titlebar/arrow-back-up.svg"
+                    },
+                    json!({"type":"takeBackQueued","messageId":id.clone()}),
+                ))
+            })
+            .when(removable, |buttons| {
+                buttons.child(button(
+                    "delete-waiting",
+                    "Delete message".into(),
+                    "titlebar/trash.svg",
+                    json!({"type":"removeQueue","promptId":waiting_prompt.clone()}),
+                ))
+            })
             .when(rewindable, |buttons| {
                 buttons.child(button(
                     "rewind",
@@ -305,6 +320,80 @@ impl NativeChatView {
                 .child(buttons)
                 .into_any_element(),
         )
+    }
+
+    /// One of a prompt's action buttons: a 24px square with a 12px icon, a hover fill and a
+    /// tooltip. `action` is `{"type":"copyPrompt","text":…}` for a copy, or any chat action.
+    fn user_action_button(
+        id: &str,
+        key: &str,
+        label: String,
+        icon: &'static str,
+        action: Value,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(gpui::SharedString::from(format!("{key}:{id}")))
+            .group("native-chat-user-action")
+            .role(gpui::Role::Button)
+            .aria_label(label.clone())
+            .tab_index(0)
+            .size(px(24.0 * p.scale))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.0 * p.scale))
+            .chat_cursor_pointer()
+            .hover(|style| style.bg(p.border.opacity(0.4)))
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(label.clone()).build(window, cx)
+            })
+            .child(
+                svg()
+                    .path(icon)
+                    .size(px(12.0 * p.scale))
+                    .text_color(p.muted)
+                    .group_hover("native-chat-user-action", |style| {
+                        style.text_color(p.foreground)
+                    }),
+            )
+            .on_click(cx.listener(move |chat, _, _, cx| {
+                if action["type"] == "copyPrompt" {
+                    crate::app::helpers::gpui_copy_to_clipboard(
+                        gpui::ClipboardItem::new_string(text(&action, "text")),
+                        cx,
+                    );
+                } else {
+                    chat.invoke(action.clone(), cx);
+                }
+            }))
+    }
+
+    /// The Copy button beside a `!` command's bubble: the same button an ordinary prompt's action
+    /// row ends with, hidden until the message row is hovered, and it copies the bare command.
+    ///
+    /// CDXC:SessionChat 2026-10-12 DECISION: User: "please move the copy button to be to the left of the command chat bubble (outside it floating, like it is for other messages)". The gx-chat-core side of this decision is in transcript/local_command.rs.
+    pub(super) fn shell_command_copy_action(
+        &self,
+        message: &Value,
+        command: &str,
+        p: &ChatAppearance,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let id = text(message, "id");
+        message_actions_row(p, false)
+            .child(Self::user_action_button(
+                &id,
+                "copy",
+                "Copy message".into(),
+                "chat-actions/copy",
+                json!({"type":"copyPrompt","text":command}),
+                p,
+                cx,
+            ))
+            .into_any_element()
     }
 
     fn perform_reply_action(

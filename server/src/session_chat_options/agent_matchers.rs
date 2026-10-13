@@ -559,8 +559,26 @@ fn antigravity_trailing_name(segment: &str) -> &str {
     }
 }
 
+/// CDXC:AgentScreenDetection 2026-10-11 WHY:
+/// While background tasks run, Antigravity CLI (measured on 1.3.3) appends their count and the command that lists them to the footer: `Gemini 3.6 Flash · medium · 1 task(s) · /tasks`. Read as part of the selection, the footer named no model, so a chat model change could never be confirmed and the messages queued behind it waited for good. Those trailing segments are dropped before the model and effort are read.
+fn antigravity_footer_extra(segment: &str) -> bool {
+    let counter = segment.split_once(' ').is_some_and(|(count, noun)| {
+        !count.is_empty()
+            && count.bytes().all(|byte| byte.is_ascii_digit())
+            && noun.ends_with("(s)")
+    });
+    counter || (segment.starts_with('/') && !segment.contains(' '))
+}
+
 pub(super) fn match_antigravity_statusline(line: &str) -> Option<SessionChatDetectedSelection> {
-    let segments = line_segments(line);
+    let mut segments = line_segments(line);
+    while segments.len() > 1
+        && segments
+            .last()
+            .is_some_and(|last| antigravity_footer_extra(last))
+    {
+        segments.pop();
+    }
     let (effort, rest) = match segments.split_last() {
         Some((last, rest))
             if !rest.is_empty()

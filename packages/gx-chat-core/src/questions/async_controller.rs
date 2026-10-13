@@ -62,6 +62,7 @@ pub fn project(
             .unwrap_or(QuestionDraft {
                 indices: vec![0],
                 other: String::new(),
+                ..QuestionDraft::default()
             }),
         None => QuestionDraft::default(),
     };
@@ -176,6 +177,7 @@ pub fn select(
         QuestionDraft {
             indices: vec![index],
             other: String::new(),
+            ..QuestionDraft::default()
         },
     );
     save(state, session_key, drafts)

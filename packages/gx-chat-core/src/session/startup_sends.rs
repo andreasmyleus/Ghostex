@@ -13,6 +13,22 @@ fn queue_field<'a>(prompt: &'a Value, key: &str) -> Option<&'a str> {
     prompt.get(key)?.as_str()
 }
 
+/// The queue's copies of the pictures a row carries (CDXC:SessionChat 2026-10-11 in
+/// server/src/session_chat_queue_attachments.rs).
+fn queue_images(prompt: &Value) -> Vec<String> {
+    prompt
+        .get("imagePaths")
+        .and_then(Value::as_array)
+        .map(|paths| {
+            paths
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Reconstructs accepted sends and reconciles each receipt with the immediate local echo.
 ///
 /// CDXC:SessionChat 2026-09-27 WHY:
@@ -59,10 +75,12 @@ pub fn pending_with_startup_sends(
             agent,
         );
         let prompt_text = prompt_text.as_ref();
+        // The row holds copies of the echo's pictures, so only their count can be compared.
+        let images = queue_images(prompt);
         let at = by_receipt.or_else(|| {
             entries.iter().position(|entry| {
                 entry.queued_prompt_id.is_none()
-                    && entry.image_paths.is_empty()
+                    && entry.image_paths.len() == images.len()
                     && !matched.contains(&entry.id)
                     && normalize_pending_text(&entry.text) == normalize_pending_text(prompt_text)
             })
@@ -99,7 +117,7 @@ pub fn pending_with_startup_sends(
                 queued_prompt_id: Some(prompt_id.to_string()),
                 startup_delivery: Some(delivery),
                 text: prompt_text.to_string(),
-                image_paths: Vec::new(),
+                image_paths: images,
                 sent_at_ms: parse_iso_ms(queue_field(prompt, "createdAt")).unwrap_or(0),
                 after_message_id: None,
                 after_message_timestamp: None,

@@ -14,15 +14,14 @@
 <a href="https://discord.gg/df7b3G92CS"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/Discord-Join%20the%20community.svg?variant=branded&logo=discord&mode=dark" /><img src="https://shieldcn.dev/badge/Discord-Join%20the%20community.svg?variant=branded&logo=discord&mode=light" alt="Join the Discord" /></picture></a>
 </p>
 
-<p align="center">
-  <strong>The native desktop app for Claude Code, Codex, OpenCode, and every other coding agent.</strong><br/>
-  Chat with several agents side by side, review their work as they go, and keep steering from your phone.
-</p>
-
 <h3 align="center"><a href="#install"><ins>Download Ghostex</ins></a> &nbsp;·&nbsp; <a href="https://ghostex.dev">Website</a> &nbsp;·&nbsp; <a href="https://youtu.be/QzjFB4J6-8E">Watch the 3-minute tour</a></h3>
 
 <p align="center">
-  <a href="media/readme/gx-hero-dark.jpg"><picture><source media="(prefers-color-scheme: dark)" srcset="media/readme/gx-hero-dark.gif" /><img src="media/readme/gx-hero-light.gif" alt="Ghostex with see-through glass over a moving meadow: projects and agent sessions in the sidebar, a chat in the middle and the view picker on the right" width="960" /></picture></a>
+  <a href="https://github.com/user-attachments/assets/1013fbfc-a556-4624-8794-1508af8a5653">
+    <picture>
+      <img width="960" alt="image" src="https://github.com/user-attachments/assets/1013fbfc-a556-4624-8794-1508af8a5653" />
+    </picture>
+  </a>
 </p>
 
 Ghostex is built for developers who keep many agents alive at once. A chat view for every agent, a native Rust/GPUI shell, embedded Chromium panes, and a mobile app share one workspace, and every session survives restarts.
@@ -43,7 +42,7 @@ Talk to Claude Code, Codex, or any other agent in a proper chat GUI: clickable i
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-diff.jpg" alt="A chat showing the agent's code change as a diff" width="100%" />
+  <img src="media/readme/gx-diff.png" alt="A chat showing the agent's code change as a diff" width="100%" />
 </td>
 </tr>
 <tr>
@@ -75,7 +74,7 @@ Claude Code, Codex, OpenCode, Pi, Gemini, Grok, Cursor, and more. Pick the model
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-agent-picker.gif" alt="The model picker switching between agents" width="100%" />
+  <img src="media/readme/gx-agent-picker.png" alt="The model picker switching between agents" width="100%" />
 </td>
 </tr>
 <tr>
@@ -83,31 +82,15 @@ Claude Code, Codex, OpenCode, Pi, Gemini, Grok, Cursor, and more. Pick the model
 
 <br/>
 
-### Embedded Chromium browser
+### Annotate Markdown, HTML and diagrams
 
-Click any element, type what should change, and the note lands in the agent's prompt. Agents can drive your tabs too, through the built-in browser-use skill.
-
-<br/>
-
-</td>
-<td width="50%">
-  <img src="media/readme/gx-browser-pane.jpg" alt="A chat next to the built-in browser" width="100%" />
-</td>
-</tr>
-<tr>
-<td width="50%" valign="middle">
-
-<br/>
-
-### Kanban board on Beads
-
-Dump your thoughts on the board, then let an agent pick up the tickets. Runs on the [Beads](https://github.com/gastownhall/beads) `bd` CLI, so agents and humans share one backlog.
+Open plans, HTML prototypes, and Excalidraw diagrams next to your agent, select anything, and leave a note or mark it Looks good, Clarify, or Needs tests. One click sends every note to the agent's prompt as numbered feedback with line numbers.
 
 <br/>
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-kanban-board.jpg" alt="The Kanban board with Backlog, Todo, In Progress and Test lanes" width="100%" />
+  <img src="media/readme/gx-annotate.png" alt="A Markdown plan in the Files view with a comment, a Clarify mark and a Needs tests mark in the Annotations list" width="100%" />
 </td>
 </tr>
 <tr>
@@ -123,7 +106,7 @@ Fuzzy search every prompt you ever sent, across all your agents, and press Enter
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-search.gif" alt="Searching every past prompt" width="100%" />
+  <img src="media/readme/gx-search.png" alt="Searching every past prompt" width="100%" />
 </td>
 </tr>
 <tr>
@@ -139,14 +122,61 @@ Agents can open sessions, send prompts, and read replies from other agents throu
 
 </td>
 <td width="50%">
-  <img src="media/readme/gx-threads.jpg" alt="An orchestrator with its threads in the sidebar and the Threads panel" width="100%" />
+  <img src="media/readme/gx-threads.png" alt="An orchestrator with its threads in the sidebar and the Threads panel" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+<br/>
+
+### Charts and tables in the chat
+
+Ask for `$ghostex-visuals` and agents answer with charts, tables, and stat tiles drawn right in the chat, or publish an HTML page that opens as a card. Same look on desktop, web, and phone.
+
+<br/>
+
+</td>
+<td width="50%">
+  <img src="media/readme/gx-visuals.png" alt="A chat reply with stat tiles, a bar chart and a table of failing tests" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+<br/>
+
+### Queue your next prompts
+
+Keep typing while the agent works. Press Tab to queue a prompt and it waits above the input until the agent is free; drag to reorder, or press play on a message you already sent to interrupt and deliver it right away.
+
+<br/>
+
+</td>
+<td width="50%">
+  <img src="media/readme/gx-queue.png" alt="An agent at work with two queued prompts waiting above the chat input" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+<br/>
+
+### Answer your agents in one click
+
+When an agent needs your decisions, it asks them as a form right in the chat: every question at once, choices you click, a note box for each, and one Send. It works the same on desktop, web, and your phone.
+
+<br/>
+
+</td>
+<td width="50%">
+  <img src="media/readme/gx-questions.png" alt="A question form in the chat with clickable choices, Recommended badges and a Send answers button" width="100%" />
 </td>
 </tr>
 </table>
 
 ### Also in the box
 
-- **Docs with annotations**: open Markdown, HTML prototypes, and Excalidraw diagrams next to your agent and leave notes on anything.
 - **Rich prompt editor**: press Ctrl+G to edit any prompt in a full editor.
 - **Built-in IDE**: a VS Code editor that loads on demand and sleeps when you are not using it.
 - **Remote machines**: connect another computer with an Easy Connect code or SSH and it shows up in the sidebar.

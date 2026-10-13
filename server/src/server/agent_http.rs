@@ -277,7 +277,11 @@ pub(crate) fn dispatch_agent_http_blocking(
             }
             if should_queue_agent_title_metadata_check {
                 if let Some((project_id, session_id)) = presentation_session {
-                    schedule_agent_title_metadata_check(state.clone(), project_id, session_id);
+                    if endpoint_path == "/api/requestSessionRename" {
+                        schedule_session_rename_confirmation(state.clone(), project_id, session_id);
+                    } else {
+                        schedule_agent_title_metadata_check(state.clone(), project_id, session_id);
+                    }
                 }
             }
             if let Some(target) = fork_initial_rename {

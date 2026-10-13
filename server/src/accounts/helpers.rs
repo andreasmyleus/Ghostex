@@ -228,6 +228,7 @@ fn discover_row(home: &Path, provider: Provider, row: &Value) -> Option<Discover
         reset_credits_error: None,
         usage_updated_at: None,
         usage_error: None,
+        usage_stale: false,
     };
     if provider == Provider::Claude {
         account.identity = format!("{}:{}", email.to_lowercase(), text(row, "organizationUuid"));
@@ -245,7 +246,7 @@ fn discover_row(home: &Path, provider: Provider, row: &Value) -> Option<Discover
             account.status = "identityChanged".into();
         }
         // CDXC:AgentProviders 2026-09-18 WHY:
-        // cswap reports `unavailable` with a null `usage` once its last reading is too old to drive a switch, usually because the Anthropic usage endpoint answers 429 with a one-hour retry. Its documented `lastGoodUsage` fields keep that reading for display, so Ghostex shows those bars with their age instead of the bare status code. `usage_error` stays set, and every switch decision (`default_account.rs`, `has_room` in `recovery.rs`) requires it to be absent, so a stale reading never counts as headroom.
+        // cswap reports `unavailable` with a null `usage` once its last reading is too old to drive a switch, usually because the Anthropic usage endpoint answers 429 with a one-hour retry. Its documented `lastGoodUsage` fields keep that reading for display, so Ghostex shows those bars with their age instead of the bare status code. `usage_error` stays set, and every switch decision (`default_account.rs`, `has_room` in `recovery.rs`) requires it to be absent, so a stale reading never counts as headroom. `usage_stale` marks such a reading so every client labels it as last known (with its age) instead of live.
         let (usage, fetched_at, last_good_age) = if row["usage"].is_object() {
             (&row["usage"], &row["usageFetchedAt"], None)
         } else {
@@ -256,6 +257,7 @@ fn discover_row(home: &Path, provider: Provider, row: &Value) -> Option<Discover
             )
         };
         account.usage_error = claude_usage_notice(&status, usage.is_object(), last_good_age);
+        account.usage_stale = !row["usage"].is_object() && usage.is_object();
         if let Some(w) = window(
             "fiveHour",
             "Five-hour limit",

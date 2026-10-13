@@ -49,8 +49,15 @@ pub enum TranscriptItem {
     #[serde(rename = "completed-work", rename_all = "camelCase")]
     CompletedWork {
         id: String,
-        /// "Worked for Xs".
+        /// "Worked 2m 5s".
         label: String,
+        /// The counts beside the label, `{kind, label}` each (`transcript/work_summary.rs`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        stats: Vec<Value>,
+        /// The file change card's header over `files` (`file_change_card` in
+        /// `transcript/file_change_rows.rs`).
+        #[serde(default)]
+        files_card: Value,
         files: Vec<Value>,
         files_label: String,
         simple_files_label: String,

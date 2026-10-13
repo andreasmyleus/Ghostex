@@ -57,10 +57,65 @@ impl GpuiVisualPageModalWindow {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
         let theme = if palette.light { "light" } else { "dark" };
-        let page_url = format!("{}#gx-theme={theme}", url.split('#').next().unwrap_or(&url));
+        let page_url = format!(
+            "{}#gx-theme={theme}&gx-floating=1",
+            url.split('#').next().unwrap_or(&url)
+        );
         let popup_open_handler: cef::BrowserPopupOpenHandler = Rc::new(|requested_url, _| {
             let _ = gpui_open_external_http_url(&requested_url);
         });
+        // CDXC:SessionChat 2026-10-11 DECISION: User: when the reader clicks Send on a page in this window, the window closes once the answers are sent, and stays open showing the error when sending fails. The page knows it floats (`gx-floating=1`, server/src/visual_pages/theme.rs) and closes itself only after gxserver accepted its answers; CEF reports that as a close request, which closes this window.
+        let page_closed: cef::BrowserPageMetadataHandler = {
+            let modal = cx.weak_entity();
+            let async_cx = cx.to_async();
+            let foreground = cx.foreground_executor().clone();
+            Rc::new(move |event| {
+                if !matches!(event, cef::BrowserPageMetadataEvent::CloseRequested) {
+                    return;
+                }
+                let modal = modal.clone();
+                let mut async_cx = async_cx.clone();
+                foreground
+                    .spawn(async move {
+                        let _ = modal.update(&mut async_cx, |this, cx| {
+                            (this.host)(VisualPageModalCommand::Close, cx);
+                        });
+                    })
+                    .detach();
+            })
+        };
+        // The page's card picture comes from this window once the page has loaded
+        // (app/visual_page_thumbnails.rs); the surface is filled in once it exists.
+        let shown_surface: Rc<std::cell::RefCell<Option<gpui::WeakEntity<CefSurface>>>> =
+            Rc::default();
+        let page_loaded: cef::PageLoadEndHandler = {
+            let shown_surface = shown_surface.clone();
+            let page = url.clone();
+            let viewport = window.viewport_size();
+            let viewport = (
+                f32::from(viewport.width),
+                (f32::from(viewport.height) - HEADER_HEIGHT).max(1.0),
+            );
+            let async_cx = cx.to_async();
+            let foreground = cx.foreground_executor().clone();
+            Rc::new(move || {
+                let Some(surface) = shown_surface.borrow().clone() else {
+                    return;
+                };
+                let page = page.clone();
+                let async_cx = async_cx.clone();
+                // Run on the next turn: this is called from inside CEF's message pump.
+                foreground
+                    .spawn(async move {
+                        let _ = async_cx.update(|cx| {
+                            crate::app::visual_page_thumbnails::picture_opened_page(
+                                surface, &page, viewport, cx,
+                            )
+                        });
+                    })
+                    .detach();
+            })
+        };
         let created = cef_parent_native_view(window)
             .map_err(|error| error.to_string())
             .and_then(|parent| {
@@ -75,16 +130,17 @@ impl GpuiVisualPageModalWindow {
                     None,
                     true,
                     Some(popup_open_handler),
+                    Some(page_closed),
                     None,
                     None,
                     None,
-                    None,
-                    None,
+                    Some(page_loaded),
                     cx,
                 )
             });
         let (surface, error) = match created {
             Ok(surface) => {
+                *shown_surface.borrow_mut() = Some(surface.downgrade());
                 // A CEF page starts 1×1 and only gets its frame when the window paints; give it
                 // the area under the header from the start so it lays out at its real width.
                 let viewport = window.viewport_size();

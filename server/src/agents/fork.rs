@@ -391,6 +391,7 @@ pub(crate) fn request_session_rename(
             json!("pending"),
         );
         runtime_settings.insert("pendingAgentTitleRequestTitle".to_string(), json!(title));
+        runtime_settings.remove("pendingAgentTitleRequestFailedAt");
         runtime_settings.insert(
             "pendingAgentTitleRequestTitleSource".to_string(),
             json!(read_text(params, "titleSource").unwrap_or_else(|| "user".to_string())),

@@ -83,7 +83,7 @@ pub use crate::notification_feed::{
     NOTIFICATION_FEED_READ_ENDPOINT, NOTIFICATION_FEED_STATE_MESSAGE_TYPE,
     NOTIFICATION_FEED_UPDATE_ENDPOINT,
 };
-pub use crate::overlay::SessionPatch;
+pub use crate::overlay::{SessionPatch, RENAME_PATCH_TTL_MS};
 pub use crate::presentation_store::{
     json_stringify, snapshot_storage_json, LoadedPresentation, MachinePresentation,
     PresentationState, PresentationStore, SideState, SideStateUpdate, SnapshotOrigin,
@@ -193,7 +193,7 @@ pub use crate::sidebar_ui::{
     SIDEBAR_WINDOW_SCOPE_ID,
 };
 pub use crate::sidebar_view::{
-    armed_actions_by_session, close_project_group_is_active, close_project_successor_candidates,
+    armed_actions_by_session, rename_shake_key, RENAME_SHAKE_FRESH_MS, close_project_group_is_active, close_project_successor_candidates,
     close_project_successor_group_order, first_awake_successor_session_id, is_awake_successor_row,
     machine_state_copy, machine_state_is_busy, machine_state_is_failure,
     plan_space_sleep, plan_space_switch_restore, project_slot_plan, rendered_session_ids,

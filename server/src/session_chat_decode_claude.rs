@@ -147,9 +147,28 @@ pub(crate) fn claude_content_block(record: &Map<String, Value>) -> Option<Sessio
                 None
             },
             call_id: extract_string(record.get("tool_use_id")),
+            patch: None,
         }),
         Some("image" | "input_image") => image_ref_block(record),
         _ => None,
+    }
+}
+
+/// Hands an edit result the patch Claude recorded beside it (`toolUseResult`), so the chat's file
+/// change card can show the file's own line numbers and surrounding lines. The record holds one
+/// `toolUseResult`, so it is attached only when the row answers a single call.
+fn attach_claude_tool_patch(record: &Map<String, Value>, blocks: &mut [SessionChatBlock]) {
+    let Some(found) = record
+        .get("toolUseResult")
+        .and_then(crate::session_chat_file_patch::claude_tool_patch)
+    else {
+        return;
+    };
+    let mut results = blocks
+        .iter_mut()
+        .filter(|block| matches!(block, SessionChatBlock::ToolResult { .. }));
+    if let (Some(SessionChatBlock::ToolResult { patch, .. }), None) = (results.next(), results.next()) {
+        *patch = Some(found);
     }
 }
 
@@ -549,6 +568,7 @@ pub fn decode_claude_transcript_line(line: &str, fallback_id: &str) -> Option<Se
     let message = record.get("message").and_then(Value::as_object);
     let content = message.and_then(|inner| inner.get("content"));
     let mut decoded_blocks = claude_content_blocks(content);
+    attach_claude_tool_patch(&record, &mut decoded_blocks);
     if role == "user" {
         decoded_blocks = decoded_blocks
             .into_iter()

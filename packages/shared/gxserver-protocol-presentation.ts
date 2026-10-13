@@ -425,6 +425,15 @@ export interface GxserverPresentationSession {
    */
   queuedPromptFailedCount?: number;
   /**
+   * CDXC:SessionTitles 2026-10-12 SEE-ALSO: `pending_session_rename_title` in
+   * server/src/presentation/session_attributes.rs. The name of the user's last
+   * rename the agent never confirmed within 8 seconds (the title shakes when it
+   * appears and the next Rename opens with it), and when gxserver gave up on it.
+   * Absent once a rename is confirmed or another is requested.
+   */
+  renameFailedAt?: string;
+  renameFailedTitle?: string;
+  /**
    * CDXC:Drafts 2026-09-04 DECISION:
    * User: a white dot on the agent icon marks a session whose chat composer
    * holds unsent text (the chat box only, never the terminal's own input

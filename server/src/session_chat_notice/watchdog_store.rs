@@ -224,4 +224,10 @@ pub fn resolve_session_chat_terminal_notice(
         session_chat_watchdog_notice(project_id, session_id).filter(visible),
         screen.filter(visible),
     )
+    .map(|mut notice| {
+        if notice.kind == SESSION_CHAT_NOTICE_USAGE_LIMIT {
+            notice.account_wait = crate::accounts::limit_wait::notice_wait(project_id, session_id);
+        }
+        notice
+    })
 }

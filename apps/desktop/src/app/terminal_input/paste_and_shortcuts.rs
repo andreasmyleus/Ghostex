@@ -23,18 +23,58 @@ impl GhostexGpuiApp {
         CDXC:Clipboard 2026-06-27-10:28:
         Direct GPUI terminal paste uses the same runtime-only previewable-image setting as macOS before targeting the focused mounted Ghostty surface. Disabled keeps explicit-string-only behavior; enabled converts only validated image file references or raw image bytes into Markdown before any terminal insertion.
         */
-        let Some(item) = cx.read_from_clipboard() else {
+        let Some(target) = self.terminal_paste_target() else {
             return false;
         };
+        let read = gpui_read_clipboard(cx, "terminalPaste");
+        cx.spawn(async move |this, cx| {
+            let Some(item) = read.await else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.terminal_paste_target() == Some(target) {
+                    this.paste_clipboard_item_into_focused_terminal(&item, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+        true
+    }
+
+    /// The terminal a paste is meant for, taken when the key is pressed. The clipboard read
+    /// finishes later (see `gpui_read_clipboard`), and the paste lands only if that terminal still
+    /// has the keyboard; `None` when no terminal has it.
+    ///
+    /// CDXC:Clipboard 2026-10-12 WHY: the terminal is taken from `shell_keyboard_owner`, not from shell focus alone. Shell focus keeps naming the Agents pane while a chat-mode session's composer owns its keys, so claiming the paste from shell focus swallowed Cmd+V before the composer's own `Paste` could run, and aimed it at the parked terminal behind the chat.
+    fn terminal_paste_target(&self) -> Option<TerminalPasteTarget> {
+        let view = match self.shell_keyboard_owner() {
+            ShellKeyboardOwner::EngineTerminal { view, .. } => Some(view.entity_id()),
+            #[cfg(target_os = "macos")]
+            ShellKeyboardOwner::NativeTerminal(_) => None,
+            _ => return None,
+        };
+        Some(TerminalPasteTarget {
+            view,
+            text_target: focused_terminal_text_target(self.active_mode, self.shell_focus),
+            session_id: self.focused_terminal_shell_session_id(),
+        })
+    }
+
+    fn paste_clipboard_item_into_focused_terminal(
+        &mut self,
+        item: &ClipboardItem,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
         let paste_previewable_images_enabled =
             shared_settings::shared_sidebar_settings_snapshot().terminal_paste_previewable_images();
         if paste_previewable_images_enabled
-            && self.paste_clipboard_image_into_focused_remote_terminal(&item, cx)
+            && self.paste_clipboard_image_into_focused_remote_terminal(item, cx)
         {
             return true;
         }
         let Some(text) = terminal_clipboard_paste_text(
-            &item,
+            item,
             paste_previewable_images_enabled,
             self.focused_terminal_is_factory_droid(),
         ) else {
@@ -47,20 +87,49 @@ impl GhostexGpuiApp {
     pub(crate) fn paste_image_or_send_control_v(&mut self, cx: &mut gpui::Context<Self>) -> bool {
         let enabled =
             shared_settings::shared_sidebar_settings_snapshot().terminal_paste_previewable_images();
-        if enabled && let Some(item) = cx.read_from_clipboard() {
-            if self.paste_clipboard_image_into_focused_remote_terminal(&item, cx) {
-                return true;
-            }
-            if let Some(markdown) = terminal_clipboard_previewable_image_markdown_text(&item) {
-                let text = if self.focused_terminal_is_factory_droid() {
-                    format!("  {markdown}")
-                } else {
-                    markdown
-                };
-                return self.paste_text_into_focused_terminal_surface(&text, cx);
-            }
+        if !enabled {
+            return self.send_text_to_focused_terminal_surface("\u{16}", cx);
         }
-        self.send_text_to_focused_terminal_surface("\u{16}", cx)
+        let Some(target) = self.terminal_paste_target() else {
+            return false;
+        };
+        let read = gpui_read_clipboard(cx, "terminalControlV");
+        cx.spawn(async move |this, cx| {
+            let item = read.await;
+            this.update(cx, |this, cx| {
+                if this.terminal_paste_target() != Some(target) {
+                    return;
+                }
+                if let Some(item) = item
+                    && this.paste_previewable_clipboard_image(&item, cx)
+                {
+                    return;
+                }
+                this.send_text_to_focused_terminal_surface("\u{16}", cx);
+            })
+            .ok();
+        })
+        .detach();
+        true
+    }
+
+    fn paste_previewable_clipboard_image(
+        &mut self,
+        item: &ClipboardItem,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
+        if self.paste_clipboard_image_into_focused_remote_terminal(item, cx) {
+            return true;
+        }
+        let Some(markdown) = terminal_clipboard_previewable_image_markdown_text(item) else {
+            return false;
+        };
+        let text = if self.focused_terminal_is_factory_droid() {
+            format!("  {markdown}")
+        } else {
+            markdown
+        };
+        self.paste_text_into_focused_terminal_surface(&text, cx)
     }
 
     /*
@@ -537,4 +606,11 @@ impl GhostexGpuiApp {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct TerminalPasteTarget {
+    view: Option<gpui::EntityId>,
+    text_target: Option<FocusedTerminalTextTarget>,
+    session_id: Option<TerminalSessionId>,
 }

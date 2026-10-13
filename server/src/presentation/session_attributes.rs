@@ -8,10 +8,51 @@ pub(crate) const DEFAULT_TERMINAL_SESSION_TITLE: &str = "Terminal Session";
 pub(crate) const TERMINAL_TITLE_MARKER: &str = "\u{2217}";
 pub(crate) const UNSYNCED_TITLE_LABEL: &str = "(Unsynced title)";
 
+/// How long a renamed agent session shows the name the user typed while its agent CLI confirms it.
+pub(crate) const SESSION_RENAME_CONFIRM_WINDOW_MS: i64 = 8_000;
+
+/// CDXC:SessionTitles 2026-10-12 DECISION:
+/// User: "when i rename a session please apply the name optimistically for 8 seconds while the cli itself updates the name but if you don't get confirmation then show the name shake and then the user can rename again and he should see the new name he set there and be able to send it again". gxserver owns the rule so the desktop, the web build, the phone and the CLI all show the same name: a user rename still waiting for the agent's own metadata is the session's title for up to 8 seconds from the request; `schedule_session_rename_confirmation` then either confirms it or marks it `failed`, and a failed attempt is published as `renameFailedTitle`/`renameFailedAt` (the shake and the Rename prefill) until the next rename or a late confirmation.
+/// SEE-ALSO: server/src/server/title_generation/rename_confirmation.rs, `PresentationSession.rename_failed_title` in packages/gx-protocol/src/presentation.rs, packages/shared/gxserver-protocol-presentation.ts.
+pub(crate) fn pending_session_rename_title(session: &Value, now: i64) -> Option<String> {
+    if read_runtime_text(session, "pendingAgentTitleRequestStatus").as_deref() != Some("pending")
+        || read_runtime_text(session, "pendingAgentTitleRequestTitleSource").as_deref()
+            == Some("placeholder")
+    {
+        return None;
+    }
+    let requested_at = read_runtime_text(session, "pendingAgentTitleRequestRequestedAt")
+        .and_then(|value| parse_iso_ms(&value))?;
+    let elapsed = now - requested_at;
+    if !(0..SESSION_RENAME_CONFIRM_WINDOW_MS).contains(&elapsed) {
+        return None;
+    }
+    read_runtime_text(session, "pendingAgentTitleRequestTitle")
+}
+
+/// The name of a user rename the agent never confirmed, and when it was given up on.
+pub(crate) fn failed_session_rename(session: &Value) -> Option<(String, String)> {
+    if read_runtime_text(session, "pendingAgentTitleRequestStatus").as_deref() != Some("failed") {
+        return None;
+    }
+    Some((
+        read_runtime_text(session, "pendingAgentTitleRequestTitle")?,
+        read_runtime_text(session, "pendingAgentTitleRequestFailedAt")?,
+    ))
+}
+
 pub(crate) fn project_session_title(session: &Value) -> Map<String, Value> {
-    let title = string_field(session, "title")
+    let pending_title = pending_session_rename_title(session, now_ms());
+    let is_pending_rename = pending_title.is_some();
+    let title = pending_title
+        .or_else(|| string_field(session, "title"))
         .unwrap_or_else(|| DEFAULT_TERMINAL_SESSION_TITLE.to_string());
-    let title_source = session_title_source(session, &title);
+    // A rename the user is waiting on is a user title, not the new session's placeholder.
+    let title_source = if is_pending_rename {
+        "user".to_string()
+    } else {
+        session_title_source(session, &title)
+    };
     let agent_id = string_field(session, "agentId");
     let mut primary_candidate = session_card_primary_title(&title, agent_id.as_deref());
     if title_source == "placeholder" && crate::agents::provisional_fork_title(session).is_none() {
@@ -60,6 +101,10 @@ pub(crate) fn project_session_title(session: &Value) -> Map<String, Value> {
     output.insert("title".to_string(), Value::String(title));
     output.insert("titleSource".to_string(), Value::String(title_source));
     insert_optional_string(&mut output, "trustedResumeTitle", trusted_resume_title);
+    if let Some((failed_title, failed_at)) = failed_session_rename(session) {
+        output.insert("renameFailedTitle".to_string(), Value::String(failed_title));
+        output.insert("renameFailedAt".to_string(), Value::String(failed_at));
+    }
     output
 }
 

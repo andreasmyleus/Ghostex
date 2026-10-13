@@ -130,6 +130,9 @@ pub struct TerminalNotice {
     /// Answerable picker rows, in screen order. Absent means the card only describes a state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choices: Option<Vec<TerminalNoticeChoice>>,
+    /// The chat cannot read this screen, so it passes keys through to it and shows `screenTail`.
+    #[serde(default)]
+    pub passthrough: bool,
 }
 
 impl TerminalNotice {
@@ -238,6 +241,9 @@ pub struct TerminalDialog {
     /// A Settings-style panel read as tabs, headings, tables, meters, text and code-font blocks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocks: Option<Vec<serde_json::Value>>,
+    /// Claude's or Codex's `/resume` list read row by row (server/src/session_chat_resume_picker.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picker: Option<serde_json::Value>,
 }
 
 /// One row of a terminal dialog.

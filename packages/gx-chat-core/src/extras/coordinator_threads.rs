@@ -4,11 +4,11 @@
 //! CDXC:Coordinators 2026-09-30 WHY:
 //! The panel shows a coordinator's threads without opening the sidebar, which the phone does not have. Order, labels and the fold are decided here once for the desktop, web and phone renderers; gxserver only sends each thread's state, activity time and one line of detail (`coordinatorThreads`).
 //!
-//! CDXC:Coordinators 2026-10-07 DECISION:
-//! The user: "When I open the chat on mobile or on desktop, we're always expanding the threads in the coordinator sessions. Let's not do this. Also, please let's change it so that we don't show the top three done unless they are in the last 2 hours. By default, we should only show working. On the phone, showing working plus three finished ones is a bit much; the vertical space is not that much." The option they picked: the panel stays open as before, but lists only the working threads and those active in the last 2 hours (no fixed "3 most recent"), then "N more" for every other thread, closed ones included, and "Show fewer" folds them back; the header stays "2 working · 96 threads". The panel's own fold is remembered (`threadsCollapsed`), so a chat opens the way the user last left it rather than expanded every time. Still standing from the 2026-10-06 decisions it supersedes: no Finished / Sleeping / Done groups ("done and finished mean the same thing"), no "Needs you" group, every thread reachable ("Don't actually 'hide' them please"), and the rare thread blocked on something only the user can grant (a permission or folder-trust prompt) listed right after the working ones with an amber "Needs your approval" tag. The sidebar applies the same two hours (packages/gx-core/src/sidebar_view/threads.rs).
+//! CDXC:Coordinators 2026-10-11 DECISION:
+//! The user: "please show only working here, and "Show recent" to show more recent ones, then "199 more" after that as 3rd step (should load just 30 more and show "169 more")". So the panel opens in three steps: first only the threads in flight (working, plus any waiting on an answer or an approval, since those need the user), or one quiet "No threads working" line; then "Show recent" adds the finished and sleeping threads active in the last 2 hours; then "N more" adds 30 rows per click until none are left, and "Show fewer" goes back to the first step. Folding the panel or opening another chat also goes back to the first step. The header stays "2 working · 212 threads". This supersedes the 2026-10-07 decision that listed the recent threads by default. Still standing: the panel's own fold is remembered (`threadsCollapsed`); no Finished / Sleeping / Done groups ("done and finished mean the same thing"); every thread reachable ("Don't actually 'hide' them please"); a thread blocked on something only the user can grant (a permission or folder-trust prompt) is listed right after the working ones with an amber "Needs your approval" tag. The sidebar applies the same two hours (packages/gx-core/src/sidebar_view/threads.rs).
 //!
 //! CDXC:Coordinators 2026-10-07 WHY:
-//! gxserver's frames carry only a summary (the rows listed by default, each `recent` one marked by gxserver, the total and a revision), because the whole list was ~30KB on every state frame. "N more" reads the full list once (`readCoordinatorThreads`), keeps it while the list is open, reads it again when a frame brings a new revision, and drops it when the list folds. Until the read answers, the summary rows stay listed.
+//! gxserver's frames carry only a summary (the in-flight and recent rows, each `recent` one marked by gxserver, the total and a revision), because the whole list was ~30KB on every state frame. The first "N more" reads the full list once (`readCoordinatorThreads`), keeps it while the list is open, reads it again when a frame brings a new revision, and drops it when the list goes back to the first step. Until the read answers, the summary rows stay listed.
 //! SEE-ALSO: server/src/coordinators/panel.rs (the field, the summary and the read), apps/desktop/src/app/native_chat/coordinator_threads.rs and apps/mobile/app/src/chat/native/cards/AgentPanels.tsx (the renderers), packages/gx-core/src/sidebar_view/threads.rs (the sidebar's two-hour rule).
 
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,9 @@ pub struct CoordinatorThreadRow {
     pub working: bool,
     /// Blocked on something only the user can grant; drawn with the amber tag.
     pub needs_approval: bool,
+    /// A question or another prompt waiting for an answer is on its screen; listed in flight.
+    #[serde(skip)]
+    pub waiting: bool,
     /// Active in the last two hours, as gxserver judged it; listed without "N more".
     #[serde(skip)]
     pub recent: bool,
@@ -51,10 +54,18 @@ pub struct CoordinatorThreadsPanel {
     /// A thread needs the user's approval, which marks the header.
     pub attention: bool,
     pub collapsed: bool,
-    pub show_all: bool,
-    /// "91 more" / "Show fewer", or "" when every thread is already listed.
+    /// The step the list is at: 0 in flight only, 1 with the recent ones, 2+ with 30 more per step.
+    pub step: u32,
+    /// "Show recent", "169 more" or "Show fewer"; "" when there is nothing to add or take back.
     pub more_label: String,
+    /// The step the link moves to (0 for "Show fewer").
+    pub more_step: u32,
+    /// The quiet line when nothing is listed: "No threads working".
+    pub empty_label: String,
 }
+
+/// The rows each "N more" click adds.
+pub const THREADS_PAGE: usize = 30;
 
 /// The tag a row blocked on the user carries.
 pub const NEEDS_APPROVAL_LABEL: &str = "Needs your approval";
@@ -94,7 +105,16 @@ fn plural(count: usize, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
 }
 
-/// The read "N more" needs now: the list is open and what it holds (if anything) is not the
+/// Moves the list to `step`; the first two steps drop the full list "N more" read.
+pub fn set_step(panels: &mut PanelsState, step: u32) {
+    panels.threads_step = step;
+    if step < 2 {
+        panels.threads_all = None;
+        panels.threads_all_request = None;
+    }
+}
+
+/// The read "N more" needs now: the list is past "Show recent" and what it holds (if anything) is not the
 /// revision the latest frame names. A gxserver that sends no revision sends every thread on its
 /// frames, so there is nothing to read.
 pub fn read_all_threads(
@@ -102,7 +122,7 @@ pub fn read_all_threads(
     threads: Option<&Value>,
     next_request_id: impl FnOnce() -> u64,
 ) -> Option<Effect> {
-    if !panels.threads_show_all || panels.threads_all_request.is_some() {
+    if panels.threads_step < 2 || panels.threads_all_request.is_some() {
         return None;
     }
     let revision = threads?
@@ -213,7 +233,8 @@ fn parse_rows(rows: Option<&Value>) -> Vec<(String, CoordinatorThreadRow)> {
         .into_iter()
         .flatten()
         .map(|row| {
-            let working = text(row, "state") == "working";
+            let state = text(row, "state");
+            let working = state == "working";
             (
                 text(row, "activeAt"),
                 CoordinatorThreadRow {
@@ -225,6 +246,7 @@ fn parse_rows(rows: Option<&Value>) -> Vec<(String, CoordinatorThreadRow)> {
                     working,
                     needs_approval: !working
                         && row.get("needsApproval") == Some(&Value::Bool(true)),
+                    waiting: state == "waiting",
                     recent: row.get("recent") == Some(&Value::Bool(true)),
                     branch: text(row, "branch"),
                     lifecycle_state: text(row, "lifecycleState"),
@@ -235,16 +257,17 @@ fn parse_rows(rows: Option<&Value>) -> Vec<(String, CoordinatorThreadRow)> {
 }
 
 /// The panel, or `None` for a session that is not a coordinator or has no threads yet. `threads`
-/// is the frames' summary; `all` the full list "N more" read, while it is open.
+/// is the frames' summary; `all` the full list the first "N more" read, while the list is past
+/// "Show recent".
 pub fn coordinator_threads_panel(
     threads: Option<&Value>,
     collapsed: bool,
-    show_all: bool,
+    step: u32,
     all: Option<&Value>,
 ) -> Option<CoordinatorThreadsPanel> {
     let threads = threads?;
     let summary = parse_rows(threads.get("threads"));
-    let all = all.filter(|all| all.is_array()).filter(|_| show_all);
+    let all = all.filter(|all| all.is_array()).filter(|_| step >= 2);
     let mut rows = match all {
         Some(all) => parse_rows(Some(all)),
         None => summary,
@@ -258,9 +281,11 @@ pub fn coordinator_threads_panel(
     if total == 0 {
         return None;
     }
-    // Working, then blocked on the user, then the rest; each newest first (ISO times sort as text).
-    // The summary holds exactly the rows listed by default; the full list holds every thread.
-    let rank = |row: &CoordinatorThreadRow| match (row.working, row.needs_approval) {
+    // Working, then waiting on the user, then the rest; each newest first (ISO times sort as text).
+    // The summary holds the in-flight and recent rows; the full list holds every thread, so its
+    // recent rows are the newest of the rest and the rows after them are the next pages.
+    let in_flight = |row: &CoordinatorThreadRow| row.working || row.needs_approval || row.waiting;
+    let rank = |row: &CoordinatorThreadRow| match (row.working, in_flight(row)) {
         (true, _) => 0,
         (false, true) => 1,
         (false, false) => 2,
@@ -272,10 +297,16 @@ pub fn coordinator_threads_panel(
     });
     let working = rows.iter().filter(|(_, row)| row.working).count();
     let approval = rows.iter().filter(|(_, row)| row.needs_approval).count();
-    let listed = rows
+    let flying = rows.iter().filter(|(_, row)| in_flight(row)).count();
+    let recent = rows
         .iter()
-        .filter(|(_, row)| row.working || row.needs_approval || row.recent)
+        .filter(|(_, row)| !in_flight(row) && row.recent)
         .count();
+    let listed = match step {
+        0 => flying,
+        1 => flying + recent,
+        _ => (flying + recent + THREADS_PAGE * (step as usize - 1)).min(total),
+    };
     let hidden = total.saturating_sub(listed);
     let mut meta = Vec::new();
     if working > 0 {
@@ -289,33 +320,48 @@ pub fn coordinator_threads_panel(
         ));
     }
     meta.push(plural(total, "thread", "threads"));
-    let rows: Vec<CoordinatorThreadRow> = rows
-        .into_iter()
-        .map(|(_, row)| row)
-        .filter(|row| show_all || row.working || row.needs_approval || row.recent)
-        .collect();
+    let rows: Vec<CoordinatorThreadRow> = match all {
+        // The full list: its first `listed` rows.
+        Some(_) => rows.into_iter().take(listed).map(|(_, row)| row).collect(),
+        // The summary (or the full list still being read): the in-flight rows, and the recent ones
+        // past the first step.
+        None => rows
+            .into_iter()
+            .map(|(_, row)| row)
+            .filter(|row| in_flight(row) || (step > 0 && row.recent))
+            .collect(),
+    };
+    // With no recent rows "Show recent" would add nothing, so the first link is already "N more".
+    let (more_label, more_step) = if hidden == 0 {
+        if step > 0 && total > flying {
+            ("Show fewer".to_string(), 0)
+        } else {
+            (String::new(), 0)
+        }
+    } else if step == 0 && recent > 0 {
+        ("Show recent".to_string(), 1)
+    } else {
+        (format!("{hidden} more"), step.max(1) + 1)
+    };
     Some(CoordinatorThreadsPanel {
         meta: meta.join(" \u{b7} "),
         attention: approval > 0,
         collapsed,
-        show_all,
-        more_label: match (hidden > 0, show_all) {
-            (false, _) => String::new(),
-            (true, true) => "Show fewer".to_string(),
-            (true, false) => format!("{hidden} more"),
+        step,
+        more_label,
+        more_step,
+        empty_label: if rows.is_empty() {
+            "No threads working".to_string()
+        } else {
+            String::new()
         },
         rows,
     })
 }
 
 /// The document value, `null` when there is no panel.
-pub fn project(
-    threads: Option<&Value>,
-    collapsed: bool,
-    show_all: bool,
-    all: Option<&Value>,
-) -> Value {
-    coordinator_threads_panel(threads, collapsed, show_all, all)
+pub fn project(threads: Option<&Value>, collapsed: bool, step: u32, all: Option<&Value>) -> Value {
+    coordinator_threads_panel(threads, collapsed, step, all)
         .and_then(|panel| serde_json::to_value(panel).ok())
         .unwrap_or(Value::Null)
 }

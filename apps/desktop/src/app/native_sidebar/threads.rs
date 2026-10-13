@@ -124,6 +124,9 @@ pub(crate) fn coordinator_icon(appearance: &SidebarAppearance) -> AnyElement {
     .into_any_element()
 }
 
+/// The size of the row's time text in `sessions.rs`; the badge's icon and count use it so they sit on the time's baseline.
+const BADGE_TEXT_SIZE: f32 = 13.55;
+
 /// The coordinator row's marker: the crew icon and its thread count, tinted when a thread waits on
 /// someone (light blue) or works (orange).
 ///
@@ -156,11 +159,11 @@ pub(crate) fn coordinator_badge(
             .flex()
             .items_center()
             .gap(px(2.0 * scale))
-            .child(titlebar_svg_icon(COORDINATOR_ICON, 13.0 * scale, tint))
+            .child(titlebar_svg_icon(COORDINATOR_ICON, BADGE_TEXT_SIZE * scale, tint))
             .when(count > 0, |badge| {
                 badge.child(
                     div()
-                        .text_size(px(11.5 * scale))
+                        .text_size(px(BADGE_TEXT_SIZE * scale))
                         .text_color(tint)
                         .child(count.to_string()),
                 )

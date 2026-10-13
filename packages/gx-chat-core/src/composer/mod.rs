@@ -5,8 +5,10 @@
 //! for family d in `docs/2026-09-21/rust-chat/FAMILIES.md`.
 
 pub mod actions;
+pub mod catch_up;
 pub mod document;
 pub mod draft_sync;
+pub mod files_links;
 pub mod ghostex_skills;
 pub mod history;
 pub mod host_actions;
@@ -19,6 +21,7 @@ pub mod policy;
 pub mod queries;
 pub mod queue;
 pub mod queue_edit;
+pub mod queue_take_back;
 pub mod reference_menu;
 pub mod reference_pills;
 pub mod references;

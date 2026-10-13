@@ -33,6 +33,11 @@ pub enum SessionChatSendStep {
         agent: String,
         id: String,
     },
+    /// Revalidate that the agent still shows the list or screen the chat is sending keys to
+    /// (session_chat_resume_picker.rs). Unlike a dialog, any repaint is fine: every key repaints it.
+    VerifyTerminalPicker {
+        agent: String,
+    },
     /// Move any existing agent-TUI composer draft into Saved Prompts before
     /// chat takes ownership of the input line. The prompt-editor handshake
     /// answers only after the CLI has durably stashed and cleared that draft.
@@ -70,6 +75,11 @@ pub enum SessionChatSendStep {
     },
     /// Read the text in Empryo's input box, without touching it, into the job's draft sink.
     ReadEmpryoDraft,
+    /// Bring Claude Code's queued messages back into its empty input box with Up, read them off
+    /// the transcript into the job's draft sink, and empty the box again (claude_queue_pull.rs).
+    PullClaudeQueue {
+        transcript: PathBuf,
+    },
     /// Stop the job when Empryo's input box holds text other than `replacement`.
     GuardEmpryoDraft {
         replacement: String,

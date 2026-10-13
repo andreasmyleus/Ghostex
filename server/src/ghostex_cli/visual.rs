@@ -195,6 +195,53 @@ fn default_out(source: &str, options: &CheckOptions) -> PathBuf {
         .join(format!("check-{:016x}.png", hasher.finish()))
 }
 
+/// The form a ```questions block describes, when the source is one (an object with `questions`).
+fn question_form(source: &str) -> Option<ghostex_gx_visual::questions::QuestionForm> {
+    let value: serde_json::Value = serde_json::from_str(source).ok()?;
+    value
+        .get("questions")
+        .is_some()
+        .then(|| ghostex_gx_visual::questions::parse_form(source))
+}
+
+/// What the chat will show for a questions block, or the problem that stops it.
+fn report_question_form(form: &ghostex_gx_visual::questions::QuestionForm) -> CliResult<()> {
+    if !form.error.is_empty() {
+        return Err(CliError::Other(format!(
+            "The questions block can't be shown: {}",
+            form.error
+        )));
+    }
+    println!(
+        "A question form, \"{}\", with {} question{}:",
+        form.title,
+        form.questions.len(),
+        if form.questions.len() == 1 { "" } else { "s" }
+    );
+    for question in &form.questions {
+        let kind = if question.text {
+            "a text answer".to_string()
+        } else {
+            format!(
+                "{} {} choice{} plus \"{}\"",
+                question.choices.len(),
+                if question.multiple {
+                    "multi-pick"
+                } else {
+                    "single-pick"
+                },
+                if question.choices.len() == 1 { "" } else { "s" },
+                ghostex_gx_visual::questions::OTHER_CHOICE
+            )
+        };
+        println!(
+            "- {} (answer key \"{}\"): {kind}",
+            question.title, question.key
+        );
+    }
+    Ok(())
+}
+
 fn check_command(args: &[String]) -> CliResult<()> {
     let Some(options) = parse_check(args)? else {
         println!("{}", usage::visuals_usage());
@@ -206,6 +253,9 @@ fn check_command(args: &[String]) -> CliResult<()> {
     } else {
         Theme::dark()
     };
+    if let Some(form) = question_form(&source) {
+        return report_question_form(&form);
+    }
     let visual = render(&source, options.width, &theme)
         .map_err(|message| CliError::Other(format!("The block can't be drawn: {message}")))?;
     let scene = match visual {

@@ -21,6 +21,12 @@ pub struct QuestionCard {
     /// An approval card's question, worded for its tool ("Allow this edit?"); empty for a question.
     #[serde(default)]
     pub approval_ask: String,
+    /// An approval card's title in plain words ("Claude Code wants to run a command").
+    #[serde(default)]
+    pub approval_title: String,
+    /// The muted line under it: the tool, and the folder it runs in when known.
+    #[serde(default)]
+    pub approval_detail: String,
 }
 
 /// The card's primary button.
@@ -38,6 +44,9 @@ pub struct QuestionControls {
 pub struct QuestionDraft {
     pub indices: Vec<u32>,
     pub other: String,
+    /// A question form's "Other / none of these" is picked; `other` is then its note.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub other_picked: bool,
 }
 
 /// The async question strip a working agent shows above the composer.

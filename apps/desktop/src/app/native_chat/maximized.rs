@@ -62,6 +62,7 @@ impl Render for MaximizedComposer {
                 .capture_key_up(cx.listener(|chat, _, _, _| chat.composer_held_key = None))
                 .capture_action(cx.listener(NativeChatView::composer_copy))
                 .capture_action(cx.listener(NativeChatView::composer_cut))
+                .capture_action(cx.listener(NativeChatView::note_paste_started))
                 .on_drop(cx.listener(|chat, paths: &gpui::ExternalPaths, _, cx| {
                     let paths = paths
                         .0

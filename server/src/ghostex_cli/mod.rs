@@ -28,7 +28,7 @@ pub mod saved_prompts;
 pub mod selector;
 mod session_chat_model;
 mod session_chat_rpc;
-mod session_chat_transcript;
+pub(crate) mod session_chat_transcript;
 mod session_parking;
 pub mod sessions;
 mod sessions_brief;
@@ -294,6 +294,7 @@ fn is_known_command(name: &str) -> bool {
         "select-session-chat-model",
         "read-session-chat-skills",
         "read-session-chat-files",
+        "read-session-files-links",
         "send-session-chat-message",
         "answer-session-chat-prompt",
         "rewind-session-chat",
@@ -744,6 +745,12 @@ fn run_command(name: &str, args: &[String]) -> CliResult<()> {
         "read-session-chat-files" => {
             run_bridge_action("readSessionChatFiles", Parser::SessionSelector, plain, args)
         }
+        "read-session-files-links" => run_bridge_action(
+            "readSessionFilesLinks",
+            Parser::SessionSelector,
+            plain,
+            args,
+        ),
         "send-session-chat-message" => run_bridge_action(
             "sendSessionChatMessage",
             Parser::SendText,

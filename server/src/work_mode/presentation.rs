@@ -70,10 +70,12 @@ pub(crate) fn work_targets(project: &Value, session: &Value) -> WorkTargets {
         None => branch_pull_request
             .map(|number| number.to_string())
             .or_else(|| {
+                let repo = cwd.as_deref().and_then(cached_work_repo);
                 linear_key.and_then(|key| {
                     linear_issues.iter().find_map(|identifier| {
-                        cached_linear_issue(key, identifier)
-                            .and_then(|issue| issue.pull_request_urls.first().cloned())
+                        cached_linear_issue(key, identifier).and_then(|issue| {
+                            ticket_pull_request_in_repo(&issue.pull_request_urls, repo.as_deref())
+                        })
                     })
                 })
             }),
@@ -88,6 +90,23 @@ pub(crate) fn work_targets(project: &Value, session: &Value) -> WorkTargets {
         branch_pull_request,
         linear_project: manual.linear_project,
         github_project: manual.github_project,
+    }
+}
+
+/// The ticket's PR a session without its own shows: the first one Linear attached in the session's
+/// repo (a Linear project can span repos), or the first one while the repo is not known yet.
+///
+/// CDXC:WorkMode 2026-10-12 WHY:
+/// A session linked to DE-40 showed no PR chip while the ticket's Work details already showed PR #6647: the card waited for the branch probe's 5-minute PR TTL and the issue's 2-minute TTL. Issues awaiting a PR are re-read every pass, and the details hand what they read to these caches (`share_work_item_with_sidebar`).
+fn ticket_pull_request_in_repo(urls: &[String], repo: Option<&str>) -> Option<String> {
+    match repo {
+        Some(repo) => urls
+            .iter()
+            .find(|url| {
+                pull_request_url_parts(url).is_some_and(|(owner_repo, _)| owner_repo == repo)
+            })
+            .cloned(),
+        None => urls.first().cloned(),
     }
 }
 

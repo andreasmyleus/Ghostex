@@ -257,6 +257,9 @@ enum ComposerSignature {
     /// The lowest rounded box on screen, its first row opening with Empryo's prompt glyph or
     /// spinner, with only the statusline below it.
     EmpryoInputBox,
+    /// Antigravity's `>` rule sandwich, which may have its active-items list (one
+    /// `● [HH:MM:SS] … running` row per background task) framed by rules below it.
+    AntigravityInputBox,
 }
 
 /// Tallest rounded box `TrailingRoundedFoot` will accept as a composer. Two
@@ -292,8 +295,9 @@ fn composer_signature(agent: &str) -> Option<ComposerSignature> {
         },
         // `>` between two full-width rules, statusline below (`? for
         // shortcuts` idle, `esc to cancel` while working). Measured
-        // 2026-09-02, Antigravity CLI 1.1.24.
-        "antigravity" => ComposerSignature::RuleSandwich { markers: &['>'] },
+        // 2026-09-02, Antigravity CLI 1.1.24; the active-items list under
+        // it measured 2026-10-11 on 1.3.3.
+        "antigravity" => ComposerSignature::AntigravityInputBox,
         // `❯` (or `<profile> ❯`) between two full-width rules, statusline
         // above the top rule (measured 2026-08-29, Hermes Agent v0.20.4;
         // profile prefix confirmed against v0.20.5 source on 2026-08-30).
@@ -732,6 +736,7 @@ fn signature_matches(signature: ComposerSignature, lines: &[String]) -> bool {
         }
         ComposerSignature::FooteredRoundedBox => input::freebuff_input_region(lines).is_some(),
         ComposerSignature::EmpryoInputBox => input::empryo_input_region(lines).is_some(),
+        ComposerSignature::AntigravityInputBox => input::antigravity_input_region(lines).is_some(),
     }
 }
 

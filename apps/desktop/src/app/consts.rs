@@ -63,21 +63,14 @@ pub(crate) const SIDEBAR_MIN_WIDTH: f32 = 190.0;
 /// User: "300 px min sidebar width on windows is good", then corrected: "i want 300px actual px
 /// with 1.5x scaling not 450". On Windows the sidebar cannot be dragged narrower than 200 logical
 /// px (300 physical px at 150% display scaling), and a saved width below it is clamped up on the
-/// next start. At that width the top row holds exactly Search, Notifications and the menu button,
-/// and Send Feedback lives in the menu. macOS and Linux keep 190px. This supersedes the 300 logical
-/// px minimum set earlier the same day.
+/// next start. At that width the top row holds exactly Search, Notifications and the menu button.
+/// macOS and Linux keep 190px. This supersedes the 300 logical px minimum set earlier the same day.
 #[cfg(target_os = "windows")]
 pub(crate) const SIDEBAR_MIN_WIDTH: f32 = 200.0;
 
 pub(crate) const SIDEBAR_MAX_WIDTH: f32 = 520.0;
 
 pub(crate) const SIDEBAR_RESET_WIDTH: f32 = 235.0;
-
-/// CDXC:Sidebar 2026-09-28 DECISION:
-/// User: the Commands row collapses to an icon-only button below a 260px sidebar, with its label
-/// and shortcut moved into a tooltip and its buttons aligned right. The Search button is always
-/// icon-only, which supersedes the 2026-09-21 340px Search threshold.
-pub(crate) const SIDEBAR_COMPACT_COMMANDS_WIDTH: f32 = 260.0;
 
 /*
 CDXC:Sidebar 2026-09-20 DECISION:
@@ -208,15 +201,16 @@ pub(crate) const WORKAREA_HEADER_EDGE_PADDING: f32 = 9.0;
 
 /*
 CDXC:Titlebar 2026-09-20 WHY:
-The macOS traffic lights are a window option (`traffic_light_position` in main.rs), not a child of
+The macOS traffic lights are a window option (`traffic_light_position` in workspace_windows/open.rs), not a child of
 any row, so whatever occupies the window's top-left has to leave them room: the sidebar's Search row
-while the sidebar is expanded, the workarea header while it is collapsed. The three 12px lights run
-from x=11 to x=63, and 79 is where the old titlebar put its first control, so both reserves use it.
+while the sidebar is expanded, the workarea header while it is collapsed. Both rows use the same
+reserve so the sidebar toggle does not jump when the sidebar collapses.
 Windows and Linux draw their caption buttons as trailing header children instead, so they reserve
 nothing on the left.
 */
 #[cfg(target_os = "macos")]
-pub(crate) const WINDOW_CONTROLS_LEADING_RESERVE: f32 = 79.0;
+/// CDXC:Titlebar 2026-10-11 DECISION: User: move the sidebar icon away from the green macOS window button. Add 9pt to the previous 79pt reserve in both the docked sidebar and collapsed header.
+pub(crate) const WINDOW_CONTROLS_LEADING_RESERVE: f32 = 88.0;
 
 /// CDXC:Titlebar 2026-09-23 DECISION:
 /// User: on Windows and Linux the Toggle sidebar and Agents Panel buttons sit at the top left of

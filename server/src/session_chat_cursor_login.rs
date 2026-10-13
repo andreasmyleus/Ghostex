@@ -114,6 +114,7 @@ pub fn detect_cursor_sign_in(text: &str) -> Option<SessionChatTerminalNotice> {
             actions: Vec::new(),
             side_question: None,
             blocks: None,
+            picker: None,
         };
         let mut notice = dialog
             .into_notice(SESSION_CHAT_NOTICE_LOGIN_EXPIRED)

@@ -17,7 +17,7 @@ use crate::questions::drafts::{
 use crate::questions::gates;
 use crate::questions::interactive::{is_answered, select_question_option};
 use crate::questions::model::{InteractivePrompt, TerminalNotice};
-use crate::questions::notice_state::dismissed_notice_state;
+use crate::questions::notice_state::{dismissed_notice_state, notice_dismiss_key};
 use crate::questions::sync::sync;
 use crate::questions::terminal_prompts::{
     terminal_notice_action_answer, terminal_notice_action_shortcut_eligible,
@@ -40,6 +40,45 @@ pub fn handle(state: &mut ChatState, action: &UserAction, context: &ChatContext)
             if let Some(answer) = notice_answer(state, notice.as_ref(), primary) {
                 effects.extend(answer_prompt(state, &answer));
             }
+        }
+        ActionKind::FormChoice | ActionKind::FormText | ActionKind::FormSend => {
+            let id = action
+                .param("form")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let question = action
+                .param("question")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as usize;
+            effects.extend(match action.kind {
+                ActionKind::FormChoice => crate::questions::forms::pick(
+                    state,
+                    &id,
+                    question,
+                    action
+                        .param("choice")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(u64::MAX) as usize,
+                ),
+                ActionKind::FormText => crate::questions::forms::write(
+                    state,
+                    &id,
+                    question,
+                    action
+                        .param("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                ),
+                _ => crate::questions::forms::send(state, context, &id),
+            });
+        }
+        ActionKind::FormToggle => {
+            let id = action
+                .param("form")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            crate::questions::forms::toggle(state, id);
         }
         ActionKind::Answer => {
             if let Some(answer) = action.param("answer") {
@@ -179,6 +218,12 @@ fn dismiss_notice(
     if notice.choices.as_ref().is_some_and(|rows| !rows.is_empty()) || notice.dialog.is_some() {
         return Vec::new();
     }
+    // Giving the keyboard back from a pass-through card hides that one detection only: the
+    // dismissal cooldown would hide the agent's next picker with the same title too.
+    if notice.passthrough {
+        state.questions.released_notice_key = notice_dismiss_key(Some(notice));
+        return Vec::new();
+    }
     let dismissed = dismissed_notice_state(notice, context.now_millis());
     let value = serde_json::to_string(&dismissed).ok();
     state.questions.dismissed_notice = Some(dismissed);
@@ -217,8 +262,34 @@ fn notice_answer(
     }
 }
 
+/// Sends a key or search text to an open picker or pass-through screen without holding the card.
+/// gxserver types the difference between the search the agent shows and the one asked for, so
+/// search text goes one request at a time and only the newest waiting text follows.
+pub(crate) fn send_navigation(state: &mut ChatState, answer: &Value) -> Vec<Effect> {
+    let query = answer.get("pickerQuery").is_some();
+    if query && state.questions.picker_query_request.is_some() {
+        state.questions.pending_picker_query = Some(answer.clone());
+        return Vec::new();
+    }
+    let request_id = allocate(state);
+    if query {
+        state.questions.picker_query_request = Some(request_id);
+    } else {
+        state.questions.picker_requests.push(request_id);
+    }
+    state.questions.notice_error = None;
+    vec![Effect::SendRpc {
+        request_id,
+        method: ChatRpcMethod::AnswerSessionChatPrompt,
+        params: Box::new(with_identity(state, answer.clone())),
+    }]
+}
+
 /// Sends one answer, whatever asked for it.
 fn answer_prompt(state: &mut ChatState, answer: &Value) -> Vec<Effect> {
+    if crate::questions::terminal_picker::is_navigation_answer(answer) {
+        return send_navigation(state, answer);
+    }
     if state.questions.answering {
         return Vec::new();
     }
@@ -234,7 +305,9 @@ fn answer_prompt(state: &mut ChatState, answer: &Value) -> Vec<Effect> {
     // agent's screen catches up, and the user has already chosen.
     if kind == "terminalChoice"
         || (kind == "terminalDialog"
-            && (answer.get("choiceIndex").is_some_and(Value::is_number) || closes_dialog(answer)))
+            && (answer.get("choiceIndex").is_some_and(Value::is_number)
+                || answer.get("pickerRow").is_some()
+                || closes_dialog(answer)))
     {
         state.questions.answered_notice_key = state.questions.active_notice_key.clone();
     }

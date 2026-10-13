@@ -33,6 +33,7 @@
 
 mod layout;
 mod motion;
+pub mod questions;
 mod scene;
 mod spec;
 mod stats;
@@ -159,6 +160,7 @@ pub fn render_json_at(
             "url": page.url,
             "file": page.file,
             "open": if page.popup { "popup" } else { "browser" },
+            "pageId": page.page_id(),
         }),
         Err(message) => json!({
             "kind": "error",

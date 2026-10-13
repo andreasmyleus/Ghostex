@@ -143,6 +143,7 @@ pub fn terminal_dialog_presentation(dialog: &TerminalDialog) -> Value {
         "sideQuestion": side_question,
         "blocks": (!blocks.is_empty()).then_some(blocks),
         "title": tab_strip.and_then(|strip| strip["title"].as_str()),
+        "picker": crate::questions::terminal_picker::picker_presentation(dialog),
     })
 }
 

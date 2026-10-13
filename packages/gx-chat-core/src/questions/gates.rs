@@ -35,7 +35,8 @@ pub fn notice_visible(state: &ChatState) -> bool {
         return false;
     };
     let questions = &state.questions;
-    if notice_dismiss_key(Some(&notice)) == questions.answered_notice_key {
+    let key = notice_dismiss_key(Some(&notice));
+    if key == questions.answered_notice_key || key == questions.released_notice_key {
         return false;
     }
     !is_notice_dismissed(&notice, questions.dismissed_notice.as_ref())

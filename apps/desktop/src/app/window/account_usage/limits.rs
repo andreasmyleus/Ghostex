@@ -55,16 +55,26 @@ impl AccountUsagePanel {
                 12.0,
             ));
         }
+        // CDXC:AgentProviders 2026-10-11 DECISION:
+        // User: the usage card must not contradict itself. When gxserver marks the reading stale (refreshing has failed since it was taken), the pill says "Last known" in amber and the header says how long ago it was updated; "Live limits" shows only for a fresh reading.
+        let (dot, pill) = if self.account["usageStale"] == true {
+            (gpui::Hsla::from(chrome_color(0xf0a94f, 0x986009)), "Last known")
+        } else {
+            (p.accent, "Live limits")
+        };
+        let mut tag = p.tag(true);
+        if self.account["usageStale"] == true {
+            tag = tag.bg(dot.opacity(0.12)).text_color(dot);
+        }
         let mut card = p
             .card()
             .child(
                 section_heading().child(heading("This account")).child(
-                    p.tag(true)
-                        .child(div().size(px(6.0)).rounded_full().bg(p.accent).shadow(vec![
-                            shadow(0.0, 0.0, 0.0, p.accent.opacity(0.25)).spread_radius(px(2.0)),
-                            shadow(0.0, 0.0, 8.0, p.accent),
-                        ]))
-                        .child("Live limits"),
+                    tag.child(div().size(px(6.0)).rounded_full().bg(dot).shadow(vec![
+                        shadow(0.0, 0.0, 0.0, dot.opacity(0.25)).spread_radius(px(2.0)),
+                        shadow(0.0, 0.0, 8.0, dot),
+                    ]))
+                    .child(pill),
                 ),
             )
             .child(bars);

@@ -93,6 +93,7 @@ fn rpc_method_name(wire: &str) -> &'static str {
         ChatRpcMethod::ReadSessionChatSkills => "readSessionChatSkills",
         ChatRpcMethod::ReadSessionChatFiles => "readSessionChatFiles",
         ChatRpcMethod::ReadSessionChatImage => "readSessionChatImage",
+        ChatRpcMethod::ReadVisualPageThumbnail => "readVisualPageThumbnail",
         ChatRpcMethod::SendSessionChatMessage => "sendSessionChatMessage",
         ChatRpcMethod::InterruptSessionChat => "interruptSessionChat",
         ChatRpcMethod::AnswerSessionChatPrompt => "answerSessionChatPrompt",
@@ -119,6 +120,9 @@ fn rpc_method_name(wire: &str) -> &'static str {
         ChatRpcMethod::RunProjectDocsAction => "runProjectDocsAction",
         ChatRpcMethod::ReadCoordinatorThreads => "readCoordinatorThreads",
         ChatRpcMethod::OpenCoordinatorThread => "openCoordinatorThread",
+        ChatRpcMethod::TakeBackSessionChatQueuedMessage => "takeBackSessionChatQueuedMessage",
+        ChatRpcMethod::CatchUpSession => "catchUpSession",
+        ChatRpcMethod::ReadSessionFilesLinks => "readSessionFilesLinks",
         ChatRpcMethod::Other(_) => "other",
     }
 }

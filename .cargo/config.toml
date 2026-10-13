@@ -1,8 +1,32 @@
-# CDXC:Build 2026-09-07 DECISION:
-# User requested reduced Rust debug information to keep the checkout small.
-# Line tables retain file/line backtraces; dev-derived test profiles inherit this setting.
+# CDXC:Build 2026-10-11 DECISION:
+# User: "i want you to actually always disable the debugging info that just has to do with crashes. it's very very rare that the app crashes. when it does i can tell you to renenable those logs so we'll get the log when we need it only but for 99% of the time i dont need these logs and i just want the app size and the build speed to be as best as it can". This supersedes the 2026-09-07 decision that kept line tables in dev builds.
+# Every Rust build in the repository (dev and release, every crate, local and CI) carries no debug info and no symbol table; on Windows the linker also writes no .pdb. A panic still logs its message and file:line (those are compiled into the binary), but backtraces print `<unknown>` frames.
+# Turn it back on for one build with `cargo xtask start --debug-info` (or `GHOSTEX_DEBUG_INFO=1`); plain cargo commands take the environment variables listed in ai/local-start-performance.md ("Debug info").
+# SEE-ALSO: tooling/xtask/src/util.rs (debug_info_environment), which must undo exactly what this file sets.
 [profile.dev]
-debug = "line-tables-only"
+debug = false
+strip = "symbols"
+
+[profile.release]
+debug = false
+strip = "symbols"
+
+# CDXC:Build 2026-10-11 WHY: these settings override the crates' own Cargo.toml profiles, so the phone libraries keep their own `strip = "debuginfo"`: `uniffi-bindgen generate --library` reads the UniFFI metadata from the library's symbol table.
+[profile.release.package.ghostex-gx-chat-mobile]
+strip = "debuginfo"
+
+[profile.release.package.ghostex-gx-mobile]
+strip = "debuginfo"
+
+[profile.release.package.ghostex-gpui-mobile]
+strip = "debuginfo"
+
+# CDXC:Build 2026-10-11 WHY: rustc ignores `strip` with the MSVC linker and always passes /DEBUG, so every Windows binary still got a .pdb. Keyed by target triple, not cfg(), because cargo appends `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` after a same-triple entry, which is how `--debug-info` adds a later /DEBUG; a cfg() entry would come last and win.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/DEBUG:NONE"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/DEBUG:NONE"]
 
 # CDXC:Build 2026-10-01 SEE-ALSO: tooling/xtask/Cargo.toml (`cargo xtask <command>` runs the repository's dev, start and build commands).
 [alias]

@@ -566,7 +566,7 @@ pub struct StatusRow {
     pub label: String,
     /// `ok`, `error` or `neutral`.
     pub tone: &'static str,
-    /// Short trailing fact ("exit code 0") rendered as its own non-wrapping chip.
+    /// Short trailing fact ("exit code 1") rendered as its own non-wrapping chip.
     pub detail: Option<String>,
 }
 
@@ -574,6 +574,9 @@ pub struct StatusRow {
 /// The harness summary ends in "(exit code N)", and on a wrapped row that parenthetical splits so a
 /// lone "0)" lands on the second line. Peeling it off into a chip keeps the number with its words
 /// and lets the sentence wrap on its own.
+///
+/// CDXC:SessionChat 2026-10-11 DECISION:
+/// User: "remove exit code 0 and "after 39s" here ... useless info". A task that ended with exit code 0 shows no chip, since "completed" already says it worked; any other exit code keeps its chip, and a failed or stopped task keeps the words that say so. This supersedes the same day's pick "F2", which added how long the task ran to this row.
 fn split_status_summary(summary: &str) -> (String, Option<String>) {
     let trimmed = js_trim_end(summary);
     let Some(close) = trimmed.strip_suffix(')') else {
@@ -591,7 +594,11 @@ fn split_status_summary(summary: &str) -> (String, Option<String>) {
     if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
         return (summary.to_string(), None);
     }
-    (js_trim(&close[..open]).to_string(), Some(inner.to_string()))
+    let success = digits.bytes().all(|byte| byte == b'0') && !lower.contains('-');
+    (
+        js_trim(&close[..open]).to_string(),
+        (!success).then(|| inner.to_string()),
+    )
 }
 
 fn js_trim_end(value: &str) -> &str {

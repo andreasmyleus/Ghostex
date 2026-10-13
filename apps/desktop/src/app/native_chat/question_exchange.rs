@@ -3,13 +3,16 @@
 //! CDXC:SessionChat 2026-09-18 SEE-ALSO:
 //! The rule that lifts a turn's exchanges out of its collapsed work fold lives in
 //! packages/gx-chat-core/src/questions/hoisting.rs. The live question card
-//! (question.rs) and this settled one deliberately share their choice rows, so an answer reads the
+//! (question.rs) and this settled one share their card (ask_card.rs), so an answer reads the
 //! same after the fact as it did while it was being given.
 
+use super::ask_card::{
+    AskBodyMotion, AskTone, answer_aside, ask_head, chevron, plain_answer, press_head, receipt_row,
+};
 use super::{appearance::ChatAppearance, state::NativeChatView, transcript::text};
-use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, FontWeight, IntoElement, ParentElement as _, Styled as _, div, px,
+    AnyElement, Context, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use serde_json::Value;
 
@@ -41,6 +44,7 @@ impl NativeChatView {
         Some(column.into_any_element())
     }
 
+    /// CDXC:SessionChat 2026-10-12 DECISION: User picked "Clear ask, clear answer" (2026-10-11): an answered exchange is a compact green receipt ("You answered 2 questions", its headers under it) that folds to that one line, with a numbered row per question; a question nobody answered says Skipped or Dismissed, and an exchange with no answer at all is a muted "Question skipped" card. The same day the user answered "yes" to "The agent's own question receipts still show green chips. Make them plain like the new answer card?": each answer is plain foreground text at medium weight under its muted question, with no chip, border or fill, exactly as the answer card under a form (`plain_answer`, page_answers.rs). Supersedes the green answer chips; the option's description and a note sit under the answer.
     fn question_exchange_card(
         &self,
         key: &str,
@@ -55,78 +59,133 @@ impl NativeChatView {
             .unwrap_or_default();
         let answers = exchange["answers"].as_array().cloned();
         let total = questions.len();
-        let mut card = div()
-            .flex()
-            .flex_col()
-            .min_w_0()
-            .w_full()
-            .rounded(px(16.0 * s))
-            .border_1()
-            .border_color(p.input_border)
-            .bg(p.card_panel)
-            .overflow_hidden();
-        for (index, question) in questions.iter().enumerate() {
-            let answer = answers
+        let fallback = text(exchange, "fallbackText");
+        let answer_at = |index: usize| {
+            answers
                 .as_ref()
                 .and_then(|answers| answers.get(index))
                 .cloned()
-                .unwrap_or(Value::Null);
-            card = card.child(self.question_exchange_section(
+                .unwrap_or(Value::Null)
+        };
+        let answered = (0..total)
+            .filter(|index| answer_given(&answer_at(*index)))
+            .count();
+        let dismissed = (0..total).any(|index| answer_at(index)["dismissed"] == true);
+        let headers: Vec<String> = questions
+            .iter()
+            .map(|question| text(question, "header"))
+            .filter(|header| !header.is_empty())
+            .collect();
+        let (tone, icon, title) = if answered > 0 || !fallback.is_empty() {
+            (
+                AskTone::Answered,
+                "titlebar/check.svg",
+                if total <= 1 || answered == 0 {
+                    "You answered the question".to_string()
+                } else if answered == total {
+                    format!("You answered {total} questions")
+                } else {
+                    format!("You answered {answered} of {total} questions")
+                },
+            )
+        } else if dismissed {
+            (
+                AskTone::Quiet,
+                "titlebar/help-circle.svg",
+                "Dismissed without answering".to_string(),
+            )
+        } else {
+            (
+                AskTone::Quiet,
+                "titlebar/help-circle.svg",
+                if total > 1 {
+                    "Questions skipped".to_string()
+                } else {
+                    "Question skipped".to_string()
+                },
+            )
+        };
+        let mut detail = headers.join(" · ");
+        if tone == AskTone::Quiet {
+            let note = "No answer was given";
+            detail = if detail.is_empty() {
+                note.to_string()
+            } else {
+                format!("{detail} · {note}")
+            };
+        } else if detail.is_empty() && total == 1 {
+            detail = text(&questions[0], "question");
+        }
+        let fold_key = format!("question-receipt:{key}");
+        let open = !self.collapsed.contains(&fold_key);
+        let motion = self.disclosure_frame(&fold_key, open, cx);
+        let mut rows = div().flex().flex_col().min_w_0().w_full();
+        for (index, question) in questions.iter().enumerate() {
+            rows = rows.child(self.question_exchange_row(
                 &format!("{key}:{index}"),
                 question,
-                &answer,
+                &answer_at(index),
                 answers.is_some(),
                 index,
-                total,
                 p,
                 cx,
             ));
         }
-        let fallback = text(exchange, "fallbackText");
         if !fallback.is_empty() {
-            card = card.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0 * s))
-                    .px(px(16.0 * s))
-                    .py(px(14.0 * s))
-                    .when(total > 0, |section| {
-                        section.border_t_1().border_color(p.input_border)
-                    })
-                    .child(self.question_exchange_label("ANSWER", p))
-                    .child(div().text_color(p.foreground).child(fallback)),
-            );
+            rows = rows.child(receipt_row(
+                total + 1,
+                String::new(),
+                vec![plain_answer(fallback, p)],
+                Vec::new(),
+                total == 0,
+                p,
+            ));
         }
-        card.into_any_element()
-    }
-
-    fn question_exchange_label(&self, label: &str, p: &ChatAppearance) -> AnyElement {
-        div()
-            .text_size(px(11.0 * p.scale))
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(p.muted)
-            .child(label.to_uppercase())
-            .into_any_element()
+        let body = div().mt(px(-6.0 * s)).child(rows).into_any_element();
+        let toggle_key = fold_key.clone();
+        let head = press_head(
+            ask_head(icon, tone, title, detail, vec![chevron(open, p)], p),
+            SharedString::from(format!("question-receipt-head:{key}")),
+            if open {
+                "Hide the answers"
+            } else {
+                "Show the answers"
+            },
+            open || motion.is_some(),
+            p,
+        )
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if !this.collapsed.remove(&toggle_key) {
+                this.collapsed.insert(toggle_key.clone());
+            }
+            cx.notify();
+        }))
+        .into_any_element();
+        let has_rows = total > 0 || !text(exchange, "fallbackText").is_empty();
+        self.ask_card(
+            head,
+            (has_rows && (open || motion.is_some())).then_some(body),
+            Vec::new(),
+            Some(AskBodyMotion {
+                key: &fold_key,
+                frame: motion,
+            }),
+            p,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn question_exchange_section(
+    fn question_exchange_row(
         &self,
         key: &str,
         question: &Value,
         answer: &Value,
         parsed_answers: bool,
         index: usize,
-        total: usize,
         p: &ChatAppearance,
         cx: &Context<Self>,
     ) -> AnyElement {
         let s = p.scale;
-        let header = question["header"]
-            .as_str()
-            .unwrap_or("Question")
-            .to_string();
         let selected: Vec<usize> = answer["selectedIndices"]
             .as_array()
             .into_iter()
@@ -135,100 +194,54 @@ impl NativeChatView {
             .collect();
         let options = question["options"].as_array().cloned().unwrap_or_default();
         let other = text(answer, "otherText");
-        let mut section = div()
-            .flex()
-            .flex_col()
-            .min_w_0()
-            .gap(px(6.0 * s))
-            .px(px(16.0 * s))
-            .py(px(14.0 * s))
-            .when(index > 0, |section| {
-                section.border_t_1().border_color(p.input_border)
-            })
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.0 * s))
-                    .child(self.question_exchange_label(&header, p))
-                    .when(total > 1, |row| {
-                        row.child(
-                            div()
-                                .flex_shrink_0()
-                                .px(px(5.0 * s))
-                                .rounded(px(5.0 * s))
-                                .bg(p.border.opacity(0.6))
-                                .text_size(px(10.0 * s))
-                                .text_color(p.muted)
-                                .child(format!("{}/{total}", index + 1)),
-                        )
-                    }),
-            );
-        let prompt = text(question, "question");
-        if !prompt.is_empty() {
-            section = section.child(div().text_color(p.foreground.opacity(0.9)).child(prompt));
+        let mut prompt = text(question, "question");
+        if prompt.is_empty() {
+            prompt = text(question, "header");
         }
-        let mut answered = div().flex().flex_col().gap(px(6.0 * s)).pt(px(6.0 * s));
-        let mut has_answer = false;
-        for option_index in &selected {
-            let Some(option) = options.get(*option_index) else {
-                continue;
-            };
-            has_answer = true;
-            answered = answered.child(self.question_exchange_answer_row(
-                text(option, "label"),
-                text(option, "description"),
-                None,
-                p,
-            ));
+        let mut answer_line = Vec::new();
+        let picked: Vec<&Value> = selected
+            .iter()
+            .filter_map(|option_index| options.get(*option_index))
+            .collect();
+        let mut below = Vec::new();
+        if !picked.is_empty() {
+            let labels: Vec<String> = picked.iter().map(|option| text(option, "label")).collect();
+            answer_line.push(plain_answer(labels.join(", "), p));
         }
-        if !other.is_empty() {
-            has_answer = true;
-            answered = answered.child(self.question_exchange_answer_row(
-                other,
-                String::new(),
-                Some(if selected.is_empty() {
-                    "CUSTOM ANSWER"
-                } else {
-                    "ADDED NOTE"
-                }),
-                p,
-            ));
-        }
-        // A question the reader walked away from still says so, rather than looking unanswered.
-        if !has_answer {
-            let unanswered = if answer["dismissed"] == true {
-                Some("Dismissed without answering")
-            } else if parsed_answers {
-                Some("Skipped")
-            } else {
-                None
-            };
-            if let Some(label) = unanswered {
-                has_answer = true;
-                answered = answered.child(
-                    div()
-                        .px(px(12.0 * s))
-                        .py(px(8.0 * s))
-                        .rounded(px(8.0 * s))
-                        .bg(p.foreground.opacity(0.045))
-                        .text_size(px(12.0 * s))
-                        .text_color(p.muted)
-                        .child(label),
-                );
+        // One picked option's description reads under its answer, as the card showed it while it was asked.
+        if let [option] = picked.as_slice() {
+            let description = text(option, "description");
+            if !description.is_empty() && description != text(option, "label") {
+                below.push(answer_aside(description, false, p));
             }
         }
-        if has_answer {
-            section = section.child(answered);
+        if !other.is_empty() {
+            if picked.is_empty() {
+                answer_line.push(plain_answer(other, p));
+                below.push(answer_aside("Your own answer".to_string(), false, p));
+            } else {
+                below.push(answer_aside(format!("Note: {other}"), false, p));
+            }
+        }
+        // A question the reader walked away from still says so, rather than looking unanswered.
+        if answer_line.is_empty() {
+            if answer["dismissed"] == true {
+                answer_line.push(answer_aside(
+                    "Dismissed without answering".to_string(),
+                    true,
+                    p,
+                ));
+            } else if parsed_answers {
+                answer_line.push(answer_aside("Skipped".to_string(), true, p));
+            }
         }
         if !options.is_empty() {
             let options_key = format!("question-exchange:{key}");
             let expanded = self.expanded.contains(&options_key);
             let motion = self.disclosure_frame(&options_key, expanded, cx);
-            section = section.child(
+            below.push(
                 div()
-                    .pt(px(4.0 * s))
-                    .text_size(px(12.0 * s))
+                    .text_size(px(12.5 * s))
                     .text_color(p.muted)
                     .child(self.disclosure(
                         options_key.clone(),
@@ -241,10 +254,11 @@ impl NativeChatView {
                         None,
                         p,
                         cx,
-                    )),
+                    ))
+                    .into_any_element(),
             );
             if expanded || motion.is_some() {
-                let mut rows = div().flex().flex_col().gap(px(6.0 * s)).pt(px(6.0 * s));
+                let mut rows = div().flex().flex_col().gap(px(6.0 * s)).pt(px(2.0 * s));
                 for (option_index, option) in options.iter().enumerate() {
                     rows = rows.child(self.choice_row(
                         format!("{key}:option:{option_index}"),
@@ -261,7 +275,7 @@ impl NativeChatView {
                         cx,
                     ));
                 }
-                section = section.child(self.disclosure_body_motion(
+                below.push(self.disclosure_body_motion(
                     &options_key,
                     motion,
                     0.0,
@@ -269,72 +283,14 @@ impl NativeChatView {
                 ));
             }
         }
-        section.into_any_element()
+        receipt_row(index + 1, prompt, answer_line, below, index == 0, p)
     }
+}
 
-    fn question_exchange_answer_row(
-        &self,
-        label: String,
-        description: String,
-        micro_label: Option<&'static str>,
-        p: &ChatAppearance,
-    ) -> AnyElement {
-        let s = p.scale;
-        div()
-            .flex()
-            .items_start()
-            .gap(px(10.0 * s))
-            .w_full()
-            .px(px(12.0 * s))
-            .py(px(8.0 * s))
-            .rounded(px(8.0 * s))
-            .border_1()
-            .border_color(p.control_primary.opacity(0.3))
-            .bg(p.control_primary.opacity(0.1))
-            .child(
-                gpui::svg()
-                    .path("titlebar/check.svg")
-                    .size(px(14.0 * s))
-                    .mt(px(3.0 * s))
-                    .flex_shrink_0()
-                    .text_color(p.control_primary),
-            )
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0 * s))
-                    .when_some(micro_label, |column, micro| {
-                        column.child(
-                            div()
-                                .text_size(px(10.0 * s))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(p.muted)
-                                .child(micro),
-                        )
-                    })
-                    // A chosen option's title carries React's `font-medium`, so the answer reads
-                    // ahead of its own description. The reader's own words in a custom answer or an
-                    // added note are prose and stay at the row's weight, as they did in React.
-                    .child(
-                        div()
-                            .text_color(p.foreground)
-                            .when(micro_label.is_none(), |title| {
-                                title.font_weight(FontWeight::MEDIUM)
-                            })
-                            .child(label.clone()),
-                    )
-                    .when(!description.is_empty() && description != label, |column| {
-                        column.child(
-                            div()
-                                .text_size(px(12.0 * s))
-                                .text_color(p.card_muted)
-                                .child(description),
-                        )
-                    }),
-            )
-            .into_any_element()
-    }
+/// Whether the reader gave this question an answer: a pick or their own words.
+fn answer_given(answer: &Value) -> bool {
+    answer["selectedIndices"]
+        .as_array()
+        .is_some_and(|picked| !picked.is_empty())
+        || !text(answer, "otherText").is_empty()
 }

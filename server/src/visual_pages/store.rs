@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 
 use rand::RngCore;
@@ -12,6 +13,9 @@ pub(crate) const VISUAL_PAGE_MAX_BYTES: usize = 8 * 1024 * 1024;
 pub(super) const VISUAL_PAGE_TITLE_MAX_CHARS: usize = 200;
 const VISUAL_PAGE_SESSION_REF_MAX_CHARS: usize = 200;
 const VISUAL_PAGES_DIR_NAME: &str = "visual-pages";
+/// Held while a page's record is read and rewritten, so two answers sent at once cannot both
+/// pass the "not answered yet" check.
+static RECORD_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub(super) fn visual_pages_dir(gxserver_state_dir: &Path) -> PathBuf {
     gxserver_state_dir.join(VISUAL_PAGES_DIR_NAME)
@@ -64,4 +68,126 @@ pub(super) fn read_page(gxserver_state_dir: &Path, id: &str) -> Option<Vec<u8>> 
         return None;
     }
     fs::read(visual_pages_dir(gxserver_state_dir).join(format!("{id}.html"))).ok()
+}
+
+fn record_path(gxserver_state_dir: &Path, id: &str) -> PathBuf {
+    visual_pages_dir(gxserver_state_dir).join(format!("{id}.json"))
+}
+
+/// The page's `<id>.json` record: its title, the session that published it, and its answers once
+/// the reader sends them.
+pub(super) fn read_record(gxserver_state_dir: &Path, id: &str) -> Option<serde_json::Value> {
+    if !is_page_id(id) {
+        return None;
+    }
+    let bytes = fs::read(record_path(gxserver_state_dir, id)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+pub(super) enum StoreAnswersError {
+    NotFound,
+    /// The page already holds answers, sent at this time.
+    AlreadyAnswered(String),
+    Io(std::io::Error),
+}
+
+/// Stores the reader's answers on the page's record, once: the first submission wins, so a page
+/// cannot type a stream of answers into the agent.
+pub(super) fn store_answers(
+    gxserver_state_dir: &Path,
+    id: &str,
+    answers: &serde_json::Value,
+) -> Result<serde_json::Value, StoreAnswersError> {
+    let _guard = RECORD_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut record = read_record(gxserver_state_dir, id).ok_or(StoreAnswersError::NotFound)?;
+    if let Some(answered_at) = record.get("answeredAt").and_then(serde_json::Value::as_str) {
+        return Err(StoreAnswersError::AlreadyAnswered(answered_at.to_string()));
+    }
+    record["answers"] = answers.clone();
+    record["answeredAt"] =
+        json!(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+    // The answers replace the draft they were written from.
+    if let Some(fields) = record.as_object_mut() {
+        fields.remove("draft");
+    }
+    write_record(gxserver_state_dir, id, &record).map_err(StoreAnswersError::Io)?;
+    Ok(record)
+}
+
+/// Keeps what the reader has picked and written so far on the page's record, so closing and
+/// reopening the page (or a restart) brings it back; `null` forgets it. A page that was answered
+/// keeps its answers instead.
+pub(super) fn store_draft(
+    gxserver_state_dir: &Path,
+    id: &str,
+    draft: &serde_json::Value,
+) -> Result<(), StoreAnswersError> {
+    let _guard = RECORD_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut record = read_record(gxserver_state_dir, id).ok_or(StoreAnswersError::NotFound)?;
+    if let Some(answered_at) = record.get("answeredAt").and_then(serde_json::Value::as_str) {
+        return Err(StoreAnswersError::AlreadyAnswered(answered_at.to_string()));
+    }
+    match record.as_object_mut() {
+        Some(fields) if draft.is_null() => {
+            fields.remove("draft");
+        }
+        Some(fields) => {
+            fields.insert("draft".to_string(), draft.clone());
+        }
+        None => return Err(StoreAnswersError::NotFound),
+    }
+    write_record(gxserver_state_dir, id, &record).map_err(StoreAnswersError::Io)
+}
+
+/// Replaces the record whole (written beside it, then renamed), so a reader never sees half.
+fn write_record(
+    gxserver_state_dir: &Path,
+    id: &str,
+    record: &serde_json::Value,
+) -> std::io::Result<()> {
+    let path = record_path(gxserver_state_dir, id);
+    let temporary = path.with_extension("json.tmp");
+    fs::write(
+        &temporary,
+        serde_json::to_vec_pretty(record).unwrap_or_default(),
+    )
+    .and_then(|()| fs::rename(&temporary, &path))
+}
+
+/// Notes on the record that a picture of the page was just stored (`thumbnail.rs`), and whether the
+/// page was already answered when it was taken. Returns the updated record.
+pub(super) fn note_thumbnail(
+    gxserver_state_dir: &Path,
+    id: &str,
+    answered: bool,
+) -> Result<serde_json::Value, StoreAnswersError> {
+    let _guard = RECORD_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut record = read_record(gxserver_state_dir, id).ok_or(StoreAnswersError::NotFound)?;
+    record["thumbnailAt"] =
+        json!(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+    record["thumbnailAnswered"] = json!(answered);
+    write_record(gxserver_state_dir, id, &record).map_err(StoreAnswersError::Io)?;
+    Ok(record)
+}
+
+/// Notes on the record how handing the answers to the agent went: queued (`queuedAt`) or why not.
+pub(super) fn note_delivery(gxserver_state_dir: &Path, id: &str, error: Option<&str>) {
+    let _guard = RECORD_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(mut record) = read_record(gxserver_state_dir, id) else {
+        return;
+    };
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    match error {
+        None => record["queuedAt"] = json!(now),
+        Some(error) => record["deliveryError"] = json!(clip_chars(error, 500)),
+    }
+    let _ = write_record(gxserver_state_dir, id, &record);
 }

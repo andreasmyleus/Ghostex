@@ -363,6 +363,27 @@ impl GhostexGpuiApp {
         true
     }
 
+    /// CDXC:Clipboard 2026-10-12 WHY: the app-wide Cmd+V binding outranks the `Input` context's own `cmd-v` (a binding without a context matches at the deepest depth and binds later), so a focused GPUI text field (chat composer, sidebar rename, terminal search, address bar) pastes only when this passes the chord on to its `Paste`. A native Ghostty surface holding AppKit's responder keeps its paste even if GPUI focus stayed on a field.
+    pub(crate) fn propagate_gpui_text_input_paste_passthrough(
+        &self,
+        window: &Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
+        #[cfg(target_os = "macos")]
+        if self.first_responder_target != FirstResponderTarget::GpuiWindow {
+            return false;
+        }
+        if !window
+            .context_stack()
+            .iter()
+            .any(|context| context.contains("Input"))
+        {
+            return false;
+        }
+        cx.propagate();
+        true
+    }
+
     pub(crate) fn propagate_source_workarea_cef_configured_hotkey_passthrough(
         &self,
         action_id: &str,

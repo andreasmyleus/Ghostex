@@ -1,0 +1,32 @@
+{
+  "tones": {
+    "wait": { "icon": "clock", "dark": "#fbbf24", "light": "#b45309" },
+    "approval": { "icon": "shield-check", "dark": "#fb923c", "light": "#c2410c" },
+    "error": { "icon": "alert-circle", "dark": "#fb7185", "light": "#be123c" },
+    "warning": { "icon": "alert-triangle", "dark": "#fbbf24", "light": "#b45309" },
+    "info": { "icon": "info-circle", "dark": "#7dd3fc", "light": "#0369a1" },
+    "terminal": { "icon": "terminal-2", "dark": null, "light": null }
+  },
+  "shell": {
+    "radius": 14,
+    "padX": 14,
+    "padY": 12,
+    "tile": 28,
+    "tileRadius": 8,
+    "tileIcon": 15,
+    "headerGap": 10,
+    "titleSize": 13.5,
+    "titleLineHeight": 18,
+    "detailSize": 12,
+    "detailLineHeight": 16,
+    "washDark": 0.05,
+    "washLight": 0.04,
+    "tileFill": 0.12,
+    "tileRing": 0.2,
+    "footerShadeDark": 0.14,
+    "footerShadeLight": 0.025,
+    "buttonHeight": 28,
+    "buttonRadius": 8,
+    "buttonTextSize": 13
+  }
+}

@@ -40,6 +40,7 @@ struct Parent {
     queued_notifications: HashMap<String, VecDeque<i64>>,
     started_at: Option<i64>,
     workflows: crate::session_chat_claude_workflows::WorkflowRuns,
+    background: crate::session_chat_claude_background::ClaudeBackgroundLaunches,
 }
 
 #[derive(Clone)]
@@ -99,6 +100,7 @@ fn notifications(parent: &mut Parent, content: &str, at: i64, queued: bool) {
             continue;
         };
         if terminal_status(status) {
+            parent.background.finish(id);
             // Delivery can follow a resumed turn. Match each queued envelope, not task IDs,
             // because the same child may finish repeatedly, and retain its original event time.
             let key = body.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -147,6 +149,7 @@ fn read_parent_record(parent: &mut Parent, record: &Value) {
     ) {
         parent.started_at = Some(at);
     }
+    parent.background.observe(record, at);
     let blocks = record.pointer("/message/content").and_then(Value::as_array);
     if let Some(blocks) = blocks {
         for block in blocks {
@@ -279,6 +282,26 @@ fn read_parent(path: &Path) -> anyhow::Result<Parent> {
         cache.insert(path.to_path_buf(), entry);
     }
     Ok(parent)
+}
+
+/// The background shells and monitors still running in this session, at most `count` (the footer's).
+pub(crate) fn read_claude_background_tasks(
+    session: &Value,
+    count: u64,
+) -> anyhow::Result<Vec<crate::session_chat_terminal_activity::SessionChatBackgroundTask>> {
+    let Some(path) = session
+        .pointer("/runtimeSettings/agentSessionPath")
+        .and_then(Value::as_str)
+    else {
+        return Ok(Vec::new());
+    };
+    let parent = read_parent(Path::new(path))?;
+    let boundary = session
+        .pointer("/runtimeSettings/sessionChatClaudeStartedAt")
+        .and_then(Value::as_str)
+        .and_then(parse_time)
+        .unwrap_or(0);
+    Ok(parent.background.running(count, boundary))
 }
 
 pub(crate) fn read_claude_fleet(

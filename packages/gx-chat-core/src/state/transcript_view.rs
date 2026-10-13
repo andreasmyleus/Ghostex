@@ -80,6 +80,12 @@ pub struct TranscriptViewState {
     pub items: Vec<TranscriptItem>,
     /// The ids of the assistant rows that carry a turn's one copy affordance.
     pub final_ids: Vec<String>,
+    /// The published pages whose answers arrived (`transcript/page_answers.rs`).
+    pub answered_pages: Vec<String>,
+    /// The question forms the agent's replies hold (`transcript/question_forms.rs`).
+    pub question_forms: Vec<crate::transcript::question_forms::QuestionForm>,
+    /// The answers that arrived, for pages and forms alike.
+    pub page_answers: Vec<crate::transcript::page_answers::PageAnswers>,
     /// The `loadWork` reads in flight or failed, keyed by the turn's user-message id. This is the
     /// document's `deferredWork`, which reports the READ's state, not the rows it brought back.
     pub deferred_work: BTreeMap<String, DeferredWorkRow>,
@@ -95,6 +101,11 @@ pub struct TranscriptViewState {
     pub deferred_cache: DeferredWorkCache,
     /// The `readSessionChatImage` reads in flight, by request id, with the path asked for.
     pub image_requests: BTreeMap<u64, String>,
+    /// The `readVisualPageThumbnail` reads in flight, by request id, with the page asked for
+    /// ([`crate::transcript::page_thumbnails`]).
+    pub page_thumbnail_requests: BTreeMap<u64, String>,
+    /// How many times in a row each page's picture was asked for and not there yet.
+    pub page_thumbnail_attempts: BTreeMap<String, u32>,
     /// The summary mode the write in flight will adopt once it lands.
     pub pending_summary_mode: Option<bool>,
     /// The verbose override the write in flight will adopt once it lands.
@@ -112,6 +123,10 @@ pub struct TranscriptViewState {
     /// `sentTranscriptItems === transcriptItems`, and a rebuilt list is a new array even when
     /// every row in it was reused.
     pub projection_revision: u64,
+    /// The host's session list, which names the other session on a message between agents.
+    pub session_directory: Vec<crate::event::KnownSession>,
+    /// Bumped whenever [`Self::session_directory`] changes, so the projection rebuilds.
+    pub session_directory_revision: u64,
 }
 
 /// One message's full projection, with the source it was built from.
@@ -149,6 +164,8 @@ pub struct ProjectionInputs {
     pub line_breaks: crate::transcript::line_breaks::AgentLineBreaks,
     /// The side question whose card is open above the composer, which the list leaves out.
     pub live_side_question: Option<String>,
+    /// [`TranscriptViewState::session_directory_revision`]: the names on agent message cards.
+    pub session_directory_revision: u64,
 }
 
 impl Default for TranscriptViewState {
@@ -167,6 +184,9 @@ impl Default for TranscriptViewState {
             saved_prompts: BTreeMap::new(),
             items: Vec::new(),
             final_ids: Vec::new(),
+            answered_pages: Vec::new(),
+            question_forms: Vec::new(),
+            page_answers: Vec::new(),
             deferred_work: BTreeMap::new(),
             detail_revision: 0,
             row_details: RowDetails::new(),
@@ -174,12 +194,16 @@ impl Default for TranscriptViewState {
             deferred_requests: BTreeMap::new(),
             deferred_cache: DeferredWorkCache::default(),
             image_requests: BTreeMap::new(),
+            page_thumbnail_requests: BTreeMap::new(),
+            page_thumbnail_attempts: BTreeMap::new(),
             pending_summary_mode: None,
             pending_verbose_override: None,
             projection_inputs: None,
             fold_settled_at: None,
             projection_rebuilt: false,
             projection_revision: 0,
+            session_directory: Vec::new(),
+            session_directory_revision: 0,
         }
     }
 }

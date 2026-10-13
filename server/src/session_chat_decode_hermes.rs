@@ -225,6 +225,7 @@ pub fn decode_hermes_transcript_line(line: &str, fallback_id: &str) -> Option<Se
                     output,
                     is_error,
                     call_id: None,
+                    patch: None,
                 }],
             ))
         }

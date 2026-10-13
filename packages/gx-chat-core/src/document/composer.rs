@@ -17,6 +17,9 @@ pub struct ComposerActions {
     pub stash: bool,
     pub attach: bool,
     pub terminal: bool,
+    /// Files and links: the session has a conversation to list.
+    #[serde(default)]
+    pub files: bool,
 }
 
 /// Which toolbar controls did not fit, measured by the renderer and folded back in.

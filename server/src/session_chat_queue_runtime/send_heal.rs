@@ -140,6 +140,7 @@ pub(super) async fn restart_exited_agent_before_send(
     terminal_agent: Option<&str>,
     source: SessionChatMessageSource,
     text: &str,
+    image_paths: &[String],
 ) -> Option<std::result::Result<usize, DomainStateError>> {
     if matches!(
         source,
@@ -160,11 +161,8 @@ pub(super) async fn restart_exited_agent_before_send(
             crate::agents::identity::normalize_agent_id(terminal_agent).as_deref(),
             Some("claude" | "codex")
         );
-    let starting = detection
-        .composer
-        .screen_tail
-        .iter()
-        .any(|line| line.trim() == "Restoring session...");
+    let starting =
+        crate::session_chat_send_wake::screen_shows_agent_starting(&detection.composer.screen_tail);
     if !(exit_on_screen || input_box_missing) || starting {
         return None;
     }
@@ -180,7 +178,13 @@ pub(super) async fn restart_exited_agent_before_send(
         record(state, target, "sessionChatSendHealGaveUp", reason);
         return None;
     }
-    Some(hold_for_restarted_agent(state, target, source, text))
+    Some(hold_for_restarted_agent(
+        state,
+        target,
+        source,
+        text,
+        image_paths,
+    ))
 }
 
 /// Ctrl+L makes Claude redraw itself whole (session_chat_composer_repaint.rs); a repaint is
@@ -427,6 +431,7 @@ pub(super) fn hold_for_restarted_agent(
     target: &crate::session_chat_send::SessionChatSendTarget,
     source: SessionChatMessageSource,
     text: &str,
+    image_paths: &[String],
 ) -> std::result::Result<usize, DomainStateError> {
     let restarting = || DomainStateError {
         code: crate::session_chat_send_wake::SESSION_CHAT_SESSION_STARTING,
@@ -442,21 +447,26 @@ pub(super) fn hold_for_restarted_agent(
     {
         return Err(restarting());
     }
-    queue_restart_startup_send(state, target, text)?;
+    queue_restart_startup_send(state, target, text, image_paths)?;
     Ok(text.len())
 }
 
-/// A startup send carrying `text`, typed by the queue once the restarted agent's input box appears.
+/// A startup send carrying `text` and its pictures, typed by the queue once the restarted agent's
+/// input box appears.
 fn queue_restart_startup_send(
     state: &AppState,
     target: &crate::session_chat_send::SessionChatSendTarget,
     text: &str,
+    image_paths: &[String],
 ) -> std::result::Result<(), DomainStateError> {
     let mut params = Map::new();
     params.insert("projectId".to_string(), json!(target.project_id));
     params.insert("sessionId".to_string(), json!(target.session_id));
     params.insert("text".to_string(), json!(text));
     params.insert("startupSend".to_string(), json!(true));
+    if !image_paths.is_empty() {
+        params.insert("imagePaths".to_string(), json!(image_paths));
+    }
     crate::session_chat_queue::handle_session_chat_queue_endpoint(
         &state.paths,
         state.metadata.server_id.as_str(),
@@ -494,7 +504,7 @@ pub(super) fn exited_agent_healer(
         let text = text.clone();
         Box::pin(async move {
             restart_agent_for_send(&state, &target, false).await.is_ok()
-                && queue_restart_startup_send(&state, &target, &text).is_ok()
+                && queue_restart_startup_send(&state, &target, &text, &[]).is_ok()
         })
     })
 }

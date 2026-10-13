@@ -15,8 +15,9 @@ mod util;
 const USAGE: &str = "Usage: cargo xtask <command> [arguments]
 
 Desktop app
-  start [--optimized] [--verbose] [--profile] [--build-only] [--install-only] [--isolated[=<variant>]] [--prepare-only]
+  start [--optimized] [--debug-info[=<level>]] [--verbose] [--profile] [--build-only] [--install-only] [--isolated[=<variant>]] [--prepare-only]
                           build, install and launch the desktop app (a fast dev build; --optimized for performance work;
+                          --debug-info builds with symbols for crash debugging, off by default;
                           --install-only installs the already staged build on Linux and Windows)
   remote-start [--repo <owner/name>] [--build-only]
                           Linux x64: build the desktop app on a Blacksmith machine, then install and launch it here

@@ -6,6 +6,7 @@
 
 pub mod actions;
 pub mod agent_message;
+pub mod agent_message_card;
 pub mod deferred_work;
 pub mod diff;
 pub mod document;
@@ -13,6 +14,7 @@ pub mod file_change_rows;
 pub mod file_changes;
 pub mod file_paths;
 pub mod file_position;
+pub mod files_links;
 pub mod foreign;
 pub mod image_markers;
 pub mod images;
@@ -23,17 +25,22 @@ pub mod links;
 pub mod local_command;
 pub mod long_prompt;
 pub mod markdown_links;
+pub mod marked_sections;
 pub mod message_text;
 pub mod message_time;
 pub mod native_markdown;
 pub mod noise;
+pub mod page_answers;
+pub mod page_thumbnails;
 pub mod presentation;
 pub mod prose;
 pub mod question_exchange;
+pub mod question_forms;
 pub mod raw_html;
 pub mod rows;
 pub mod sent_message;
 pub mod sent_message_script;
+pub mod script_loops;
 pub mod shell_script;
 pub mod side_question;
 pub mod simple;
@@ -46,6 +53,7 @@ pub mod tool_summary;
 pub mod transcript;
 pub mod transcript_rows;
 pub mod turns;
+pub mod work_summary;
 
 pub mod settle;
 

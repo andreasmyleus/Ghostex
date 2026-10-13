@@ -16,10 +16,12 @@
 use std::time::Duration;
 
 use ghostex_gx_core::{
-    MachineId, REMOTE_AWAITED_TIMEOUT_MS, REMOTE_FIRE_AND_FORGET_TIMEOUT_MS, SessionKey,
+    Event, Intent, MachineId, REMOTE_AWAITED_TIMEOUT_MS, REMOTE_FIRE_AND_FORGET_TIMEOUT_MS,
+    SessionKey, SessionPatch,
 };
 use serde_json::{Map, Value, json};
 
+use super::super::host::now_ms;
 use crate::GhostexGpuiApp;
 use crate::app::gx_store::gx_rpc;
 use crate::app::remote_conn::sidebar_rpc::GpuiRemoteSidebarRpcMode;
@@ -111,13 +113,20 @@ impl GhostexGpuiApp {
             self.gx_store_generate_session_title(&session, message, &title, cx);
             return;
         }
+        if !title.trim().is_empty() {
+            self.gx_store_patch_session(
+                &session,
+                SessionPatch::rename(title.trim().to_string(), now_ms()),
+                cx,
+            );
+        }
         params.insert("projectId".into(), json!(session.project_id));
         params.insert("reason".into(), json!("gpui-sidebar"));
         params.insert("sessionId".into(), json!(session.session_id));
         params.insert("submitAgentRenameCommand".into(), json!(true));
         params.insert("title".into(), json!(title));
         params.insert("titleSource".into(), json!("user"));
-        match session.machine {
+        match session.machine.clone() {
             MachineId::Remote(machine_id) => {
                 // CDXC:SessionTitles 2026-07-29: a blank direct rename would erase the remote title.
                 if title.trim().is_empty() {
@@ -141,6 +150,7 @@ impl GhostexGpuiApp {
                         gx_rpc(None, "/api/requestSessionRename", Value::Object(params)).await;
                     if let Err(error) = result {
                         let _ = this.update(cx, |this, cx| {
+                            this.gx_store_clear_session_patch(&session, cx);
                             this.dispatch_gpui_app_modal_toast(
                                 "error",
                                 "Could not rename session",
@@ -152,6 +162,40 @@ impl GhostexGpuiApp {
                 })
                 .detach();
             }
+        }
+    }
+
+    /// Shows a local edit of one session until the daemon publishes it (gx-core `SessionPatch`).
+    fn gx_store_patch_session(
+        &mut self,
+        session: &SessionKey,
+        patch: SessionPatch,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        self.gx_store_session_edit_intent(
+            Intent::PatchSession {
+                session: session.clone(),
+                patch,
+            },
+            cx,
+        );
+    }
+
+    /// Drops that edit when the request it anticipated failed.
+    fn gx_store_clear_session_patch(&mut self, session: &SessionKey, cx: &mut gpui::Context<Self>) {
+        self.gx_store_session_edit_intent(
+            Intent::ClearSessionPatch {
+                session: session.clone(),
+            },
+            cx,
+        );
+    }
+
+    fn gx_store_session_edit_intent(&mut self, intent: Intent, cx: &mut gpui::Context<Self>) {
+        let output = self.gx_store.core.handle(Event::Intent(intent), now_ms());
+        if !output.changes.is_empty() {
+            self.gx_store.sidebar_list.note_changes(&output.changes);
+            self.gx_store_update_sidebar_list(cx);
         }
     }
 

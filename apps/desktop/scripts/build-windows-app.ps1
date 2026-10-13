@@ -51,6 +51,17 @@ function Get-GitBash {
     throw "Git for Windows bash.exe was not found beside git.exe."
 }
 $GitBash = Get-GitBash
+
+<#
+CDXC:Build 2026-10-11 WHY:
+Every release build here records the units it used in target/release/ghostex-build-units.jsonl (cargo's JSON messages on stdout; diagnostics and progress still render on the console). `cargo xtask start` reads it to delete the stale artifacts cargo never removes (tooling/xtask/src/start/sweep.rs).
+#>
+function Invoke-CargoReleaseBuild([string[]]$CargoArguments) {
+    $ReleaseDir = Join-Path (Get-Location) "target/release"
+    New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
+    cargo build --release @CargoArguments --message-format=json-render-diagnostics |
+        Set-Content -Encoding UTF8 -Path (Join-Path $ReleaseDir "ghostex-build-units.jsonl")
+}
 $AppName = "Ghostex"
 $AppDir = Join-Path $GpuiDir "build/windows/$AppName"
 $OnDemandComponents = $env:GHOSTEX_ON_DEMAND_ASSETS -eq "1"
@@ -116,7 +127,7 @@ if ($BuildApp) {
     # libghostty-vt (GHOSTEX_ZIG override honored by apps/desktop/build.rs).
     Push-Location $GpuiDir
     try {
-        cargo build --release --bin ghostex-gpui-cef-bootstrap --bin ghostex-gpui --bin ghostex-gpui-cef-helper --bin ghostex-windows-installer
+        Invoke-CargoReleaseBuild @("--bin", "ghostex-gpui-cef-bootstrap", "--bin", "ghostex-gpui", "--bin", "ghostex-gpui-cef-helper", "--bin", "ghostex-windows-installer")
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     }
     finally {
@@ -127,13 +138,13 @@ if ($BuildApp) {
 if ($BuildRuntime) {
     Push-Location (Join-Path $RepoRoot "server")
     try {
-        cargo build --release --bin gxserver --bin ghostex
+        Invoke-CargoReleaseBuild @("--bin", "gxserver", "--bin", "ghostex")
         if ($LASTEXITCODE -ne 0) { throw "Native Windows runtime build failed" }
     }
     finally { Pop-Location }
     Push-Location (Join-Path $RepoRoot ".dependencies/wmx")
     try {
-        cargo build --release --locked
+        Invoke-CargoReleaseBuild @("--locked")
         if ($LASTEXITCODE -ne 0) { throw "wmx build failed" }
     }
     finally { Pop-Location }
@@ -151,7 +162,7 @@ if ($BuildRuntime) {
     # Built from inside its folder so cargo reads apps/editor/desktop/.cargo/config.toml (the static C runtime).
     Push-Location (Join-Path $RepoRoot "apps/editor/desktop")
     try {
-        cargo build --release
+        Invoke-CargoReleaseBuild @()
         if ($LASTEXITCODE -ne 0) { throw "Prompt editor helper build failed" }
     }
     finally { Pop-Location }

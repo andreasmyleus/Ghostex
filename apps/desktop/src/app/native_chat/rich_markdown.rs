@@ -26,7 +26,7 @@ use serde_json::{Value, json};
  */
 
 /// The transcript's prose line height, which a fenced block's code lines take too.
-const PROSE_LINE_HEIGHT: f32 = 22.75;
+pub(super) const PROSE_LINE_HEIGHT: f32 = 22.75;
 /// The padding a fenced block's code sits in under its header (GPUI Kit's `p_3`).
 const CODE_PADDING: f32 = 12.0;
 
@@ -72,8 +72,14 @@ fn escaped_raw_html(content: String) -> String {
 /// Hovering anywhere over a table is what brings its actions up.
 const TABLE_GROUP: &str = "native-chat-table";
 
-enum Segment {
+pub(super) enum Segment {
     Markdown(String),
+    /// A marked section of an agent's reply (`marked_sections.rs`): what the core said about it,
+    /// and its lines as written.
+    Section {
+        meta: super::marked_sections::SectionMeta,
+        lines: Vec<String>,
+    },
     Alert {
         kind: String,
         children: Vec<Segment>,
@@ -83,11 +89,16 @@ enum Segment {
     Mermaid(String),
     /// A finished ```visual fence, its lines as written.
     Visual(String),
+    /// A finished ```questions fence: the form's id, and its lines as written.
+    Questions {
+        id: String,
+        fence: String,
+    },
     /// A line that has a picture in it, as the run of text and pictures it is made of.
     Flow(Vec<FlowPart>),
 }
 
-enum FlowPart {
+pub(super) enum FlowPart {
     Text(String),
     Image(Value),
 }
@@ -143,7 +154,7 @@ fn alert_style(kind: &str, light: bool) -> (&'static str, &'static str, gpui::Hs
     )
 }
 
-fn parse(lines: &[&str]) -> Vec<Segment> {
+pub(super) fn parse(lines: &[&str]) -> Vec<Segment> {
     let mut segments = Vec::new();
     let mut prose: Vec<&str> = Vec::new();
     let mut index = 0;
@@ -177,6 +188,23 @@ fn parse(lines: &[&str]) -> Vec<Segment> {
             index = end + 1;
             continue;
         }
+        if let Some(meta) = line.strip_prefix(super::marked_sections::SECTION_OPEN) {
+            let end = lines[index + 1..]
+                .iter()
+                .position(|line| *line == super::marked_sections::SECTION_CLOSE)
+                .map(|offset| index + 1 + offset)
+                .unwrap_or(lines.len());
+            flush(&mut prose, &mut segments);
+            segments.push(Segment::Section {
+                meta: serde_json::from_str(meta).unwrap_or_default(),
+                lines: lines[index + 1..end.min(lines.len())]
+                    .iter()
+                    .map(|line| (*line).to_string())
+                    .collect(),
+            });
+            index = end + 1;
+            continue;
+        }
         if line == TABLE_OPEN {
             let end = lines[index + 1..]
                 .iter()
@@ -200,6 +228,20 @@ fn parse(lines: &[&str]) -> Vec<Segment> {
             segments.push(Segment::Mermaid(
                 lines[index + 1..end.min(lines.len())].join("\n"),
             ));
+            index = end + 1;
+            continue;
+        }
+        if let Some(form_id) = line.strip_prefix(super::question_form::OPEN) {
+            let end = lines[index + 1..]
+                .iter()
+                .position(|line| *line == super::question_form::CLOSE)
+                .map(|offset| index + 1 + offset)
+                .unwrap_or(lines.len());
+            flush(&mut prose, &mut segments);
+            segments.push(Segment::Questions {
+                id: form_id.to_string(),
+                fence: lines[index + 1..end.min(lines.len())].join("\n"),
+            });
             index = end + 1;
             continue;
         }
@@ -387,12 +429,26 @@ impl NativeChatView {
 
     /// CDXC:SessionChat 2026-10-08 WHY:
     /// User: scrolling up "just above the last message" jumped "to the top of the message above it". gpui's list measures a row once in the overdraw above the viewport and scrolls by that height, and a TextView over 4KB parsed in the background, so its first layout (and every one after its row left the list's drawn range, which drops the view's state) was empty and the long reply was cached a few pixels tall; the first wheel step into it landed near its top. Chat text therefore parses on the UI thread, so a row's first height is its real one.
-    fn text_view(
+    pub(super) fn text_view(
         &self,
         id: String,
         content: String,
         references: &Value,
         p: &ChatAppearance,
+        cx: &gpui::Context<Self>,
+    ) -> AnyElement {
+        self.text_view_toned(id, content, references, p, None, cx)
+    }
+
+    /// `text_view` in another text colour and semibold (a marked section's label), which keeps
+    /// its links, code spans and wrapping.
+    pub(super) fn text_view_toned(
+        &self,
+        id: String,
+        content: String,
+        references: &Value,
+        p: &ChatAppearance,
+        label_color: Option<gpui::Hsla>,
         cx: &gpui::Context<Self>,
     ) -> AnyElement {
         let chat = cx.weak_entity();
@@ -471,7 +527,10 @@ impl NativeChatView {
             .style(style)
             .text_size(px(14.0 * p.scale))
             .line_height(px(PROSE_LINE_HEIGHT * p.scale))
-            .text_color(p.prose)
+            .text_color(label_color.unwrap_or(p.prose))
+            .when(label_color.is_some(), |view| {
+                view.font_weight(FontWeight::SEMIBOLD)
+            })
             .into_any_element()
     }
 
@@ -504,6 +563,7 @@ impl NativeChatView {
             }
             Segment::Mermaid(fence) => self.mermaid_card(format!("{id}:{index}"), fence, p, cx),
             Segment::Visual(fence) => self.visual_card(format!("{id}:{index}"), fence, p, cx),
+            Segment::Questions { id: form, fence } => self.question_form(form, fence, p, cx),
             // The air around an inline picture is the picture's own margin, exactly as React's
             // frame carries it, so the row itself adds nothing between a word and the picture
             // beside it. It wraps because a sentence with two pictures in it still has to fit the
@@ -535,6 +595,42 @@ impl NativeChatView {
                     }
                 }))
                 .into_any_element(),
+            Segment::Section { meta, lines } => {
+                let key = format!("{id}:{index}");
+                let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+                let draw = |lines: &[&str]| -> Vec<AnyElement> {
+                    parse(lines)
+                        .iter()
+                        .enumerate()
+                        .map(|(child, segment)| {
+                            self.segment(&key, child, segment, references, p, cx)
+                        })
+                        .collect()
+                };
+                let style = p.marked_sections;
+                let look = super::marked_sections::look(p);
+                if style.draws_first_line(look.emoji) {
+                    let first = style.first_line_text(meta);
+                    let lead = (!first.is_empty())
+                        .then(|| self.text_view(format!("{key}:lead"), first, references, p, cx));
+                    // The label is Markdown too: a marked heading's label is the whole heading,
+                    // with its links and code spans, and it wraps like any paragraph.
+                    let label = style.label_color(meta, &look).map(|color| {
+                        self.text_view_toned(
+                            format!("{key}:label"),
+                            meta.label_markdown.clone(),
+                            references,
+                            p,
+                            Some(color),
+                            cx,
+                        )
+                    });
+                    let rest = lines.get(1..).unwrap_or_default();
+                    super::marked_sections::section(style, meta, label, lead, draw(rest), &look)
+                } else {
+                    super::marked_sections::section(style, meta, None, None, draw(&lines), &look)
+                }
+            }
             Segment::Alert { kind, children } => {
                 let (label, icon, accent) = alert_style(kind, p.light);
                 div()

@@ -1,0 +1,331 @@
+//! What a card for a message between agents says: one another agent sent this session, one this
+//! session's agent sent another (or several others at once), and a subagent's reply. Each card is
+//! one `card` object (on `interAgentMessage`, on a `sentMessages` entry, or on an `agent-message`
+//! system card) that the renderers lay out as is.
+//!
+//! CDXC:SessionChat 2026-10-12 DECISION:
+//! User: the morning's "proposed" agent message cards (a 240px card with a quote box and a footer) were "too large now ... make them smaller like before. i dont like the new style". From the mockup page (docs/2026-10-11/agent-message-cards/smaller-received-cards.html) the user picked D, one line: every message between agents (received, sent, and a subagent's reply alike) is a single row with the agent's own logo (a small arrow badge: prose grey coming in, sky going out), its sentence, then the time, the status and a chevron; clicking the row opens the whole message under it. Go to session shows on hover (on the phone, inside the opened message). Delivered is a small check; Queued, Waiting for agent and Not sent say so in their colour. Kept from the first round: "please show the icons of the different agents", "instead of Open api refactor just say 'Go to session'", and no purple for incoming messages ("use color usually used for incoming chat messages"). The row reads the same collapsed and expanded ("keep the text when the message from x agent the same when it's collapsed as the one we show when it's expanded"). Supersedes the same day's "<session title> + first line" rows: "This should say: Message from "Section labels wrap and link" and remove the "Ghostex thread report: finished its turn. Its fin..." part (summary of message) do same thing for Message to "Xyz" also please". So the row is one sentence with no preview: `Message from "<session title>"` / `Message to "<session title>"`, the title quoted; with no title the agent's name, unquoted (`Message from Codex`); nothing known reads `Message from another agent` / `Message to another agent`, never the raw reference; one command that sends the same message to several sessions (a loop, or several sends in one call) is ONE row, `Message to 2 sessions`, whose opened message lists each recipient; a subagent's reply is `Message from Explore subagent` (`Message from a subagent` untyped). The title is the other session's, from the host's session list first.
+//! SEE-ALSO: agent_message.rs and sent_message.rs read the messages and name the other session (the host's session list first, `Event::SessionDirectoryChanged`); apps/desktop/src/app/native_chat/inter_agent_message.rs and apps/mobile/app/src/chat/native/transcript/AgentMessageCards.tsx draw the card.
+
+use serde_json::{json, Value};
+
+use crate::extras::agents::{agent_icon_id, default_agent_by_id};
+use crate::transcript::jsstr::js_trim;
+
+/// The jump button's label, whichever session it opens.
+pub const GO_TO_SESSION: &str = "Go to session";
+
+fn text<'a>(value: &'a Value, key: &str) -> &'a str {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(js_trim)
+        .unwrap_or_default()
+}
+
+/// The agent's artwork id: the agent id the header or the send's result named, else its name.
+fn agent_icon(agent_id: &str, agent_name: &str) -> Value {
+    default_agent_by_id(Some(agent_id))
+        .or_else(|| default_agent_by_id(Some(agent_name)))
+        .map(|(icon, _)| icon)
+        .or_else(|| agent_icon_id(Some(agent_name)))
+        .map_or(Value::Null, Value::from)
+}
+
+/// An agent's name as the app writes it (`claude` is "Claude"), or the name as given.
+pub fn agent_display_name(agent_id: &str, agent_name: &str) -> String {
+    let agent_name = js_trim(agent_name);
+    default_agent_by_id(Some(agent_name))
+        .or_else(|| default_agent_by_id(Some(agent_id)))
+        .map(|(_, name)| name.to_string())
+        .unwrap_or_else(|| agent_name.to_string())
+}
+
+/// `label` is what the row says (only the icon when `iconOnly`), `hint` its tooltip; `tone` is
+/// `good`, `waiting` or `failed`; `icon` is `check`, `clock` or `alert`.
+fn status(label: &str, hint: &str, tone: &str, icon: &str) -> Value {
+    json!({
+        "label": label,
+        "hint": hint,
+        "tone": tone,
+        "icon": icon,
+        "iconOnly": tone == "good",
+    })
+}
+
+/// The session a `<machine>:<project>:<session>` reference names, for the jump button.
+fn session_target(reference: &str) -> Value {
+    let reference = js_trim(reference);
+    let parts: Vec<&str> = reference.split(':').collect();
+    if parts.len() != 3 || parts.iter().any(|part| part.is_empty()) {
+        return Value::Null;
+    }
+    json!({ "projectId": parts[1], "sessionId": parts[2], "label": GO_TO_SESSION })
+}
+
+/// A session title in a row's sentence, quoted so it reads as a name (`Message from "Fix login"`).
+fn quoted(title: &str) -> String {
+    format!("\"{title}\"")
+}
+
+/// One card. `name` is the row's whole sentence, the same collapsed and opened, and `title` what
+/// an assistive reader hears. `recipients` lists each session of a message sent to several (empty
+/// otherwise).
+#[allow(clippy::too_many_arguments)]
+fn card(
+    direction: &str,
+    agent_icon: Value,
+    name: String,
+    title: String,
+    time: &str,
+    status: Value,
+    failure: &str,
+    retry_prompt_id: Value,
+    session: Value,
+    recipients: Vec<Value>,
+) -> Value {
+    json!({
+        "direction": direction,
+        "agentIcon": agent_icon,
+        "name": name,
+        "title": title,
+        "time": time,
+        "status": status,
+        "failure": failure,
+        "retryPromptId": retry_prompt_id,
+        "session": session,
+        "recipients": recipients,
+    })
+}
+
+/// A subagent's name as its cards say it: "Explore subagent", or "a subagent" for an untyped one.
+pub fn subagent_label(name: &str) -> String {
+    let name = js_trim(name);
+    if name.is_empty() || name.eq_ignore_ascii_case("subagent") {
+        "a subagent".to_string()
+    } else {
+        format!("{name} subagent")
+    }
+}
+
+/// A subagent's reply: the sparkle in place of a logo.
+pub fn subagent_card(name: &str) -> Value {
+    let sentence = format!("Message from {}", subagent_label(name));
+    card(
+        "subagent",
+        Value::Null,
+        sentence.clone(),
+        sentence,
+        "",
+        Value::Null,
+        "",
+        Value::Null,
+        Value::Null,
+        Vec::new(),
+    )
+}
+
+/// Writes `interAgentMessage.card` for a projected message from another agent. Run again whenever
+/// the transcript or the host's session list names the sender (`sent_message::resolve_recipients`).
+pub fn dress_received(message: &mut Value) {
+    let inter = &message["interAgentMessage"];
+    if !inter.is_object() {
+        return;
+    }
+    if inter["subagent"] == true {
+        let card = subagent_card(text(inter, "agentName"));
+        message["interAgentMessage"]["card"] = card;
+        return;
+    }
+    let agent = agent_display_name(text(inter, "agentId"), text(inter, "agentName"));
+    let name = match (text(inter, "sessionTitle"), agent.as_str()) {
+        ("", "") => "Message from another agent".to_string(),
+        ("", agent) => format!("Message from {agent}"),
+        (session, _) => format!("Message from {}", quoted(session)),
+    };
+    let delivery = &message["startupDelivery"];
+    let failed = delivery.is_object() && delivery["state"] == "failed";
+    let status = if failed {
+        status("Not sent", "Not sent", "failed", "alert")
+    } else if delivery.is_object() {
+        status("Waiting for agent", "Waiting for agent", "waiting", "clock")
+    } else if message["queued"] == true {
+        status("Queued", "Queued until this turn ends", "waiting", "clock")
+    } else {
+        status("Delivered", "Delivered", "good", "check")
+    };
+    let failure = if !failed {
+        ""
+    } else {
+        match text(delivery, "errorMessage") {
+            "" => "Message could not be delivered.",
+            error => error,
+        }
+    };
+    let card = card(
+        "received",
+        agent_icon(text(inter, "agentId"), &agent),
+        name.clone(),
+        name,
+        text(&message["time"], "label"),
+        status,
+        failure,
+        if failed {
+            delivery["promptId"].clone()
+        } else {
+            Value::Null
+        },
+        session_target(text(inter, "replyTo")),
+        Vec::new(),
+    );
+    message["interAgentMessage"]["card"] = card;
+}
+
+/// Where one recipient's send left the message, as the result said; `Null` when nothing was read
+/// back.
+fn delivery_status(recipient: &Value) -> Value {
+    if recipient["failed"] == true {
+        let failure = text(recipient, "failure");
+        return status(
+            "Not sent",
+            if failure.is_empty() {
+                "Not sent"
+            } else {
+                failure
+            },
+            "failed",
+            "alert",
+        );
+    }
+    match text(recipient, "status") {
+        "delivered" => status("Delivered", "Delivered", "good", "check"),
+        "queued" => status("Queued", "Queued until its turn ends", "waiting", "clock"),
+        "pending" => status("Waiting for agent", "Waiting for agent", "waiting", "clock"),
+        "accepted" => status("Sent", "Sent", "good", "check"),
+        _ => Value::Null,
+    }
+}
+
+/// One status for a message sent to several sessions: Not sent when any send failed (with how
+/// many), Delivered once every one was, else the first one still waiting; nothing while any is
+/// unknown.
+fn combined_status(statuses: &[Value]) -> Value {
+    let count = statuses.len();
+    let failed = statuses
+        .iter()
+        .filter(|status| status["tone"] == "failed")
+        .count();
+    if failed == count {
+        return status("Not sent", "Not sent", "failed", "alert");
+    }
+    if failed > 0 {
+        return status(
+            &format!("{failed} not sent"),
+            &format!("{failed} of {count} not sent"),
+            "failed",
+            "alert",
+        );
+    }
+    if let Some(waiting) = statuses.iter().find(|status| status["tone"] == "waiting") {
+        return waiting.clone();
+    }
+    if statuses.iter().all(|status| status["tone"] == "good") {
+        return status("Delivered", &format!("Delivered to all {count}"), "good", "check");
+    }
+    Value::Null
+}
+
+/// The jump target of one recipient: its global reference, else the reference it was sent to.
+fn recipient_session(recipient: &Value) -> Value {
+    match session_target(text(recipient, "globalRef")) {
+        Value::Null => session_target(text(recipient, "target")),
+        target => target,
+    }
+}
+
+fn recipient_icon(recipient: &Value) -> Value {
+    agent_icon(text(recipient, "agentId"), text(recipient, "agentName"))
+}
+
+/// What a recipient is called on the card: its `name`, which `sent_message::resolve_recipients`
+/// wrote, or "another agent" when nothing names it.
+fn recipient_label(recipient: &Value) -> String {
+    match text(recipient, "name") {
+        "" => "another agent".to_string(),
+        name => name.to_string(),
+    }
+}
+
+/// A recipient in the row's sentence: its title quoted, an agent's name as it is.
+fn recipient_phrase(recipient: &Value) -> String {
+    let label = recipient_label(recipient);
+    if recipient["titled"] == true {
+        quoted(&label)
+    } else {
+        label
+    }
+}
+
+/// Writes a sent message's `card` from its `recipients`, once each one is named:
+/// `Message to "<session>"`, or `Message to N sessions` with each recipient listed inside.
+pub fn dress_sent(sent: &mut Value) {
+    let recipients = sent["recipients"].as_array().cloned().unwrap_or_default();
+    if recipients.len() <= 1 {
+        let recipient = recipients.first().unwrap_or(sent);
+        let sentence = format!("Message to {}", recipient_phrase(recipient));
+        let failure = if recipient["failed"] == true {
+            text(recipient, "failure")
+        } else {
+            ""
+        }
+        .to_string();
+        sent["card"] = card(
+            "sent",
+            recipient_icon(recipient),
+            sentence.clone(),
+            sentence,
+            "",
+            delivery_status(recipient),
+            &failure,
+            Value::Null,
+            recipient_session(recipient),
+            Vec::new(),
+        );
+        return;
+    }
+    let count = recipients.len();
+    let statuses: Vec<Value> = recipients.iter().map(delivery_status).collect();
+    let icons: Vec<Value> = recipients.iter().map(recipient_icon).collect();
+    // One logo when every recipient runs the same agent; a mixed list shows the generic one.
+    let icon = if icons.windows(2).all(|pair| pair[0] == pair[1]) {
+        icons[0].clone()
+    } else {
+        Value::Null
+    };
+    let listed: Vec<Value> = recipients
+        .iter()
+        .zip(statuses.iter().zip(icons))
+        .map(|(recipient, (status, icon))| {
+            json!({
+                "direction": "sent",
+                "name": recipient_label(recipient),
+                "agentIcon": icon,
+                "status": status,
+                "session": recipient_session(recipient),
+            })
+        })
+        .collect();
+    let sentence = format!("Message to {count} sessions");
+    sent["card"] = card(
+        "sent",
+        icon,
+        sentence.clone(),
+        sentence,
+        "",
+        combined_status(&statuses),
+        "",
+        Value::Null,
+        Value::Null,
+        listed,
+    );
+}

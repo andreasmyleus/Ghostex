@@ -1091,7 +1091,8 @@ pub(crate) fn enrich_claude_panel_notice(
     let Some(dialog) = notice.dialog.as_mut() else {
         return;
     };
-    if !dialog.rows.is_empty() {
+    // The resume picker is drawn from its own rows (session_chat_resume_picker.rs).
+    if !dialog.rows.is_empty() || dialog.picker.is_some() {
         return;
     }
     if let Some(screen) = side_question_screen(styled) {

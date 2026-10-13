@@ -41,6 +41,12 @@ pub struct QuestionsState {
     pub answer_request: Option<AnswerRequest>,
     /// The interrupt a cancelled question card asked for.
     pub cancel_request: Option<u64>,
+    /// Keys and search text sent to an open picker or pass-through screen, which do not hold the
+    /// card (`crate::questions::terminal_picker::is_navigation_answer`).
+    pub picker_requests: Vec<u64>,
+    /// The search text in flight to an open picker, and the newest text waiting behind it.
+    pub picker_query_request: Option<u64>,
+    pub pending_picker_query: Option<serde_json::Value>,
     /// The content key the draft write in flight belongs to; a later prompt drops its answer.
     pub draft_write_content_key: Option<String>,
     /// That write was a single-select pick, so landing it moves the card on.
@@ -54,6 +60,9 @@ pub struct QuestionsState {
     pub answered_notice_key: Option<String>,
     /// The detection whose answer failed, which stops blocking the composer.
     pub retired_notice_key: Option<String>,
+    /// The pass-through detection the user gave the keyboard back from: its card stays hidden
+    /// for as long as that detection lasts, and the composer has its keys again.
+    pub released_notice_key: Option<String>,
     /// The dismissal this session remembers, read back from client storage.
     pub dismissed_notice: Option<DismissedNotice>,
     /// The refusal the notice card shows instead of the composer's error line.
@@ -71,6 +80,39 @@ pub struct QuestionsState {
 
     // ---- the async strip --------------------------------------------------
     pub async_questions: AsyncQuestionsState,
+
+    // ---- question forms ---------------------------------------------------
+    /// The reader's side of each ```questions form, by form id (`crate::questions::forms`).
+    pub forms: std::collections::BTreeMap<String, FormState>,
+}
+
+/// One question form's picks while it is open, and its send.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FormState {
+    /// One draft per question: the picked choices, whether "Other / none of these" is picked, and
+    /// the note (or a text question's answer).
+    pub drafts: Vec<QuestionDraft>,
+    /// The saved picks have been asked for.
+    pub load_requested: bool,
+    /// The reader changed the form, so saved picks that arrive later no longer replace it.
+    pub touched: bool,
+    /// The saved picks were forgotten once the transcript carried the answers.
+    pub cleared: bool,
+    /// The send in flight: its call, what it drew, and the answers it carries.
+    pub send: Option<FormSend>,
+    /// The answers that were queued, which the form shows until the transcript carries them.
+    pub sent: Option<serde_json::Value>,
+    /// Why the last send was refused.
+    pub error: Option<String>,
+    /// The reader opened the answered form again (`formToggle`); answered forms start collapsed.
+    pub expanded: bool,
+}
+
+/// A question form's answers on their way into the session's chat queue.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FormSend {
+    pub request_id: u64,
+    pub answers: serde_json::Value,
 }
 
 /// The answer call in flight and what settling it means.

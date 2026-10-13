@@ -474,6 +474,10 @@ pub fn exports(module: &str, platform: Platform) -> Vec<(&'static str, Json)> {
                 TERMINAL_VIEW_WIDTH_PERCENT_STEP.to_json(),
             ),
             (
+                "MARKED_HANDOVERS_STYLE_OPTIONS",
+                MARKED_HANDOVERS_STYLE_OPTIONS.to_json(),
+            ),
+            (
                 "WEB_LINK_OPEN_TARGET_OPTIONS",
                 WEB_LINK_OPEN_TARGET_OPTIONS.to_json(),
             ),

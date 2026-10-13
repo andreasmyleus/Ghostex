@@ -558,7 +558,7 @@ impl DelayedSendRuntime {
             let runtime = self.clone();
             let record = record.clone();
             tokio::spawn(async move {
-                let outcome = sender(draft.content.clone()).await;
+                let outcome = sender(draft.content.clone(), Vec::new()).await;
                 let Ok(db) = open_gxserver_database(&runtime.paths) else {
                     return;
                 };

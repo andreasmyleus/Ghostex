@@ -148,6 +148,7 @@ pub fn decode_grok_transcript_line(line: &str, fallback_id: &str) -> Option<Sess
                     output: grok_tool_result_output(update),
                     is_error,
                     call_id: None,
+                    patch: None,
                 }],
             ))
         }

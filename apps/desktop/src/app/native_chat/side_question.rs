@@ -439,7 +439,7 @@ fn side_badge(p: &ChatAppearance) -> AnyElement {
 }
 
 /// Three muted bars where the answer will go while Claude is still answering.
-fn answering_placeholder(p: &ChatAppearance) -> AnyElement {
+pub(super) fn answering_placeholder(p: &ChatAppearance) -> AnyElement {
     let s = p.scale;
     div()
         .flex()
@@ -457,7 +457,7 @@ fn answering_placeholder(p: &ChatAppearance) -> AnyElement {
 }
 
 /// A footer button with an optional icon and the key that does the same thing.
-fn side_button(
+pub(super) fn side_button(
     id: &str,
     icon: Option<&'static str>,
     label: &'static str,
