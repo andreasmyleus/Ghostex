@@ -326,7 +326,9 @@ fn plan_ticket_work(
 
 /// `<gh user>/<number>-<slug of the title>`, like `yahia/218-arabic-plan-cards`.
 pub(crate) fn github_issue_branch(cwd: &str, number: u64) -> Result<String, DomainStateError> {
-    let login = github_login()
+    let login = crate::github_accounts::account_for_cwd(cwd)
+        .map(|account| account.login.to_ascii_lowercase())
+        .or_else(github_login)
         .ok_or_else(|| DomainStateError::bad_request("Sign in to GitHub first (gh auth login)."))?;
     let number_text = number.to_string();
     let title = run_gh_command(

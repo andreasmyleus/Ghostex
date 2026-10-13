@@ -360,11 +360,15 @@ fn person(name: &str, is_me: bool) -> WorkItemPerson {
 pub(crate) fn build_work_list(projects: &[WorkProjectInput], plan: &WorkFeedPlan) -> Value {
     let generated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let viewer_login = cached_github_viewer_login();
+    // Every account signed in to gh is the user, not only gh's active one (see CDXC:GitHubAccounts).
+    let gh_accounts = crate::github_accounts::global_accounts();
     let is_me = |login: Option<&str>| {
-        viewer_login
-            .as_deref()
-            .zip(login)
-            .is_some_and(|(viewer, login)| viewer.eq_ignore_ascii_case(login))
+        login.is_some_and(|login| {
+            viewer_login
+                .as_deref()
+                .is_some_and(|viewer| viewer.eq_ignore_ascii_case(login))
+                || gh_accounts.find(login).is_some()
+        })
     };
     let projects_by_id: HashMap<&str, &WorkProjectInput> = projects
         .iter()
