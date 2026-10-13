@@ -21,7 +21,6 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use crate::session_git_status::run_gh_command;
 
 /// The command the notice and Settings show.
 pub(crate) const GITHUB_PROJECTS_SCOPE_COMMAND: &str = "gh auth refresh -s read:project";
