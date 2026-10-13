@@ -629,7 +629,20 @@ pub fn build_scope(
                     work: turn
                         .active_work
                         .iter()
+                        .filter(|message| !turn.live.iter().any(|live| live.id == message.id))
                         .map(|message| builder.message_or_placeholder(message, eager))
+                        .collect(),
+                    // The live rows' tool calls start open, so the call that is running shows.
+                    live: turn
+                        .live
+                        .iter()
+                        .map(|message| {
+                            let mut row = builder.message_or_placeholder(message, eager);
+                            if let Value::Object(fields) = &mut row {
+                                fields.insert("toolsOpen".to_string(), Value::Bool(true));
+                            }
+                            row
+                        })
                         .collect(),
                     outcome: turn
                         .outcome

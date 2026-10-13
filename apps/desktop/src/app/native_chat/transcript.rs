@@ -100,7 +100,9 @@ impl NativeChatView {
             for output in item["outcome"].as_array().into_iter().flatten() {
                 row = row.child(self.message_row(output, &p, window, cx));
             }
-            if item["final"].is_object() || item["active"] == true {
+            // A running turn whose only rows are its live ones has nothing left to fold.
+            let has_work = item["work"].as_array().is_some_and(|work| !work.is_empty());
+            if item["final"].is_object() || (item["active"] == true && has_work) {
                 row = row.child(
                     self.disclosure(
                         id.clone(),
@@ -135,6 +137,11 @@ impl NativeChatView {
                         body.into_any_element(),
                     ));
                 }
+            }
+            // What the agent is saying and doing now stays under the closed fold (gx-chat-core
+            // `live_work` in `transcript/turns.rs`).
+            for message in item["live"].as_array().into_iter().flatten() {
+                row = row.child(self.message_row(message, &p, window, cx));
             }
             row.into_any_element()
         } else if item["kind"] == "completed-work" {
@@ -435,7 +442,8 @@ impl NativeChatView {
                 .is_some_and(|tools| !tools.is_empty());
             if reasoning && tools {
                 let key = format!("reasoning:{id}");
-                let expanded = self.is_expanded(&key, p.verbose);
+                // A summary turn's live rows open their tools (gx-chat-core `live_work`).
+                let expanded = self.is_expanded(&key, p.verbose || message["toolsOpen"] == true);
                 let motion = self.disclosure_frame(&key, expanded, cx);
                 row = row.child(self.disclosure(
                     key.clone(),
@@ -488,7 +496,8 @@ impl NativeChatView {
                 // the rows below sit on that disclosure's rail
                 // (CDXC:SessionChat 2026-09-13 DECISION in React's rows.tsx, now in git history).
                 let key = format!("tools:{id}");
-                let expanded = tools && self.is_expanded(&key, p.verbose);
+                let expanded =
+                    tools && self.is_expanded(&key, p.verbose || message["toolsOpen"] == true);
                 let motion = self.disclosure_frame(&key, expanded, cx);
                 let flush = self.is_flush_reply(message);
                 let heading = div()
