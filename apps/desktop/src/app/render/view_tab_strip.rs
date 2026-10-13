@@ -557,12 +557,15 @@ impl GhostexGpuiApp {
         })
     }
 
+    /// The strip's pop-out control: Open Externally for a page view, Open in New Window or Bring
+    /// Back to Panel for Kanban.
     fn render_view_tab_strip_pop_out_button(
         &self,
         active_mode: TitlebarMode,
         cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
         let enabled = self.view_can_pop_out(active_mode);
+        let label = self.view_pop_out_label(active_mode, false);
         Self::render_view_tab_strip_icon_button(
             "ghostex-gpui-view-tab-pop-out",
             TITLEBAR_ICON_EXTERNAL_LINK,
@@ -584,7 +587,7 @@ impl GhostexGpuiApp {
             move |window, cx| {
                 titlebar_tooltip(
                     if enabled {
-                        "Open Externally"
+                        label
                     } else if active_mode == TitlebarMode::Manage {
                         "Open an HTML, Markdown or drawing file to pop it out"
                     } else {
