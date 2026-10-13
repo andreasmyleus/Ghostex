@@ -2028,7 +2028,7 @@ start-work <bead-id>`); the session is linked to the card and the card shows
 - When the columns do not fit, the board scrolls sideways: swipe on a trackpad,
   Shift+wheel on a mouse, or drag the bar under the lanes (each lane has its
   own bar for its cards). Dragging a card to the board's left or right edge
-  scrolls it to the lanes off screen.
+  scrolls the board to the lanes off screen.
 - **Open in New Window** (the pop-out control at the top right of the view, or
   the tab's right-click menu) moves the board to a window of its own, for a
   second monitor; the panel shows a card with **Bring Back**, and closing the
