@@ -153,9 +153,30 @@ pub(crate) fn real_gh_path() -> Option<PathBuf> {
     let shim_dir = super::shim::shim_dir();
     let executable = if cfg!(windows) { "gh.exe" } else { "gh" };
     std::env::split_paths(&crate::managed_tools::run::job_path(&[]))
-        .filter(|dir| !dir.as_os_str().is_empty() && *dir != shim_dir)
+        .filter(|dir| {
+            !dir.as_os_str().is_empty() && *dir != shim_dir && !super::shim::is_shim_dir(dir)
+        })
         .map(|dir| dir.join(executable))
         .find(|candidate| candidate.is_file())
+}
+
+/// The real gh for `ghostex github-account gh-shim`: the first one on this
+/// process's PATH that is not the shim, then the one the session was started
+/// with, then the daemon's.
+pub(crate) fn real_gh_for_shim() -> Option<PathBuf> {
+    let executable = if cfg!(windows) { "gh.exe" } else { "gh" };
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .filter(|dir| !dir.as_os_str().is_empty() && !super::shim::is_shim_dir(dir))
+        .map(|dir| dir.join(executable))
+        .find(|candidate| candidate.is_file())
+        .or_else(|| {
+            std::env::var_os("GHOSTEX_GITHUB_REAL_GH")
+                .map(PathBuf::from)
+                .filter(|path| path.is_file())
+        })
+        .or_else(real_gh_path)
 }
 
 /// A `gh` command that answers from the user's own gh store: no inherited

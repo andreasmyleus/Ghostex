@@ -6,10 +6,57 @@ pub(crate) fn shim_dir() -> PathBuf {
     store::root_dir().join("bin")
 }
 
+/// Whether `dir` is the shim folder, however PATH spells it.
+pub(crate) fn is_shim_dir(dir: &std::path::Path) -> bool {
+    let shim = shim_dir();
+    if dir == shim {
+        return true;
+    }
+    match (std::fs::canonicalize(dir), std::fs::canonicalize(&shim)) {
+        (Ok(dir), Ok(shim)) => dir == shim,
+        _ => false,
+    }
+}
+
+/// The shims a native Windows (wmx) session finds first on PATH: `gh.cmd` for
+/// PowerShell and cmd, and an extensionless `gh` for Git Bash (the shell
+/// Claude Code runs its commands in on Windows). Both hand the call to
+/// `ghostex github-account gh-shim`, which does what the POSIX shim does.
+/// Returns the `ghostex` executable they call.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn ensure_windows_shims() -> Option<PathBuf> {
+    let cli = std::env::current_exe()
+        .ok()?
+        .with_file_name(if cfg!(windows) {
+            "ghostex.exe"
+        } else {
+            "ghostex"
+        });
+    if !cli.is_file() {
+        return None;
+    }
+    let dir = shim_dir();
+    let cmd = format!(
+        "@echo off\r\n\"{}\" github-account gh-shim %*\r\nexit /b %ERRORLEVEL%\r\n",
+        cli.to_string_lossy()
+    );
+    let bash = format!(
+        "#!/bin/sh\n# Ghostex GitHub account shim for Git Bash. gxserver writes this file; edits are overwritten.\nexec '{}' github-account gh-shim \"$@\"\n",
+        cli.to_string_lossy().replace('\\', "/").replace('\'', "'\\''")
+    );
+    for (name, contents) in [("gh.cmd", cmd), ("gh", bash)] {
+        let path = dir.join(name);
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(contents.as_str()) {
+            store::write_atomically(&path, contents.as_bytes()).ok()?;
+        }
+    }
+    Some(cli)
+}
+
 /// Writes the `gh` shim when it is missing or out of date and returns its path.
 ///
 /// CDXC:GitHubAccounts 2026-10-13 WHY: Giving each worktree its own `GH_CONFIG_DIR` was tried first and must not come back: gh 2.40+ keeps the active token in one shared OS keyring entry per host, and `gh auth switch` deletes and rewrites that entry (`activateUser` in cli/cli internal/config/config.go), so a switch inside one worktree switched every gh on the computer. The shim instead reads the worktree's account file on every call, runs the real gh with `GH_TOKEN` from `gh auth token --user <login>` (a read-only lookup), and turns `gh auth switch` into `ghostex github-account gh-switch`, so a switch stays inside the worktree and no token is ever written to disk.
-/// SEE-ALSO: server/src/github_accounts/env.rs (the session exports that put the shim on PATH and use it as git's credential helper), server/src/ghostex_cli/github_account.rs (`gh-switch`).
+/// SEE-ALSO: server/src/github_accounts/env.rs (the session exports that put the shim on PATH and use it as git's credential helper), server/src/ghostex_cli/github_account.rs (`gh-switch`, and `gh-shim`, the same rules in Rust for native Windows sessions), server/src/zmx/scripts_windows.rs (`start`).
 #[cfg(not(windows))]
 pub(crate) fn ensure_shim() -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;

@@ -24,6 +24,7 @@ pub fn github_account_command(args: &[String]) -> CliResult<()> {
     let rest = args.get(1..).unwrap_or_default();
     match subcommand {
         "gh-switch" => gh_switch(rest),
+        "gh-shim" => gh_shim(rest),
         _ if args.iter().any(|arg| arg == "-h" || arg == "--help") => {
             println!("{USAGE}");
             Ok(())
@@ -257,4 +258,71 @@ fn run_real_gh_switch(args: &[String]) -> CliResult<()> {
         .map_err(|error| CliError::Other(format!("Could not run gh: {error}")))?;
     crate::ghostex_cli::set_exit_code(status.code().unwrap_or(1));
     Ok(())
+}
+
+/// `gh` inside a native Windows session (`gh.cmd` and the Git Bash `gh` call
+/// this): the same rules as the POSIX shim in `github_accounts::shim`. It runs
+/// the real gh as the worktree's account, sends `gh auth switch` to
+/// `gh-switch`, and leaves gh's own sign-in commands alone.
+fn gh_shim(args: &[String]) -> CliResult<()> {
+    let real_gh = github_accounts::real_gh_for_shim()
+        .ok_or_else(|| CliError::Other("gh: command not found".to_string()))?;
+    let login = std::env::var_os("GHOSTEX_GITHUB_ACCOUNT_FILE")
+        .and_then(|file| github_accounts::read_worktree_login(std::path::Path::new(&file)));
+    let Some(login) = login else {
+        return run_gh(&real_gh, args, GhToken::Inherit);
+    };
+    match (
+        args.first().map(String::as_str),
+        args.get(1).map(String::as_str),
+    ) {
+        (Some("auth"), Some("switch")) => {
+            std::env::set_var("GHOSTEX_GITHUB_REAL_GH", &real_gh);
+            gh_switch(&args[2..])
+        }
+        (Some("auth"), Some("login" | "logout" | "refresh" | "setup-git")) => {
+            run_gh(&real_gh, args, GhToken::Remove)
+        }
+        _ => match github_accounts::token_for(&login) {
+            Some(token) => run_gh(&real_gh, args, GhToken::Set(token)),
+            None => {
+                eprintln!("Ghostex: the GitHub account {login} is not signed in to gh, so gh uses its active account. Sign it in with: gh auth login");
+                run_gh(&real_gh, args, GhToken::Inherit)
+            }
+        },
+    }
+}
+
+enum GhToken {
+    Inherit,
+    Remove,
+    Set(String),
+}
+
+fn run_gh(real_gh: &std::path::Path, args: &[String], token: GhToken) -> CliResult<()> {
+    let mut command = std::process::Command::new(real_gh);
+    command.args(args);
+    match token {
+        GhToken::Inherit => {}
+        GhToken::Remove => {
+            command.env_remove("GH_TOKEN").env_remove("GITHUB_TOKEN");
+        }
+        GhToken::Set(token) => {
+            command.env("GH_TOKEN", token);
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let error = command.exec();
+        Err(CliError::Other(format!("Could not run gh: {error}")))
+    }
+    #[cfg(not(unix))]
+    {
+        let status = command
+            .status()
+            .map_err(|error| CliError::Other(format!("Could not run gh: {error}")))?;
+        crate::ghostex_cli::set_exit_code(status.code().unwrap_or(1));
+        Ok(())
+    }
 }

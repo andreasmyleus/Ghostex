@@ -2431,8 +2431,9 @@ too. `ghostex github-account status` shows which account a folder uses and why,
 `ghostex github-account list` lists your accounts and the remembered owners,
 and `ghostex github-account use <login> [--this-worktree]` switches from the
 command line. A session already running sees a switch on its next `gh` or
-`git` call. Repositories cloned over SSH keep using your SSH keys, and sessions
-on a native Windows (PowerShell) machine use gh's own active account.
+`git` call. This works the same on macOS, Linux, WSL and native Windows
+(PowerShell, cmd and the Git Bash agents run commands in). Repositories cloned
+over SSH keep using your SSH keys.
 
 Work mode links a project's sessions to the work they belong to. It comes with
 Workspaces: turn Workspaces on in Settings > Extensions (Features) first; while

@@ -115,12 +115,42 @@ fn path_prepend_line(dir: &std::path::Path) -> String {
     )
 }
 
-#[cfg(windows)]
-pub(crate) fn session_shell_exports(_cwd: &str) -> String {
-    String::new()
+/// What a native Windows (wmx) session needs: the environment to start it
+/// with and the shim folder to put first on PATH after the PowerShell profile.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) struct WindowsSessionSetup {
+    pub(crate) environment: Vec<(String, String)>,
+    pub(crate) path_dir: String,
+}
+
+/// The Windows counterpart of `session_shell_exports`: the same account file
+/// and git credential helper, with `ghostex github-account gh-shim` as the shim.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn windows_session_setup(cwd: &str) -> Option<WindowsSessionSetup> {
+    let account = account_for_cwd(cwd)?;
+    let cli = super::shim::ensure_windows_shims()?;
+    let helper = format!(
+        "!'{}' github-account gh-shim auth git-credential",
+        cli.to_string_lossy().replace('\\', "/")
+    );
+    let mut environment = vec![(
+        "GHOSTEX_GITHUB_ACCOUNT_FILE".to_string(),
+        account.file.to_string_lossy().into_owned(),
+    )];
+    if let Some(real_gh) = gh::real_gh_path() {
+        environment.push((
+            "GHOSTEX_GITHUB_REAL_GH".to_string(),
+            real_gh.to_string_lossy().into_owned(),
+        ));
+    }
+    environment.extend(git_credential_helper_env(git_config_count(), &helper));
+    Some(WindowsSessionSetup {
+        environment,
+        path_dir: super::shim::shim_dir().to_string_lossy().into_owned(),
+    })
 }
 
 #[cfg(windows)]
-pub(crate) fn session_startup_path_setup(_cwd: &str) -> String {
+pub(crate) fn session_shell_exports(_cwd: &str) -> String {
     String::new()
 }
