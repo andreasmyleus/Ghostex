@@ -204,10 +204,30 @@ impl StringOrElse for String {
     }
 }
 
+/// `gh` calls and the `git` verbs that talk to a remote run as the worktree's
+/// GitHub account (see `crate::github_accounts`).
+async fn github_account_env(command: &ProcessCommand) -> Vec<(String, String)> {
+    let kind = match (
+        command.executable.as_str(),
+        command.args.first().map(String::as_str),
+    ) {
+        ("gh", _) => crate::github_accounts::AccountCommand::Gh,
+        ("git", Some("fetch" | "pull" | "push" | "ls-remote")) => {
+            crate::github_accounts::AccountCommand::GitNetwork
+        }
+        _ => return Vec::new(),
+    };
+    let cwd = command.cwd.clone();
+    tokio::task::spawn_blocking(move || crate::github_accounts::command_account_env(&cwd, kind))
+        .await
+        .unwrap_or_default()
+}
+
 pub(crate) async fn run_process_command(
     command: &ProcessCommand,
     context: &TypedOperationContext,
 ) -> Result<CommandOutput, TypedOperationError> {
+    let account_env = github_account_env(command).await;
     let mut process = Command::new(&command.executable);
     process
         .args(&command.args)
@@ -216,6 +236,7 @@ pub(crate) async fn run_process_command(
             context.env_path.as_deref(),
             &command.env,
         ))
+        .envs(account_env)
         .kill_on_drop(true)
         .stdin(if command.stdin.is_some() {
             std::process::Stdio::piped()

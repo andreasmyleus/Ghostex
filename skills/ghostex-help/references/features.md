@@ -2416,6 +2416,24 @@ worktree as its own project so a second agent works on a branch without
 touching the main checkout; worktrees can be renamed, merged back, and
 deleted from the sidebar.
 
+Several GitHub accounts work without any setup: sign each one in to the GitHub
+CLI once with `gh auth login` (no tokens to create). With two or more accounts
+signed in, Ghostex picks one for each worktree (the main checkout included)
+whose origin is on github.com, and that worktree's agents, `gh` commands, `git
+push` and `git fetch` over HTTPS, and its PR and issue status all use it, even
+while agents in other worktrees use other accounts. It picks the account
+remembered for the repository's owner, else the account named like the owner,
+else it asks GitHub which of your accounts can reach the repository (one that
+can push wins) and remembers the answer for that owner. To change it, run
+`gh auth switch` in the worktree's terminal or ask the agent to: it switches
+that worktree only, and new worktrees of the same owner use the new account
+too. `ghostex github-account status` shows which account a folder uses and why,
+`ghostex github-account list` lists your accounts and the remembered owners,
+and `ghostex github-account use <login> [--this-worktree]` switches from the
+command line. A session already running sees a switch on its next `gh` or
+`git` call. Repositories cloned over SSH keep using your SSH keys, and sessions
+on a native Windows (PowerShell) machine use gh's own active account.
+
 Work mode links a project's sessions to the work they belong to. It comes with
 Workspaces: turn Workspaces on in Settings > Extensions (Features) first; while
 it is off no project is in work mode and sessions show no work links. It is on by

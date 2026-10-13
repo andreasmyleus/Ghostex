@@ -458,6 +458,10 @@ pub fn usage() -> String {
             "Answer the offer a session gets when its linked PR is merged: remove its worktree and park it, or keep both",
         ),
         format_help_command(
+            "github-account status [--cwd folder] | list | use [login] [--cwd folder] [--this-worktree]",
+            "Show or switch which of your gh accounts a worktree uses; with two or more accounts signed in to gh, Ghostex picks one per worktree from the repository's owner, and `gh auth switch` in a session switches that worktree only",
+        ),
+        format_help_command(
             "workspace list | create <name> [--kind work|personal] | rename <workspace> <new name> | move-project <project> <workspace> | delete <workspace>",
             "List this computer's workspaces and their projects, create, rename or delete one, or move a project (by id, name or folder) into one; a workspace is named by id or name",
         ),

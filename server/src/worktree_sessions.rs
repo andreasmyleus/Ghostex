@@ -420,6 +420,12 @@ pub fn run_worktree_git(cwd: &str, args: &[&str], timeout: Duration) -> Option<S
         .current_dir(cwd)
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0");
+    if args.first() == Some(&"fetch") {
+        command.envs(crate::github_accounts::command_account_env(
+            cwd,
+            crate::github_accounts::AccountCommand::GitNetwork,
+        ));
+    }
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

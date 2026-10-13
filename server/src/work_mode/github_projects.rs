@@ -135,7 +135,12 @@ pub(crate) fn run_gh_full(cwd: Option<&str>, args: &[&str], timeout: Duration) -
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(cwd) = cwd {
-        command.current_dir(cwd);
+        command
+            .current_dir(cwd)
+            .envs(crate::github_accounts::command_account_env(
+                cwd,
+                crate::github_accounts::AccountCommand::Gh,
+            ));
     }
     #[cfg(windows)]
     {
