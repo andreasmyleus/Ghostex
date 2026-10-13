@@ -32,8 +32,35 @@ pub(crate) fn transcript_record_disabled(record: &Value) -> bool {
                 }))
 }
 
-/// Whether the session's transcript shows its current login refused: a refusal recorded after the session moved to this account, with no real reply after it.
-fn current_login_refused(session: &Value) -> bool {
+/// CDXC:AgentProviders 2026-10-11 WHY:
+/// A CLI started by hand in the session's terminal (a bare `claude` typed after the account's launcher exited) runs on the computer's default login, not the session's account, and writes its transcript under that login's home. On 2026-10-11 a test agent did this, the default login was a disabled one, and its refusal marked the session's working account disabled, which refused every send to every session on that account. The transcript's home names the login that really answered, so a refusal from another login says nothing about the account.
+fn written_by_other_login(
+    state: &AppState,
+    registry: &Registry,
+    session: &Value,
+    account: &str,
+) -> bool {
+    let Some(saved) = registry.accounts.iter().find(|a| a.id == account) else {
+        return false;
+    };
+    super::session_identity::transcript_login_identity(
+        Provider::Claude,
+        session,
+        &state.paths.home_dir,
+    )
+    .is_some_and(|identity| !saved.identity.is_empty() && identity != saved.identity)
+}
+
+/// Whether the session's transcript shows its current login refused: a refusal recorded after the session moved to this account, under this account's own login, with no real reply after it.
+fn current_login_refused(
+    state: &AppState,
+    registry: &Registry,
+    session: &Value,
+    account: Option<&str>,
+) -> bool {
+    if account.is_some_and(|id| written_by_other_login(state, registry, session, id)) {
+        return false;
+    }
     let Some(agent) = crate::session_chat::resolve_session_chat_transcript_agent(Some("claude"))
     else {
         return false;
@@ -203,11 +230,11 @@ pub(crate) fn recover(
     if session["lifecycleState"].as_str() != Some("running") || switch_in_progress(&session) {
         return Ok(true);
     }
-    if !current_login_refused(&session) {
-        return Ok(false);
-    }
     let mut registry = store::read(db)?;
     let current = current_account(state, &registry, &session);
+    if !current_login_refused(state, &registry, &session, current.as_deref()) {
+        return Ok(false);
+    }
     if let Some(id) = current.as_deref() {
         mark(state, db, &mut registry, id)?;
     }
@@ -299,7 +326,10 @@ fn switch_if_disabled(state: &AppState, pid: &str, sid: &str) -> Result<bool, Do
         .as_deref()
         .and_then(|id| registry.accounts.iter().find(|a| a.id == id))
         .is_some_and(|account| account.disabled.is_some());
-    if !marked && !(notice_shows_disabled(state, pid, sid) && current_login_refused(&session)) {
+    if !marked
+        && !(notice_shows_disabled(state, pid, sid)
+            && current_login_refused(state, &registry, &session, current.as_deref()))
+    {
         return Ok(false);
     }
     // Usage is read before taking the account gate: it can wait on the network.

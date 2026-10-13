@@ -51,6 +51,15 @@ pub(crate) fn login_identity(provider: Provider, root: &Path, home: &Path) -> Op
     }
 }
 
+/// The login of the CLI home the session's current transcript was written in, which is the login the running CLI uses whatever account the session is assigned to.
+pub(crate) fn transcript_login_identity(
+    provider: Provider,
+    session: &Value,
+    home: &Path,
+) -> Option<String> {
+    login_identity(provider, &transcript_home(session, provider)?, home)
+}
+
 fn configured_home(session: &Value, provider: Provider) -> Option<PathBuf> {
     if let Some(root) = session
         .pointer("/runtimeSettings/externalAgentHome")
@@ -58,6 +67,10 @@ fn configured_home(session: &Value, provider: Provider) -> Option<PathBuf> {
     {
         return Path::new(root).is_absolute().then(|| PathBuf::from(root));
     }
+    transcript_home(session, provider)
+}
+
+fn transcript_home(session: &Value, provider: Provider) -> Option<PathBuf> {
     let transcript = Path::new(
         session
             .pointer("/runtimeSettings/agentSessionPath")?
