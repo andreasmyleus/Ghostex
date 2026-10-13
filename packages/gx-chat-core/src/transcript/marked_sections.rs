@@ -5,17 +5,18 @@
 //! The pass runs over the native Markdown (`native_markdown.rs`) and wraps each section in marks,
 //! the way an alert or a table is wrapped: `\u{e000}section:{…}` before a section's lines and
 //! `\u{e000}/section` after them. The JSON names the kind, the emoji, the kind's own name, the bold
-//! or `Label:` text the line started with (`label`, empty when there is none, and `labelMarkdown`,
-//! the same text safe to draw as one Markdown paragraph: the label of a marked heading is the whole
-//! heading, links and code spans included, and wraps), whether that label
-//! only repeats the kind's name (`labelRepeats`), the rest of the first line (`lead`) and the whole
-//! first line without its emoji (`plain`, for the chat's emoji switch). The lines
-//! in between are the section exactly as the agent wrote it, so a renderer that keeps the emoji
-//! draws them as they are and one that replaces it draws its own first line from the JSON and the
-//! lines after the first.
+//! or `Label:` text the line started with (`label`, the kind's name when the line has text but no
+//! label of its own, and `labelMarkdown`, the same text safe to draw as one Markdown paragraph: the
+//! label of a marked heading is the whole heading, links and code spans included, and wraps),
+//! whether that label only repeats the kind's name (`labelRepeats`) and the first line without its
+//! emoji (`plain`, for the chat's emoji switch). The lines in between are the section as the agent
+//! wrote it, except that its first line ends with the label: whatever followed the label on that
+//! line becomes the section's first paragraph, under it. So a renderer that keeps the emoji draws
+//! the lines as they are and one that replaces it draws its own first line from the JSON and the
+//! lines after the first, and no style ever puts text beside the label.
 //!
 //! CDXC:MarkedHandovers 2026-10-11 DECISION:
-//! User: the chat colours the sections an agent marks, in one of three styles picked in Settings > Chat under Marked handovers ("Marked sections style": a thin left rule, a coloured badge in place of the emoji, or coloured labels, the default). A bold label line and the bullets under it are one section. Colours are the mockup's palette (docs/2026-10-11/chat-section-markers/index.html), In progress #00A6ED; ❓ Needs you is orange #fb923c (#c2410c on a light chat; 2026-10-12, user: "these both are same color, please change Needs you color", when it was blue #60a5fa next to In progress); 🛫 Kicked off (user: "let's call it 'Kicked off'", work started this turn) is pink. It applies to every agent's replies that carry markers (orchestrators and their threads always mark their handovers; Marked handovers extends that to every session); copying a message still gives the agent's own text (`copyText` is the unmarked body). Supersedes the same day's summary strip of chips at the top of the message counting what needs the reader (user: "let's actually just remove the summary at the top i don't think it's useful at all").
+//! User: the chat colours the sections an agent marks, in one of three styles picked in Settings > Chat under Marked handovers ("Marked sections style": a thin left rule, a coloured badge in place of the emoji, or coloured labels, the default). A bold label line and the bullets under it are one section. Colours are the mockup's palette (docs/2026-10-11/chat-section-markers/index.html), In progress #00A6ED; ❓ Needs you is orange #fb923c (#c2410c on a light chat; 2026-10-12, user: "these both are same color, please change Needs you color", when it was blue #60a5fa next to In progress); 🛫 Kicked off (user: "let's call it 'Kicked off'", work started this turn) is pink. It applies to every agent's replies that carry markers (orchestrators and their threads always mark their handovers; Marked handovers extends that to every session); copying a message still gives the agent's own text (`copyText` is the unmarked body). The label stands alone on its line (2026-10-13, user: "we agreed that we shouldn't show the text to the right of the heading in the responses when using colorful handover"): text an agent writes after the label on the same line is drawn under it as the section's first paragraph, in every style, whatever the agent wrote. Supersedes the same day's summary strip of chips at the top of the message counting what needs the reader (user: "let's actually just remove the summary at the top i don't think it's useful at all").
 //! SEE-ALSO: apps/desktop/src/app/native_chat/marked_sections.rs (GPUI drawing and the palette), apps/mobile/app/src/chat/native/transcript/markdown/MarkedSections.tsx (phone drawing), server/src/agents/marked_handovers.rs (the note that asks agents for these markers; the emoji and names must match it).
 
 use serde_json::json;
@@ -96,8 +97,11 @@ fn has_any_marker(markdown: &str) -> bool {
 struct Opening<'a> {
     marker: &'static Marker,
     label: String,
-    lead: &'a str,
-    /// The whole first line with the marker emoji taken out (`**✅ Done:** x` → `**Done:** x`).
+    /// The first line up to the end of its label: the line the section opens with.
+    head: String,
+    /// The rest of the first line, which the section draws as its first paragraph under the label.
+    lead: Option<&'a str>,
+    /// The head with the marker emoji taken out (`**✅ Done:** x` → `**Done:**`).
     plain: String,
 }
 
@@ -210,11 +214,33 @@ fn opening(line: &str) -> Option<Opening<'_>> {
         },
         None => (label, lead),
     };
+    // The rest of the line goes under the label, never beside it: it is a suffix of `line` (or
+    // empty), so the head is the line before it.
+    let rest = js_trim_start(lead);
+    let has_lead =
+        !js_trim(without_hard_break(js_trim_end(rest))).is_empty() && line.ends_with(rest);
+    let (label, head, lead) = if has_lead {
+        let head = js_trim_end(&line[..line.len() - rest.len()]);
+        if label.is_empty() {
+            // `✅ fixed it`: the kind's name stands in as the label above the text.
+            let name = format!("{}:", marker.name);
+            (name.clone(), format!("{head} {name}"), Some(rest))
+        } else {
+            (label, head.to_string(), Some(rest))
+        }
+    } else {
+        (
+            label,
+            without_hard_break(js_trim_end(line)).to_string(),
+            None,
+        )
+    };
     Some(Opening {
         marker,
         label,
-        lead: without_hard_break(js_trim_end(js_trim_start(lead))),
-        plain: without_marker(line, marker),
+        plain: without_marker(&head, marker),
+        head,
+        lead,
     })
 }
 
@@ -387,11 +413,14 @@ pub fn mark_sections(markdown: String) -> String {
                 "label": opening.label,
                 "labelMarkdown": label_markdown(&opening.label),
                 "labelRepeats": label_name.eq_ignore_ascii_case(opening.marker.name),
-                "lead": opening.lead,
                 "plain": opening.plain,
             })
         ));
         let mut body: Vec<String> = body.iter().map(|line| (*line).to_string()).collect();
+        body[0] = opening.head;
+        if let Some(lead) = opening.lead {
+            body.splice(1..1, [String::new(), label_markdown(lead)]);
+        }
         while body.len() > 1 && js_trim(body.last().map(String::as_str).unwrap_or("")).is_empty() {
             body.pop();
         }

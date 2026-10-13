@@ -610,9 +610,9 @@ impl NativeChatView {
                 let style = p.marked_sections;
                 let look = super::marked_sections::look(p);
                 if style.draws_first_line(look.emoji) {
-                    let first = style.first_line_text(meta);
-                    let lead = (!first.is_empty())
-                        .then(|| self.text_view(format!("{key}:lead"), first, references, p, cx));
+                    let first = style.first_line_text(meta).map(|first| {
+                        self.text_view(format!("{key}:first"), first, references, p, cx)
+                    });
                     // The label is Markdown too: a marked heading's label is the whole heading,
                     // with its links and code spans, and it wraps like any paragraph.
                     let label = style.label_color(meta, &look).map(|color| {
@@ -626,7 +626,7 @@ impl NativeChatView {
                         )
                     });
                     let rest = lines.get(1..).unwrap_or_default();
-                    super::marked_sections::section(style, meta, label, lead, draw(rest), &look)
+                    super::marked_sections::section(style, meta, label, first, draw(rest), &look)
                 } else {
                     super::marked_sections::section(style, meta, None, None, draw(&lines), &look)
                 }

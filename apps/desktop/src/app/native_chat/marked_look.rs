@@ -11,7 +11,6 @@
 //! CDXC:MarkedHandovers 2026-10-11 DECISION:
 //! User: "add a toggle for emojis in the colorful handover please. and set it to off by default. and if enabled add emojis to all 3." With Show marker emojis (`markedHandoversEmoji`) off, no style shows the marker emoji and the colour and label carry the kind (a section with no label of its own shows the kind's name as its coloured label); on, all three show it, the badge style before its badge. Copying still gives the agent's own text.
 //! SEE-ALSO: apps/desktop/src/app/native_chat/marked_sections.rs (the transcript's use of it), apps/mobile/app/src/chat/native/transcript/markdown/MarkedSections.tsx (the phone draws the same, with the same palette).
-use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, FontWeight, Hsla, IntoElement, ParentElement as _, Styled as _, div, px, rgb,
 };
@@ -61,14 +60,11 @@ impl MarkerStyle {
         !(self == Self::Rule && emoji)
     }
 
-    /// What a style that draws its own first line puts after its opening, as Markdown: the rule
-    /// draws the agent's line without the emoji, the others the rest after the label.
-    pub(crate) fn first_line_text(self, meta: &SectionMeta) -> String {
-        if self == Self::Rule {
-            meta.plain.clone()
-        } else {
-            meta.lead.clone()
-        }
+    /// The first line a style that draws its own first line draws as Markdown: the rule draws the
+    /// agent's line without the emoji; the others draw only their opening, so `None`. Nothing ever
+    /// follows the label on its line: the core moves that text under it.
+    pub(crate) fn first_line_text(self, meta: &SectionMeta) -> Option<String> {
+        (self == Self::Rule && !meta.plain.is_empty()).then(|| meta.plain.clone())
     }
 
     /// The colour the label is drawn in when the style draws one: the kind's colour in coloured
@@ -105,7 +101,6 @@ pub(crate) struct SectionMeta {
     /// The label as one Markdown paragraph (a heading's label keeps its links and code spans).
     pub(crate) label_markdown: String,
     pub(crate) label_repeats: bool,
-    pub(crate) lead: String,
     /// The whole first line without its emoji.
     pub(crate) plain: String,
 }
@@ -174,22 +169,21 @@ fn tint(look: &MarkedLook) -> (f32, f32) {
 /// label (coloured in D, plain bold in C unless it only repeats the badge). Without the emoji and
 /// without a label of its own, D shows the kind's name as the label so the line keeps its colour.
 ///
-/// The label may be long (a marked heading's label is the whole heading), so it can shrink and
-/// wrap; it takes the row when no lead follows it. `label_text` is the label drawn as Markdown by
-/// the caller (links and code spans work); without it the label is plain text.
+/// The label may be long (a marked heading's label is the whole heading), so it takes the rest of
+/// the row and wraps. `label_text` is the label drawn as Markdown by the caller (links and code
+/// spans work); without it the label is plain text.
 fn first_line_opening(
     style: MarkerStyle,
     meta: &SectionMeta,
     look: &MarkedLook,
     label_text: Option<AnyElement>,
-    lead_follows: bool,
 ) -> Vec<AnyElement> {
     let s = look.scale;
     let color = kind_color(&meta.kind, look.light);
     let line = px(look.line_height * s);
     let mut label_text = label_text;
     let mut label = |color: Hsla| {
-        let cell = div().min_w_0().when(!lead_follows, |cell| cell.flex_1());
+        let cell = div().min_w_0().flex_1();
         match label_text.take() {
             Some(text) => cell.child(text).into_any_element(),
             None => cell
@@ -259,14 +253,14 @@ fn first_line_opening(
 }
 
 /// One section in `style`. `label` is the section's label drawn as Markdown in
-/// `MarkerStyle::label_color` (none: it is drawn as plain text); `lead` is `first_line_text` drawn
-/// as Markdown when the style draws its own first line; `body` is the section's lines drawn as
-/// Markdown: all of them when it does not, the ones after the first when it does.
+/// `MarkerStyle::label_color` (none: it is drawn as plain text); `first` is `first_line_text` drawn
+/// as Markdown (the rule's own first line); `body` is the section's lines drawn as Markdown: all of
+/// them when the style does not draw its own first line, the ones after the first when it does.
 pub(crate) fn section(
     style: MarkerStyle,
     meta: &SectionMeta,
     label: Option<AnyElement>,
-    lead: Option<AnyElement>,
+    first: Option<AnyElement>,
     body: Vec<AnyElement>,
     look: &MarkedLook,
 ) -> AnyElement {
@@ -283,7 +277,7 @@ pub(crate) fn section(
             .border_l(px(3.0 * s))
             .border_color(kind_color(&meta.kind, look.light))
             .pl(px(12.0 * s))
-            .children(lead)
+            .children(first)
             .children(body)
             .into_any_element();
     }
@@ -295,16 +289,7 @@ pub(crate) fn section(
         .gap(px(6.0 * s))
         .text_size(px(14.0 * s))
         .text_color(look.prose)
-        .children(first_line_opening(
-            style,
-            meta,
-            look,
-            label,
-            lead.is_some(),
-        ))
-        .when_some(lead, |row, lead| {
-            row.child(div().flex_1().min_w_0().child(lead))
-        });
+        .children(first_line_opening(style, meta, look, label));
     column.child(header).children(body).into_any_element()
 }
 
@@ -371,10 +356,11 @@ pub(crate) fn preview_reply(
             match part {
                 PreviewPart::Prose(content) => text(key, content),
                 PreviewPart::Section(meta, lines) => {
-                    let (lead, body) = if style.draws_first_line(look.emoji) {
-                        let first = style.first_line_text(&meta);
-                        let lead = (!first.is_empty()).then(|| text(format!("{key}:lead"), first));
-                        (lead, lines.get(1..).unwrap_or_default().join("\n"))
+                    let (first, body) = if style.draws_first_line(look.emoji) {
+                        let first = style
+                            .first_line_text(&meta)
+                            .map(|first| text(format!("{key}:first"), first));
+                        (first, lines.get(1..).unwrap_or_default().join("\n"))
                     } else {
                         (None, lines.join("\n"))
                     };
@@ -382,7 +368,7 @@ pub(crate) fn preview_reply(
                         .then(|| text(format!("{key}:body"), body))
                         .into_iter()
                         .collect();
-                    section(style, &meta, None, lead, body, look)
+                    section(style, &meta, None, first, body, look)
                 }
             }
         })
