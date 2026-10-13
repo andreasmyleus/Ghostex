@@ -38,6 +38,7 @@ pub const KNOWN_AGENT_IDS: &[&str] = &[
     "cursor",
     "custom",
     "mastra",
+    "mini-swe-agent",
     "devin",
     "droid",
     "empryo",

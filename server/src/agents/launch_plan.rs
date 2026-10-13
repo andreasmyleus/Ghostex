@@ -668,6 +668,7 @@ pub(crate) fn default_agent_session_title_name(agent_id: &str) -> Option<&'stati
         "copilot" => Some("Copilot"),
         "cursor" => Some("Cursor CLI"),
         "mastra" => Some("Mastra Code"),
+        "mini-swe-agent" => Some("mini-SWE-agent"),
         "devin" => Some("Devin"),
         "droid" => Some("Factory Droid"),
         "empryo" => Some("Empryo"),

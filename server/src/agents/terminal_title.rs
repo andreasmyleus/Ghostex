@@ -562,6 +562,8 @@ pub(crate) fn is_agent_command_executable_name(value: &str) -> bool {
             | "copilot"
             | "cursor-agent"
             | "mastracode"
+            | "mini"
+            | "mini-swe-agent"
             | "devin"
             | "droid"
             | "empryo"

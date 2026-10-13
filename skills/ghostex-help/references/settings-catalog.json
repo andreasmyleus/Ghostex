@@ -8349,6 +8349,10 @@
         {
           "label": "Empryo",
           "value": "Empryo"
+        },
+        {
+          "label": "mini-SWE-agent",
+          "value": "mini-SWE-agent"
         }
       ],
       "agentWritable": false

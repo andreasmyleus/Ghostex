@@ -373,6 +373,7 @@ const DEFAULT_AGENT_NAMES: &[(&str, &str)] = &[
     ("command-code", "Command Code"),
     ("devin", "Devin"),
     ("mastra", "Mastra Code"),
+    ("mini-swe-agent", "mini-SWE-agent"),
     ("zcode", "ZCode"),
     ("freebuff", "Freebuff"),
     ("empryo", "Empryo"),

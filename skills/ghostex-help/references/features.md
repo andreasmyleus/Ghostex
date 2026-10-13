@@ -1757,6 +1757,13 @@ so an Empryo session shows working and idle and comes back after a restart with
 orchestrator work, but its sidebar status does not follow its hooks yet. Empryo has
 no launch option to accept every approval, so Agent approvals does not apply to it;
 Empryo's own `/yolo` does that instead.
+mini-SWE-agent starts switched off; turn it on in Settings > Agents. It launches
+with `mini`, which asks for a task in its terminal, and installs from PyPI with
+`uv tool install mini-swe-agent` (Ghostex installs Astral's `uv` into your user
+folder first when it is missing; `mise use --global pipx:mini-swe-agent` works too).
+Set its model and API key once with `mini-extra config setup`. Agent approvals adds
+`--yolo`, so it runs commands without asking. It works in the terminal only: it has
+no chat view, no hooks, and no resume, so a session that ends starts a fresh run.
 Agent Hooks let gxserver watch agent status, questions, and
 completions for chat and notifications. Installing the Claude Code hooks also
 sets Claude Code's transcript retention (`cleanupPeriodDays`) so past

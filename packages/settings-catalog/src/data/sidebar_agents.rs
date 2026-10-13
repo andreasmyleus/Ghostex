@@ -318,4 +318,11 @@ pub const DEFAULT_SIDEBAR_AGENTS: J = J::Arr(&[
         ("icon", J::Str("empryo")),
         ("name", J::Str("Empryo")),
     ]),
+    J::Obj(&[
+        ("agentId", J::Str("mini-swe-agent")),
+        ("command", J::Str("mini")),
+        ("hiddenByDefault", J::Bool(true)),
+        ("icon", J::Str("mini-swe-agent")),
+        ("name", J::Str("mini-SWE-agent")),
+    ]),
 ]);

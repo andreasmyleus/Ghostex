@@ -93,6 +93,11 @@ const LOGOS: &[(&str, &str, &str)] = &[
         include_str!("../../../core-ui/assets/mastra.svg"),
     ),
     (
+        "mini-swe-agent",
+        "#ffffff",
+        include_str!("../../../core-ui/assets/mini-swe-agent.svg"),
+    ),
+    (
         "kimi",
         "#7b6cf6",
         include_str!("../../../core-ui/assets/kimi.svg"),

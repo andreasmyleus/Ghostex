@@ -46,9 +46,12 @@ fn fetch(url: &str, field: Option<&str>) -> Option<String> {
         .build();
     let body = agent.get(url).call().ok()?.into_string().ok()?;
     let text = match field {
-        Some(field) => serde_json::from_str::<Value>(&body)
-            .ok()?
-            .get(field)?
+        // A dotted field reads a nested value (PyPI's `info.version`).
+        Some(field) => field
+            .split('.')
+            .try_fold(serde_json::from_str::<Value>(&body).ok()?, |value, key| {
+                value.get(key).cloned()
+            })?
             .as_str()?
             .to_string(),
         None => body,

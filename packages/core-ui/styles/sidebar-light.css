@@ -126,7 +126,8 @@ body[data-sidebar-theme='plain-light']
     [data-agent-icon='amp-cli'],
     [data-agent-icon='cursor-cli'],
     [data-agent-icon='grok-build'],
-    [data-agent-icon='mastra']
+    [data-agent-icon='mastra'],
+    [data-agent-icon='mini-swe-agent']
   ) {
   filter: brightness(0);
 }

@@ -282,6 +282,13 @@ pub(super) const DEFAULT_SIDEBAR_AGENTS: &[DefaultSidebarAgent] = &[
         icon: "empryo",
         name: "Empryo",
     },
+    DefaultSidebarAgent {
+        agent_id: "mini-swe-agent",
+        command: "mini",
+        hidden_by_default: true,
+        icon: "mini-swe-agent",
+        name: "mini-SWE-agent",
+    },
 ];
 
 pub(super) const DEFAULT_SIDEBAR_COMMANDS: &[DefaultSidebarCommand] = &[
