@@ -2031,8 +2031,9 @@ start-work <bead-id>`); the session is linked to the card and the card shows
   scrolls the board to the lanes off screen.
 - **Open in New Window** (the pop-out control at the top right of the view, or
   the tab's right-click menu) moves the board to a window of its own, for a
-  second monitor; the panel shows a card with **Bring Back**, and closing the
-  window brings the board back too. The window follows the project you switch
+  second monitor; the panel shows a card with **Show Window** (brings that
+  window to the front) and **Bring Back**, and closing the window brings the
+  board back too. The window follows the project you switch
   to, and after a restart the board is in the panel again.
 
 Related settings: Settings > Projects (beads directory and display key),
