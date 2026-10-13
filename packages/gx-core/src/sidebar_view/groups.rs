@@ -392,7 +392,7 @@ fn project_title_tooltip(
     } else {
         "Repository project"
     };
-    format!(
+    let mut tooltip = format!(
         "{}\n{kind}\n{}\n{}\n{session_count} {} · {} {}",
         plan.title,
         project.path,
@@ -400,7 +400,15 @@ fn project_title_tooltip(
         count_label(session_count as i64, "session"),
         project.worktree_count,
         count_label(project.worktree_count as i64, "worktree"),
-    )
+    );
+    // The GitHub account the worktree runs as (CDXC:GitHubAccounts); the header shows `@login` too.
+    if let Some(account) = &project.github_account {
+        tooltip.push_str(&format!("\nGitHub account: {}", account.login));
+        if let Some(host) = account.host.as_deref().filter(|host| *host != "github.com") {
+            tooltip.push_str(&format!(" on {host}"));
+        }
+    }
+    tooltip
 }
 
 /// `formatProjectTooltipGitStats`.

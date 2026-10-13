@@ -77,7 +77,8 @@ struct Cached<T> {
 
 #[derive(Default)]
 struct ProjectsCache {
-    access: Option<Cached<GithubProjectsAccess>>,
+    /// Whether each account may read Projects, by `host/login` (scopes belong to a token).
+    access: HashMap<String, Cached<GithubProjectsAccess>>,
     /// The projects of an issue's or PR's project items, by checkout and number.
     items: HashMap<String, Cached<Vec<GithubProjectInfo>>>,
     /// `owner/repo` of a checkout's `origin`, so a refresh asks git once per checkout.
@@ -216,41 +217,104 @@ pub(crate) fn is_missing_project_scope(text: &str) -> bool {
         && text.contains("project")
 }
 
-fn remember_access(access: GithubProjectsAccess) {
+/// The account a check or a call in `cwd` runs as: the worktree's GitHub account, else gh's
+/// active github.com account. `(host, login)`; an empty login when gh knows no account.
+///
+/// CDXC:GitHubAccounts 2026-10-13 WHY: The `read:project` scope belongs to one account's token, so with a GitHub account per worktree the Projects check, the refusals that update it and the fix command are per account: a worktree on an account without the scope shows that account's notice, not the active account's.
+fn projects_account(cwd: Option<&str>) -> (String, String) {
+    if let Some(account) = cwd.and_then(crate::github_accounts::account_for_cwd) {
+        return (account.repo.remote.host.clone(), account.login);
+    }
+    let accounts = crate::github_accounts::global_accounts();
+    (
+        crate::github_accounts::GITHUB_HOST.to_string(),
+        accounts.active.unwrap_or_default(),
+    )
+}
+
+fn access_key(cwd: Option<&str>) -> String {
+    let (host, login) = projects_account(cwd);
+    format!("{host}/{login}").to_ascii_lowercase()
+}
+
+fn remember_access(cwd: Option<&str>, access: GithubProjectsAccess) {
+    let key = access_key(cwd);
     if let Ok(mut cache) = cache().lock() {
-        cache.access = Some(Cached {
-            value: access,
-            fetched_at: Instant::now(),
-        });
+        cache.access.insert(
+            key,
+            Cached {
+                value: access,
+                fetched_at: Instant::now(),
+            },
+        );
     }
 }
 
-/// The last answer, without asking `gh`.
-pub(crate) fn cached_github_projects_access() -> GithubProjectsAccess {
+/// The last answer for the account `cwd` runs as, without asking `gh`.
+pub(crate) fn cached_github_projects_access(cwd: Option<&str>) -> GithubProjectsAccess {
+    let key = access_key(cwd);
     cache()
         .lock()
         .ok()
-        .and_then(|cache| cache.access.as_ref().map(|cached| cached.value))
+        .and_then(|cache| cache.access.get(&key).map(|cached| cached.value))
         .unwrap_or(GithubProjectsAccess::Unknown)
 }
 
-/// Asks `gh auth status` when the answer is missing or stale (or `force`). Blocking.
-pub(crate) fn refresh_github_projects_access(force: bool) -> GithubProjectsAccess {
+/// Asks `gh auth status` about the account `cwd` runs as when the answer is missing or stale
+/// (or `force`). Blocking. In a worktree with its own account gh runs with that account's token,
+/// so the first scopes line it prints is that token's.
+pub(crate) fn refresh_github_projects_access(
+    cwd: Option<&str>,
+    force: bool,
+) -> GithubProjectsAccess {
+    let key = access_key(cwd);
     let fresh = cache().lock().ok().and_then(|cache| {
         cache
             .access
-            .as_ref()
+            .get(&key)
             .filter(|cached| !force && cached.fetched_at.elapsed() < ACCESS_TTL)
             .map(|cached| cached.value)
     });
     if let Some(access) = fresh {
         return access;
     }
-    let access = run_gh_command(None, &["auth", "status"])
-        .map(|output| access_from_auth_status(&output))
-        .unwrap_or(GithubProjectsAccess::Unknown);
-    remember_access(access);
+    let (host, _) = projects_account(cwd);
+    let access = run_gh_full(
+        cwd,
+        &["auth", "status", "--hostname", &host],
+        Duration::from_secs(10),
+    )
+    .map(|run| access_from_auth_status(&run.stdout))
+    .unwrap_or(GithubProjectsAccess::Unknown);
+    remember_access(cwd, access);
     access
+}
+
+/// The command that gives the account `cwd` runs as the `read:project` scope. `gh auth refresh`
+/// only refreshes gh's active account, so another account is switched to first and back after,
+/// with gh run directly rather than through Ghostex's per-worktree `gh auth switch`.
+pub(crate) fn github_projects_scope_command(cwd: Option<&str>) -> String {
+    let (host, login) = projects_account(cwd);
+    scope_command(&host, &login)
+}
+
+fn scope_command(host: &str, login: &str) -> String {
+    let active = crate::github_accounts::global_hosts()
+        .remove(host)
+        .and_then(|accounts| accounts.active)
+        .unwrap_or_default();
+    let dotcom = host.eq_ignore_ascii_case(crate::github_accounts::GITHUB_HOST);
+    if login.is_empty() || login.eq_ignore_ascii_case(&active) {
+        return if dotcom {
+            GITHUB_PROJECTS_SCOPE_COMMAND.to_string()
+        } else {
+            format!("gh auth refresh -h {host} -s read:project")
+        };
+    }
+    let gh = "env -u GHOSTEX_GITHUB_ACCOUNT_FILE gh";
+    format!(
+        "{gh} auth switch -h {host} -u {login} && {gh} auth refresh -h {host} -s read:project && {gh} auth switch -h {host} -u {active}"
+    )
 }
 
 const PROJECT_ITEMS_QUERY: &str = "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issueOrPullRequest(number: $number) { ... on Issue { projectItems(first: 10) { nodes { ...item } } } ... on PullRequest { projectItems(first: 10) { nodes { ...item } } } } } } fragment item on ProjectV2Item { isArchived project { title url number closed owner { ... on Organization { login } ... on User { login } } } fieldValueByName(name: \"Status\") { ... on ProjectV2ItemFieldSingleSelectValue { name } } }";
@@ -292,7 +356,7 @@ fn checkout_repo(cwd: &str) -> Option<String> {
 /// Re-reads the project items of issue or PR `number` in the checkout `cwd` when stale. Returns
 /// whether `gh` ran. Does nothing while the scope is known to be missing.
 pub(crate) fn refresh_github_project_items(cwd: &str, number: u64) -> bool {
-    if cached_github_projects_access() == GithubProjectsAccess::MissingScope {
+    if cached_github_projects_access(Some(cwd)) == GithubProjectsAccess::MissingScope {
         return false;
     }
     let key = items_key(cwd, number);
@@ -315,7 +379,7 @@ pub(crate) fn refresh_github_project_items(cwd: &str, number: u64) -> bool {
     let name_arg = format!("name={name}");
     let number_arg = format!("number={number}");
     let Some(run) = run_gh_full(
-        None,
+        Some(cwd),
         &[
             "api",
             "graphql",
@@ -333,7 +397,7 @@ pub(crate) fn refresh_github_project_items(cwd: &str, number: u64) -> bool {
         return true;
     };
     if is_missing_project_scope(&run.stdout) || is_missing_project_scope(&run.stderr) {
-        remember_access(GithubProjectsAccess::MissingScope);
+        remember_access(Some(cwd), GithubProjectsAccess::MissingScope);
         return true;
     }
     if !run.success {
@@ -342,7 +406,7 @@ pub(crate) fn refresh_github_project_items(cwd: &str, number: u64) -> bool {
     let Ok(body) = serde_json::from_str::<Value>(&run.stdout) else {
         return true;
     };
-    remember_access(GithubProjectsAccess::Granted);
+    remember_access(Some(cwd), GithubProjectsAccess::Granted);
     let items = parse_project_items(&body);
     if let Ok(mut cache) = cache().lock() {
         cache.items.insert(
@@ -432,8 +496,8 @@ pub(crate) fn cached_github_project(owner: &str, number: u64) -> Option<GithubPr
 }
 
 /// Re-reads a hand-set project's title and link when stale. Returns whether `gh` ran.
-pub(crate) fn refresh_github_project(owner: &str, number: u64) -> bool {
-    if cached_github_projects_access() == GithubProjectsAccess::MissingScope {
+pub(crate) fn refresh_github_project(cwd: Option<&str>, owner: &str, number: u64) -> bool {
+    if cached_github_projects_access(cwd) == GithubProjectsAccess::MissingScope {
         return false;
     }
     let key = format!("{owner}/{number}");
@@ -447,7 +511,7 @@ pub(crate) fn refresh_github_project(owner: &str, number: u64) -> bool {
     }
     let number_text = number.to_string();
     let Some(run) = run_gh_full(
-        None,
+        cwd,
         &[
             "project",
             "view",
@@ -462,7 +526,7 @@ pub(crate) fn refresh_github_project(owner: &str, number: u64) -> bool {
         return true;
     };
     if is_missing_project_scope(&run.stdout) || is_missing_project_scope(&run.stderr) {
-        remember_access(GithubProjectsAccess::MissingScope);
+        remember_access(cwd, GithubProjectsAccess::MissingScope);
         return true;
     }
     let info = run
@@ -477,7 +541,7 @@ pub(crate) fn refresh_github_project(owner: &str, number: u64) -> bool {
             status: None,
         });
     if info.is_some() {
-        remember_access(GithubProjectsAccess::Granted);
+        remember_access(cwd, GithubProjectsAccess::Granted);
     }
     if let Ok(mut cache) = cache().lock() {
         cache.projects.insert(
@@ -493,9 +557,12 @@ pub(crate) fn refresh_github_project(owner: &str, number: u64) -> bool {
 
 /// The open projects of one owner (`gh project list`), for the Link to picker. `Err` carries the
 /// line the picker shows instead.
-pub(crate) fn list_github_projects(owner: &str) -> Result<Vec<GithubProjectInfo>, String> {
+pub(crate) fn list_github_projects(
+    cwd: Option<&str>,
+    owner: &str,
+) -> Result<Vec<GithubProjectInfo>, String> {
     let run = run_gh_full(
-        None,
+        cwd,
         &[
             "project",
             "list",
@@ -510,13 +577,13 @@ pub(crate) fn list_github_projects(owner: &str) -> Result<Vec<GithubProjectInfo>
     )
     .ok_or_else(|| "The GitHub CLI (gh) did not answer.".to_string())?;
     if is_missing_project_scope(&run.stdout) || is_missing_project_scope(&run.stderr) {
-        remember_access(GithubProjectsAccess::MissingScope);
-        return Err(missing_scope_text());
+        remember_access(cwd, GithubProjectsAccess::MissingScope);
+        return Err(missing_scope_text(cwd));
     }
     if !run.success {
         return Err(format!("gh could not list projects: {}", run.error_text()));
     }
-    remember_access(GithubProjectsAccess::Granted);
+    remember_access(cwd, GithubProjectsAccess::Granted);
     let body: Value = serde_json::from_str(&run.stdout).unwrap_or(Value::Null);
     Ok(body
         .get("projects")
@@ -542,15 +609,70 @@ pub(crate) fn list_github_projects(owner: &str) -> Result<Vec<GithubProjectInfo>
 }
 
 /// The sentence the picker, the Work page and Settings show while the scope is missing.
-pub(crate) fn missing_scope_text() -> String {
-    format!("To show GitHub Projects, run `{GITHUB_PROJECTS_SCOPE_COMMAND}`.")
+pub(crate) fn missing_scope_text(cwd: Option<&str>) -> String {
+    format!(
+        "To show GitHub Projects, run `{}`.",
+        github_projects_scope_command(cwd)
+    )
 }
 
-/// `{ access, command }` for the Work page and Settings.
+/// `{ access, command, accounts }` for the Work page and Settings: missing when any account
+/// Ghostex has checked lacks the scope (`command` fixes the first such account), and
+/// `accounts` lists each checked account's answer.
 pub(crate) fn github_projects_status_json() -> Value {
+    let entries: Vec<(String, GithubProjectsAccess)> = cache()
+        .lock()
+        .map(|cache| {
+            let mut entries: Vec<(String, GithubProjectsAccess)> = cache
+                .access
+                .iter()
+                .map(|(key, cached)| (key.clone(), cached.value))
+                .collect();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            entries
+        })
+        .unwrap_or_default();
+    let missing = entries
+        .iter()
+        .find(|(_, access)| *access == GithubProjectsAccess::MissingScope);
+    let access = if missing.is_some() {
+        GithubProjectsAccess::MissingScope
+    } else if entries
+        .iter()
+        .any(|(_, access)| *access == GithubProjectsAccess::Granted)
+    {
+        GithubProjectsAccess::Granted
+    } else {
+        GithubProjectsAccess::Unknown
+    };
+    let split = |key: &str| {
+        key.split_once('/')
+            .map(|(host, login)| (host.to_string(), login.to_string()))
+            .unwrap_or_default()
+    };
+    let command = missing
+        .map(|(key, _)| {
+            let (host, login) = split(key);
+            scope_command(&host, &login)
+        })
+        .unwrap_or_else(|| GITHUB_PROJECTS_SCOPE_COMMAND.to_string());
+    let accounts: Vec<Value> = entries
+        .iter()
+        .filter(|(key, _)| !key.ends_with('/'))
+        .map(|(key, access)| {
+            let (host, login) = split(key);
+            json!({
+                "host": host,
+                "login": login,
+                "access": access.as_wire(),
+                "command": scope_command(&host, &login),
+            })
+        })
+        .collect();
     json!({
-        "access": cached_github_projects_access().as_wire(),
-        "command": GITHUB_PROJECTS_SCOPE_COMMAND,
+        "access": access.as_wire(),
+        "command": command,
+        "accounts": accounts,
     })
 }
 

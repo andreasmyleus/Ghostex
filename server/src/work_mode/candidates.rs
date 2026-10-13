@@ -151,7 +151,7 @@ pub(crate) fn list_work_link_candidates(
                 // Listed once per owner (cached); typing filters that list here.
                 let mut failure = None;
                 let all = cached(kind, owner.as_deref().unwrap_or("@me"), "", || {
-                    list_project_candidates(owner.as_deref())
+                    list_project_candidates(cwd, owner.as_deref())
                         .map_err(|error| failure = Some(error))
                         .ok()
                 });
@@ -406,11 +406,14 @@ fn github_repo_from_remote(url: &str) -> Option<String> {
 
 /// The GitHub Projects of the repo's owner, then the person's own (`gh project list`). `Err` is the
 /// picker's notice (the missing `read:project` scope).
-fn list_project_candidates(owner: Option<&str>) -> Result<Vec<Candidate>, String> {
+fn list_project_candidates(
+    cwd: Option<&str>,
+    owner: Option<&str>,
+) -> Result<Vec<Candidate>, String> {
     let mut candidates: Vec<Candidate> = Vec::new();
     let owners = owner.into_iter().chain(std::iter::once("@me"));
     for (index, owner) in owners.enumerate() {
-        let projects = match list_github_projects(owner) {
+        let projects = match list_github_projects(cwd, owner) {
             Ok(projects) => projects,
             // The person's own list is a bonus; the repo owner's failure is the answer.
             Err(error) if index == 0 || candidates.is_empty() => return Err(error),

@@ -200,6 +200,8 @@ impl GhostexGpuiApp {
                     .get("workspaceId")
                     .and_then(serde_json::Value::as_str)
                 {
+                    // The per-GitHub-account profiles go too (CDXC:GitHubAccounts).
+                    self.clear_workspace_github_browser_profiles(workspace_id);
                     match crate::app::workspace_browser::clear_workspace_browser_signins(
                         workspace_id,
                     ) {

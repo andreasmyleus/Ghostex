@@ -624,6 +624,13 @@ fn project_context(group: &GroupView) -> Option<Value> {
     if context.work_mode {
         object.insert("workMode".to_string(), Value::Bool(true));
     }
+    // The project header's `@login` badge (native_sidebar/project_status.rs).
+    if let Some(account) = &context.github_account {
+        object.insert(
+            "githubAccount".to_string(),
+            json!({ "login": account.login, "host": account.host, "accounts": account.accounts }),
+        );
+    }
     Some(Value::Object(object))
 }
 

@@ -25,6 +25,9 @@ Usage:
   ghostex github-account identity <login> [--name <name>] [--email <email>]
       [--signing-key <key id or SSH key file>] [--signing-format openpgp|ssh] [--host <host>]
       Show or set the name, email and signing key commits made as <login> use
+  ghostex github-account write-config [--cwd <folder>]
+      Write the worktree's account into its own git config, so git uses it
+      outside Ghostex sessions too (other terminals, editors, agentbox)
   ghostex github-account ssh-key <login> [<key file>] [--host <host>]
       Show or set the SSH key that signs in as <login>; with no key file and
       no key saved, Ghostex looks for it among your SSH keys";
@@ -48,6 +51,15 @@ pub fn github_account_command(args: &[String]) -> CliResult<()> {
         "use" => use_command(rest),
         "identity" => identity_command(rest),
         "ssh-key" => ssh_key_command(rest),
+        "write-config" => {
+            let cwd = cwd_from(rest)?;
+            if github_accounts::write_worktree_git_config(&cwd) {
+                println!("✓ This worktree's own git config now uses its GitHub account, in every terminal and editor.");
+                Ok(())
+            } else {
+                Err(CliError::Other(inactive_reason(&cwd)))
+            }
+        }
         // Undocumented: prints what a session started in the folder would export.
         "session-env" => {
             print!(

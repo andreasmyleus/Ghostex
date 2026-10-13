@@ -12,6 +12,7 @@ mod run;
 mod shim;
 mod ssh;
 mod store;
+mod worktree_config;
 
 #[cfg(windows)]
 pub(crate) use env::windows_session_setup;
@@ -34,3 +35,4 @@ pub(crate) use resolve::{
 };
 pub(crate) use ssh::{account_key, discover_keys, set_account_key};
 pub(crate) use store::{owner_logins, prune_removed_worktrees, read_worktree_record};
+pub(crate) use worktree_config::write_worktree_git_config;
