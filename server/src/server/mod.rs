@@ -122,6 +122,7 @@ use crate::{
 };
 
 pub(crate) mod accounts_http;
+pub(crate) mod github_account_http;
 pub(crate) mod agent_cli_http;
 pub(crate) mod agentbox_http;
 pub(crate) mod managed_tools_http;

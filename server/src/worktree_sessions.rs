@@ -423,7 +423,7 @@ pub fn run_worktree_git(cwd: &str, args: &[&str], timeout: Duration) -> Option<S
     if args.first() == Some(&"fetch") {
         command.envs(crate::github_accounts::command_account_env(
             cwd,
-            crate::github_accounts::AccountCommand::GitNetwork,
+            crate::github_accounts::AccountCommand::Git,
         ));
     }
     let mut child = command

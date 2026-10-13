@@ -204,17 +204,21 @@ impl StringOrElse for String {
     }
 }
 
-/// `gh` calls and the `git` verbs that talk to a remote run as the worktree's
-/// GitHub account (see `crate::github_accounts`).
+/// `gh` calls and the `git` verbs that talk to a remote or make commits run as
+/// the worktree's GitHub account (see `crate::github_accounts`).
 async fn github_account_env(command: &ProcessCommand) -> Vec<(String, String)> {
     let kind = match (
         command.executable.as_str(),
         command.args.first().map(String::as_str),
     ) {
         ("gh", _) => crate::github_accounts::AccountCommand::Gh,
-        ("git", Some("fetch" | "pull" | "push" | "ls-remote")) => {
-            crate::github_accounts::AccountCommand::GitNetwork
-        }
+        (
+            "git",
+            Some(
+                "fetch" | "pull" | "push" | "ls-remote" | "commit" | "merge" | "rebase"
+                | "cherry-pick" | "revert" | "am" | "tag",
+            ),
+        ) => crate::github_accounts::AccountCommand::Git,
         _ => return Vec::new(),
     };
     let cwd = command.cwd.clone();

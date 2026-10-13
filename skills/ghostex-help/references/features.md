@@ -2417,23 +2417,34 @@ touching the main checkout; worktrees can be renamed, merged back, and
 deleted from the sidebar.
 
 Several GitHub accounts work without any setup: sign each one in to the GitHub
-CLI once with `gh auth login` (no tokens to create). With two or more accounts
-signed in, Ghostex picks one for each worktree (the main checkout included)
-whose origin is on github.com, and that worktree's agents, `gh` commands, `git
-push` and `git fetch` over HTTPS, and its PR and issue status all use it, even
-while agents in other worktrees use other accounts. It picks the account
-remembered for the repository's owner, else the account named like the owner,
-else it asks GitHub which of your accounts can reach the repository (one that
-can push wins) and remembers the answer for that owner. To change it, run
-`gh auth switch` in the worktree's terminal or ask the agent to: it switches
-that worktree only, and new worktrees of the same owner use the new account
-too. `ghostex github-account status` shows which account a folder uses and why,
-`ghostex github-account list` lists your accounts and the remembered owners,
-and `ghostex github-account use <login> [--this-worktree]` switches from the
-command line. A session already running sees a switch on its next `gh` or
-`git` call. This works the same on macOS, Linux, WSL and native Windows
-(PowerShell, cmd and the Git Bash agents run commands in). Repositories cloned
-over SSH keep using your SSH keys.
+CLI once with `gh auth login` (no tokens to create), on github.com or a GitHub
+Enterprise host. With two or more accounts signed in on a repository's host,
+Ghostex picks one for each worktree (the main checkout included), and that
+worktree's agents, `gh` commands, `git push` and `git fetch` (over HTTPS, or
+over SSH with the account's own key), the commits made there (author name and
+email) and its PR and issue status all use it, even while agents in other
+worktrees use other accounts. Cloning in Add Project uses the account picked
+for the repository's owner too. Ghostex picks the account remembered for the
+repository's owner, else the account named like the owner, else it asks GitHub
+which of your accounts can reach the repository (one that can push wins) and
+remembers the answer for that owner. To change it, right-click the project (or
+open its header's "…" menu) and choose GitHub Account, run `gh auth switch` in
+the worktree's terminal, or ask the agent to: it switches that worktree only,
+and new worktrees of the same owner use the new account too. A session already
+running sees a switch on its next `gh`, `git` or `ssh` call; a session that was
+started before Ghostex had this needs a restart. Commits use the account's
+public name and email (its private GitHub `noreply` address when the email is
+hidden); `ghostex github-account identity <login> --name … --email …` changes
+them. For SSH remotes Ghostex finds which of your SSH keys (in `~/.ssh` or the
+SSH agent) signs in as which account; `ghostex github-account ssh-key <login>
+<key file>` sets one by hand. `ghostex github-account status` shows which
+account a folder uses and why, `ghostex github-account list` lists your
+accounts with their commit identity and SSH key and the remembered owners, and
+`ghostex github-account use <login> [--this-worktree]` switches from the command
+line. This works the same on macOS, Linux, WSL and native Windows (PowerShell,
+cmd and the Git Bash agents run commands in). Remotes reached through an SSH
+host alias (`github-work:owner/repo`) keep the identity your SSH config gives
+them.
 
 Work mode links a project's sessions to the work they belong to. It comes with
 Workspaces: turn Workspaces on in Settings > Extensions (Features) first; while

@@ -60,6 +60,7 @@ pub(crate) struct ProjectContextInput {
     pub(crate) work_mode: bool,
     pub(crate) work_linear: bool,
     pub(crate) work_github: bool,
+    pub(crate) github_account: Option<ghostex_gx_protocol::PresentationGithubAccount>,
 }
 
 /// Who is focused right now, in the vocabulary the rows compare against.
@@ -224,6 +225,7 @@ pub(crate) fn build_group(
             work_mode: project.work_mode,
             work_linear: project.work_linear,
             work_github: project.work_github,
+            github_account: project.github_account.clone(),
         }),
         summary,
         collapsed: ui.collapse.collapsed_groups.contains(&plan.group_id),

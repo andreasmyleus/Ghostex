@@ -344,6 +344,10 @@ pub(crate) fn spawn_session_git_status_refresh_task(
                 if let Err(error) = run_project_icon_refresh_once(&pass_state) {
                     log_project_icon_refresh_failure(&pass_state, &error.message);
                 }
+                // Each worktree's GitHub account (CDXC:GitHubAccounts): file reads per pass, git only every ten minutes.
+                if let Err(error) = run_project_github_account_refresh_once(&pass_state) {
+                    log_project_icon_refresh_failure(&pass_state, &error.message);
+                }
                 // Work mode's Linear and `gh` status rides right after the git pass, which it reads.
                 if let Err(error) = super::work_mode_sync::run_work_mode_refresh_once(&pass_state) {
                     super::work_mode_sync::log_work_mode_refresh_failure(
@@ -577,6 +581,58 @@ pub(crate) fn run_project_git_remote_refresh_once(
             continue;
         };
         schedule_presentation_project_delta(state, &db, &repository, project_id, "projectUpdated")?;
+    }
+    Ok(())
+}
+
+/// Refreshes each published project's GitHub account and sends a project delta
+/// for those whose account or account list changed.
+pub(crate) fn run_project_github_account_refresh_once(
+    state: &Arc<AppState>,
+) -> std::result::Result<(), DomainStateError> {
+    refresh_project_github_account_paths(state, None)
+}
+
+/// The same pass for the given project paths only, with their repository facts
+/// re-read (after a switch from the app).
+pub(crate) fn refresh_project_github_account_paths(
+    state: &Arc<AppState>,
+    only: Option<&[String]>,
+) -> std::result::Result<(), DomainStateError> {
+    let db = open_gxserver_database(&state.paths).map_err(|error| DomainStateError {
+        code: "internalError",
+        message: format!("SQLite gxserver state error: {error}"),
+    })?;
+    let repository = DomainRepository::new(&db, state.metadata.server_id.as_str());
+    let projects = repository.list_projects()?;
+    let published: Vec<(&str, String)> = projects
+        .iter()
+        .filter(|project| crate::presentation::should_include_presentation_project(project))
+        .filter_map(|project| {
+            Some((
+                project.get("projectId").and_then(Value::as_str)?,
+                project.get("path").and_then(Value::as_str)?.to_string(),
+            ))
+        })
+        .filter(|(_, path)| only.is_none_or(|only| only.contains(path)))
+        .collect();
+    let mut paths: Vec<String> = published.iter().map(|(_, path)| path.clone()).collect();
+    paths.sort();
+    paths.dedup();
+    let changed: HashSet<String> =
+        crate::github_accounts::refresh_project_github_accounts(&paths, only.is_some())
+            .into_iter()
+            .collect();
+    for (project_id, path) in &published {
+        if changed.contains(path) {
+            schedule_presentation_project_delta(
+                state,
+                &db,
+                &repository,
+                project_id,
+                "projectUpdated",
+            )?;
+        }
     }
     Ok(())
 }

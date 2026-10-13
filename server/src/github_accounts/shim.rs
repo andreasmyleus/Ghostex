@@ -106,9 +106,11 @@ if [ -z "$ghostex_real_gh" ]; then
   exit 127
 fi
 ghostex_login=
+ghostex_host=
 if [ -n "${{GHOSTEX_GITHUB_ACCOUNT_FILE:-}}" ] && [ -r "$GHOSTEX_GITHUB_ACCOUNT_FILE" ]; then
-  IFS= read -r ghostex_login < "$GHOSTEX_GITHUB_ACCOUNT_FILE" || :
+  {{ IFS= read -r ghostex_login; IFS= read -r ghostex_host; }} < "$GHOSTEX_GITHUB_ACCOUNT_FILE" || :
 fi
+[ -n "$ghostex_host" ] || ghostex_host=github.com
 if [ -z "$ghostex_login" ]; then
   exec "$ghostex_real_gh" "$@"
 fi
@@ -127,17 +129,22 @@ if [ "${{1:-}}" = auth ]; then
       exit 1
       ;;
     login|logout|refresh|setup-git)
-      exec env -u GH_TOKEN -u GITHUB_TOKEN "$ghostex_real_gh" "$@"
+      exec env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN "$ghostex_real_gh" "$@"
       ;;
   esac
 fi
-ghostex_token=$(env -u GH_TOKEN -u GITHUB_TOKEN "$ghostex_real_gh" auth token --hostname github.com --user "$ghostex_login" 2>/dev/null)
+ghostex_token=$(env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u GH_HOST "$ghostex_real_gh" auth token --hostname "$ghostex_host" --user "$ghostex_login" 2>/dev/null)
 if [ -z "$ghostex_token" ]; then
   printf 'Ghostex: the GitHub account %s is not signed in to gh, so gh uses its active account. Sign it in with: gh auth login\n' "$ghostex_login" >&2
   exec "$ghostex_real_gh" "$@"
 fi
-GH_TOKEN=$ghostex_token
-export GH_TOKEN
+if [ "$ghostex_host" = github.com ]; then
+  GH_TOKEN=$ghostex_token
+  export GH_TOKEN
+else
+  GH_ENTERPRISE_TOKEN=$ghostex_token
+  export GH_ENTERPRISE_TOKEN
+fi
 unset ghostex_token
 exec "$ghostex_real_gh" "$@"
 "#,

@@ -1,23 +1,32 @@
+use std::path::{Path, PathBuf};
+
 use serde_json::json;
 
 use crate::ghostex_cli::output::{cli_args_want_json, print_json};
 use crate::ghostex_cli::rpc::{CliError, CliResult};
-use crate::github_accounts::{self, GITHUB_HOST};
+use crate::github_accounts;
 
 const USAGE: &str = "Ghostex GitHub accounts - which of your gh accounts each worktree uses
 
 Ghostex picks the account by itself when more than one account is signed in to
-gh (`gh auth login`) and the repository's origin is on github.com. Inside a
-Ghostex session, `gh auth switch` switches the current worktree only.
+gh (`gh auth login`) on the repository's GitHub host (github.com or a GitHub
+Enterprise host). Inside a Ghostex session, `gh auth switch` switches the
+current worktree only.
 
 Usage:
   ghostex github-account status [--cwd <folder>] [--json]
       Show the account the folder's worktree uses and why
   ghostex github-account list [--json]
-      List your gh accounts and the account remembered for each owner
+      List your gh accounts, their commit identity and SSH key, and the account
+      remembered for each owner
   ghostex github-account use [<login>] [--cwd <folder>] [--this-worktree]
       Switch the worktree to <login> (no login: the next account), and remember
-      it for the repository's owner unless --this-worktree is given";
+      it for the repository's owner unless --this-worktree is given
+  ghostex github-account identity <login> [--name <name>] [--email <email>] [--host <host>]
+      Show or set the name and email commits made as <login> use
+  ghostex github-account ssh-key <login> [<key file>] [--host <host>]
+      Show or set the SSH key that signs in as <login>; with no key file and
+      no key saved, Ghostex looks for it among your SSH keys";
 
 pub fn github_account_command(args: &[String]) -> CliResult<()> {
     let subcommand = args.first().map(String::as_str).unwrap_or("status");
@@ -36,6 +45,8 @@ pub fn github_account_command(args: &[String]) -> CliResult<()> {
         "status" => status(rest),
         "list" => list(rest),
         "use" => use_command(rest),
+        "identity" => identity_command(rest),
+        "ssh-key" => ssh_key_command(rest),
         // Undocumented: prints what a session started in the folder would export.
         "session-env" => {
             print!(
@@ -92,83 +103,131 @@ fn cwd_from(args: &[String]) -> CliResult<String> {
     }
 }
 
+fn host_from(args: &[String]) -> String {
+    option_value(args, "--host")
+        .map(|host| host.to_ascii_lowercase())
+        .unwrap_or_else(|| github_accounts::GITHUB_HOST.to_string())
+}
+
 fn status(args: &[String]) -> CliResult<()> {
     let cwd = cwd_from(args)?;
-    let accounts = github_accounts::global_accounts();
     let account = github_accounts::settled_account_for_cwd(&cwd);
     if cli_args_want_json(args) {
         print_json(&match &account {
             Some(account) => json!({
                 "ok": true,
                 "login": account.login,
+                "host": account.repo.remote.host,
                 "reason": account.source.describe(),
-                "repository": format!("{}/{}", account.repo.owner, account.repo.name),
+                "source": account.source.as_wire(),
+                "repository": format!("{}/{}", account.repo.remote.owner, account.repo.remote.name),
                 "worktree": account.repo.root,
                 "accounts": account.accounts.logins,
             }),
-            None => json!({ "ok": true, "login": null, "accounts": accounts.logins }),
+            None => json!({
+                "ok": true,
+                "login": null,
+                "accounts": github_accounts::global_accounts().logins,
+                "reason": inactive_reason(&cwd),
+            }),
         });
         return Ok(());
     }
     match account {
         Some(account) => println!(
-            "{}/{} in {} uses {} ({}).",
-            account.repo.owner,
-            account.repo.name,
+            "{}/{} in {} uses {} on {} ({}).",
+            account.repo.remote.owner,
+            account.repo.remote.name,
             account.repo.root.display(),
             account.login,
+            account.repo.remote.host,
             account.source.describe()
         ),
-        None => println!("{}", inactive_reason(&cwd, &accounts)),
+        None => println!("{}", inactive_reason(&cwd)),
     }
     Ok(())
 }
 
-fn inactive_reason(cwd: &str, accounts: &github_accounts::GhAccounts) -> String {
-    if accounts.logins.len() < 2 {
-        return "Ghostex chooses GitHub accounts once two or more accounts are signed in to gh. Add one with: gh auth login".to_string();
-    }
-    if github_accounts::repo_for_cwd(cwd).is_none() {
-        return "This folder is not in a git checkout whose origin is on github.com, so gh and git use their usual login here.".to_string();
-    }
-    "Ghostex is not choosing a GitHub account here.".to_string()
+fn inactive_reason(cwd: &str) -> String {
+    let Some(worktree) = github_accounts::github_worktree_for_cwd(cwd) else {
+        if github_accounts::repo_for_cwd(cwd).is_some() {
+            return "No account is signed in to gh for this repository's host. Sign in with: gh auth login".to_string();
+        }
+        return "This folder is not in a git checkout whose origin is on a GitHub host, so gh and git use their usual login here.".to_string();
+    };
+    format!(
+        "Ghostex chooses GitHub accounts once two or more accounts are signed in to gh on {}. Add one with: gh auth login --hostname {}",
+        worktree.repo.remote.host, worktree.repo.remote.host
+    )
 }
 
 fn list(args: &[String]) -> CliResult<()> {
-    let accounts = github_accounts::global_accounts();
+    let hosts = github_accounts::global_hosts();
     let owners = github_accounts::owner_logins();
+    let describe = |host: &str, login: &str| {
+        let identity = github_accounts::read_identity(host, login).map(|(identity, custom)| {
+            json!({ "name": identity.name, "email": identity.email, "custom": custom })
+        });
+        let key = github_accounts::account_key(host, login);
+        (identity, key)
+    };
     if cli_args_want_json(args) {
-        print_json(&json!({
-            "ok": true,
-            "accounts": accounts.logins,
-            "ghActive": accounts.active,
-            "owners": owners,
-        }));
+        let hosts_json: serde_json::Map<String, serde_json::Value> = hosts
+            .iter()
+            .map(|(host, accounts)| {
+                let logins: Vec<serde_json::Value> = accounts
+                    .logins
+                    .iter()
+                    .map(|login| {
+                        let (identity, key) = describe(host, login);
+                        json!({ "login": login, "identity": identity, "sshKey": key })
+                    })
+                    .collect();
+                (
+                    host.clone(),
+                    json!({ "accounts": logins, "ghActive": accounts.active }),
+                )
+            })
+            .collect();
+        print_json(&json!({ "ok": true, "hosts": hosts_json, "owners": owners }));
         return Ok(());
     }
-    if accounts.logins.is_empty() {
+    if hosts.is_empty() {
         println!("No GitHub account is signed in to gh. Sign in with: gh auth login");
         return Ok(());
     }
-    println!("GitHub accounts signed in to gh:");
-    for login in &accounts.logins {
-        let active = accounts
-            .active
-            .as_deref()
-            .is_some_and(|active| active.eq_ignore_ascii_case(login));
-        println!(
-            "  {login}{}",
-            if active {
-                "  (gh's active account)"
-            } else {
-                ""
+    for (host, accounts) in &hosts {
+        println!("GitHub accounts signed in to gh on {host}:");
+        for login in &accounts.logins {
+            let active = accounts
+                .active
+                .as_deref()
+                .is_some_and(|active| active.eq_ignore_ascii_case(login));
+            println!(
+                "  {login}{}",
+                if active {
+                    "  (gh's active account)"
+                } else {
+                    ""
+                }
+            );
+            let (identity, key) = describe(host, login);
+            if let Some(identity) = identity {
+                println!(
+                    "      commits as {} <{}>",
+                    identity["name"].as_str().unwrap_or_default(),
+                    identity["email"].as_str().unwrap_or_default()
+                );
             }
-        );
+            if let Some(key) = key {
+                println!("      SSH key {}", key.display());
+            }
+        }
     }
     if !owners.is_empty() {
         println!("\nRemembered for repository owners:");
         for (owner, login) in &owners {
-            println!("  {owner:<24} {login}");
+            println!("  {owner:<32} {login}");
         }
     }
     Ok(())
@@ -184,17 +243,11 @@ fn use_command(args: &[String]) -> CliResult<()> {
 /// Changes the account of the worktree that holds `cwd`. Without a login it
 /// moves to the next account, as `gh auth switch` does with two accounts.
 fn switch_worktree(cwd: &str, login: Option<&str>, remember_owner: bool) -> CliResult<()> {
-    let accounts = github_accounts::global_accounts();
     let Some(current) = github_accounts::account_for_cwd(cwd) else {
-        return Err(CliError::Other(inactive_reason(cwd, &accounts)));
+        return Err(CliError::Other(inactive_reason(cwd)));
     };
     let target = match login {
-        Some(login) => current.accounts.find(login).cloned().ok_or_else(|| {
-            CliError::Other(format!(
-                "{login} is not signed in to gh. Signed in: {}. Add it with: gh auth login",
-                current.accounts.logins.join(", ")
-            ))
-        })?,
+        Some(login) => login.to_string(),
         None => {
             let logins = &current.accounts.logins;
             let index = logins
@@ -205,26 +258,96 @@ fn switch_worktree(cwd: &str, login: Option<&str>, remember_owner: bool) -> CliR
             logins[index].clone()
         }
     };
-    github_accounts::write_worktree_login(&current.file, &target).map_err(|error| {
-        CliError::Other(format!(
-            "Could not save the worktree's GitHub account: {error}"
-        ))
-    })?;
+    let account = github_accounts::choose_account_for_cwd(cwd, &target, remember_owner)
+        .map_err(CliError::Other)?;
     println!(
-        "✓ Switched the GitHub account for this worktree ({}) to {target}",
-        current.repo.root.display()
+        "✓ Switched the GitHub account for this worktree ({}) to {}",
+        account.repo.root.display(),
+        account.login
     );
     if remember_owner {
-        github_accounts::set_owner_login(&current.repo.owner, &target).map_err(|error| {
-            CliError::Other(format!(
-                "Could not remember the account for {}: {error}",
-                current.repo.owner
-            ))
-        })?;
         println!(
-            "  New worktrees of {} repositories will use {target} too.",
-            current.repo.owner
+            "  New worktrees of {} repositories will use {} too.",
+            account.repo.remote.owner, account.login
         );
+    }
+    Ok(())
+}
+
+fn identity_command(args: &[String]) -> CliResult<()> {
+    let host = host_from(args);
+    let login = positionals(args, &["--name", "--email", "--host"])
+        .into_iter()
+        .next()
+        .ok_or_else(|| CliError::Other(USAGE.to_string()))?;
+    let name = option_value(args, "--name");
+    let email = option_value(args, "--email");
+    if name.is_none() && email.is_none() {
+        match github_accounts::read_identity(&host, &login) {
+            Some((identity, custom)) => println!(
+                "{login} commits as {} <{}>{}",
+                identity.name,
+                identity.email,
+                if custom { " (set by you)" } else { "" }
+            ),
+            None => match github_accounts::fetch_identity(&host, &login) {
+                Some(identity) => {
+                    let _ = github_accounts::write_identity(&host, &login, &identity, false);
+                    println!("{login} commits as {} <{}>", identity.name, identity.email);
+                }
+                None => println!("Ghostex could not read {login}'s name and email from GitHub. Set them with --name and --email."),
+            },
+        }
+        return Ok(());
+    }
+    let current = github_accounts::read_identity(&host, &login).map(|(identity, _)| identity);
+    let identity = github_accounts::Identity {
+        name: name
+            .or_else(|| current.as_ref().map(|identity| identity.name.clone()))
+            .unwrap_or_else(|| login.clone()),
+        email: email
+            .or_else(|| current.as_ref().map(|identity| identity.email.clone()))
+            .ok_or_else(|| CliError::Other("Pass --email as well.".to_string()))?,
+    };
+    github_accounts::write_identity(&host, &login, &identity, true)
+        .map_err(|error| CliError::Other(format!("Could not save the identity: {error}")))?;
+    println!(
+        "✓ Commits made as {login} use {} <{}>",
+        identity.name, identity.email
+    );
+    Ok(())
+}
+
+fn ssh_key_command(args: &[String]) -> CliResult<()> {
+    let host = host_from(args);
+    let mut values = positionals(args, &["--host"]).into_iter();
+    let login = values
+        .next()
+        .ok_or_else(|| CliError::Other(USAGE.to_string()))?;
+    if let Some(key) = values.next() {
+        let key = PathBuf::from(key);
+        if !key.is_file() {
+            return Err(CliError::Other(format!("{} is not a file.", key.display())));
+        }
+        github_accounts::set_account_key(&host, &login, &key)
+            .map_err(|error| CliError::Other(format!("Could not save the SSH key: {error}")))?;
+        println!(
+            "✓ SSH connections to {host} as {login} use {}",
+            key.display()
+        );
+        return Ok(());
+    }
+    if let Some(key) = github_accounts::account_key(&host, &login) {
+        println!("{login} on {host} signs in with {}", key.display());
+        return Ok(());
+    }
+    let accounts = github_accounts::global_hosts()
+        .remove(&host)
+        .unwrap_or_default();
+    github_accounts::discover_keys(&host, &accounts);
+    match github_accounts::account_key(&host, &login) {
+        Some(key) => println!("✓ Found the SSH key for {login}: {}", key.display()),
+        None => println!("None of your SSH keys signs in to {host} as {login}. Pass one: ghostex github-account ssh-key {login} <key file>"),
     }
     Ok(())
 }
@@ -234,30 +357,42 @@ fn switch_worktree(cwd: &str, login: Option<&str>, remember_owner: bool) -> CliR
 fn gh_switch(args: &[String]) -> CliResult<()> {
     let user = option_value(args, "--user").or_else(|| option_value(args, "-u"));
     let host = option_value(args, "--hostname").or_else(|| option_value(args, "-h"));
+    let cwd = cwd_from(&[])?;
+    let worktree_host =
+        github_accounts::github_worktree_for_cwd(&cwd).map(|worktree| worktree.repo.remote.host);
     if host
         .as_deref()
-        .is_some_and(|host| !host.eq_ignore_ascii_case(GITHUB_HOST))
+        .is_some_and(|host| Some(host.to_ascii_lowercase()) != worktree_host)
     {
         return run_real_gh_switch(args);
     }
-    let cwd = cwd_from(&[])?;
     switch_worktree(&cwd, user.as_deref(), true)
 }
 
 fn run_real_gh_switch(args: &[String]) -> CliResult<()> {
     let real_gh = std::env::var_os("GHOSTEX_GITHUB_REAL_GH")
-        .map(std::path::PathBuf::from)
+        .map(PathBuf::from)
         .or_else(github_accounts::real_gh_path)
         .ok_or_else(|| CliError::Other("gh: command not found".to_string()))?;
-    let status = std::process::Command::new(real_gh)
-        .args(["auth", "switch"])
-        .args(args)
-        .env_remove("GH_TOKEN")
-        .env_remove("GITHUB_TOKEN")
+    let mut command = std::process::Command::new(real_gh);
+    command.args(["auth", "switch"]).args(args);
+    remove_token_env(&mut command);
+    let status = command
         .status()
         .map_err(|error| CliError::Other(format!("Could not run gh: {error}")))?;
     crate::ghostex_cli::set_exit_code(status.code().unwrap_or(1));
     Ok(())
+}
+
+fn remove_token_env(command: &mut std::process::Command) {
+    for key in [
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+    ] {
+        command.env_remove(key);
+    }
 }
 
 /// `gh` inside a native Windows session (`gh.cmd` and the Git Bash `gh` call
@@ -267,9 +402,9 @@ fn run_real_gh_switch(args: &[String]) -> CliResult<()> {
 fn gh_shim(args: &[String]) -> CliResult<()> {
     let real_gh = github_accounts::real_gh_for_shim()
         .ok_or_else(|| CliError::Other("gh: command not found".to_string()))?;
-    let login = std::env::var_os("GHOSTEX_GITHUB_ACCOUNT_FILE")
-        .and_then(|file| github_accounts::read_worktree_login(std::path::Path::new(&file)));
-    let Some(login) = login else {
+    let record = std::env::var_os("GHOSTEX_GITHUB_ACCOUNT_FILE")
+        .and_then(|file| github_accounts::read_worktree_record(Path::new(&file)));
+    let Some(record) = record else {
         return run_gh(&real_gh, args, GhToken::Inherit);
     };
     match (
@@ -283,10 +418,14 @@ fn gh_shim(args: &[String]) -> CliResult<()> {
         (Some("auth"), Some("login" | "logout" | "refresh" | "setup-git")) => {
             run_gh(&real_gh, args, GhToken::Remove)
         }
-        _ => match github_accounts::token_for(&login) {
-            Some(token) => run_gh(&real_gh, args, GhToken::Set(token)),
+        _ => match github_accounts::token_for(&record.host, &record.login) {
+            Some(token) => run_gh(
+                &real_gh,
+                args,
+                GhToken::Set(github_accounts::token_env_key(&record.host), token),
+            ),
             None => {
-                eprintln!("Ghostex: the GitHub account {login} is not signed in to gh, so gh uses its active account. Sign it in with: gh auth login");
+                eprintln!("Ghostex: the GitHub account {} is not signed in to gh, so gh uses its active account. Sign it in with: gh auth login", record.login);
                 run_gh(&real_gh, args, GhToken::Inherit)
             }
         },
@@ -296,19 +435,17 @@ fn gh_shim(args: &[String]) -> CliResult<()> {
 enum GhToken {
     Inherit,
     Remove,
-    Set(String),
+    Set(&'static str, String),
 }
 
-fn run_gh(real_gh: &std::path::Path, args: &[String], token: GhToken) -> CliResult<()> {
+fn run_gh(real_gh: &Path, args: &[String], token: GhToken) -> CliResult<()> {
     let mut command = std::process::Command::new(real_gh);
     command.args(args);
     match token {
         GhToken::Inherit => {}
-        GhToken::Remove => {
-            command.env_remove("GH_TOKEN").env_remove("GITHUB_TOKEN");
-        }
-        GhToken::Set(token) => {
-            command.env("GH_TOKEN", token);
+        GhToken::Remove => remove_token_env(&mut command),
+        GhToken::Set(key, token) => {
+            command.env(key, token);
         }
     }
     #[cfg(unix)]

@@ -63,6 +63,7 @@ mod sidebar_snapshot;
 pub(crate) mod terminal_lifecycle;
 mod web_commands;
 mod work_links;
+mod github_account;
 mod work_mode;
 mod workspaces;
 mod workspace_groups;

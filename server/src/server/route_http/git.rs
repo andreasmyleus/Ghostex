@@ -20,6 +20,15 @@ pub(super) async fn route_git_http(
         | "/api/runBeadsAction" => {
             handle_typed_operation_http(&state, endpoint.path, request_id, &body_json).await
         }
+        "/api/setProjectGithubAccount" => {
+            github_account_http::handle_set_project_github_account_http(
+                &state,
+                endpoint.path,
+                request_id,
+                &body_json,
+            )
+            .await
+        }
         "/api/startBoardWork" => {
             handle_board_start_work_http(&state, endpoint.path, request_id, &body_json).await
         }

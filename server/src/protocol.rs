@@ -726,6 +726,8 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         session's links like any other session metadata; both take opaque project and session ids.
         */
         | "/api/setProjectWorkMode"
+        // The sidebar's GitHub Account menu switches a project's worktree account on the machine that owns it (CDXC:GitHubAccounts); it takes an opaque project id and a login.
+        | "/api/setProjectGithubAccount"
         | "/api/setSessionWorkLinks"
         // The Link to picker's suggestions and the merged-PR Clean up / Keep answer act on one
         // session by its ids, like the links themselves.

@@ -220,6 +220,26 @@ pub struct PresentationProject {
         skip_serializing_if = "is_false"
     )]
     pub every_workspace: bool,
+    /// The GitHub account this project's worktree runs as and the accounts it can switch to
+    /// (server/src/github_accounts/). Present only when gh has two or more accounts on the
+    /// repository's host; absent from an older daemon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_account: Option<PresentationGithubAccount>,
+}
+
+/// A project's GitHub account, as the sidebar's GitHub Account menu shows it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresentationGithubAccount {
+    #[serde(default, deserialize_with = "crate::de::null_as_default")]
+    pub login: String,
+    #[serde(default, deserialize_with = "crate::de::null_as_default")]
+    pub accounts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// `worktree`, `owner`, `ownerName` or `ghActive` (still checking).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 impl PresentationProject {

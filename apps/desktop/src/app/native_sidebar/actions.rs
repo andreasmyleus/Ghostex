@@ -152,6 +152,10 @@ impl GhostexGpuiApp {
         if self.gx_store_run_work_mode(&command, cx) {
             return;
         }
+        // A project's GitHub Account rows (gx_store/github_account.rs).
+        if self.gx_store_run_github_account(&command, cx) {
+            return;
+        }
         // The workspace tile's menu and a project's Move to workspace (gx_store/workspaces.rs).
         if self.gx_store_run_workspaces(&command, cx) {
             return;

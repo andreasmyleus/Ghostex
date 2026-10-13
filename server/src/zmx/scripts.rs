@@ -350,7 +350,7 @@ pub(crate) fn build_zmx_shell_provider_command(input: ZmxShellProviderCommandInp
     let provider_shell_command = format!(
         "{}\n{}",
         zmx_provider_prompt_editor_setup_shell_command(input.prompt_editor.as_deref()),
-        user_login_shell_exec_command()
+        shell_provider_exec_command(&input.cwd)
     );
     format_zmx_provider_run_script(
         &input.session_name,
@@ -364,6 +364,38 @@ pub(crate) fn build_zmx_shell_provider_command(input: ZmxShellProviderCommandInp
         "zmx_shell_command",
         &input.zmx_executable_path,
     )
+}
+
+/// The login shell a plain terminal session runs. In a GitHub worktree it puts
+/// the gh shim first on PATH again once the user's profiles have run, so a `gh`
+/// typed by hand uses the worktree's account even when a profile (Homebrew's
+/// `shellenv`) put another gh first; zsh and fish do this, other shells keep
+/// the PATH the start script exported.
+#[cfg(not(windows))]
+fn shell_provider_exec_command(cwd: &str) -> String {
+    let Some(shim_dir) = crate::github_accounts::session_shim_dir(cwd) else {
+        return user_login_shell_exec_command();
+    };
+    let login_shell = user_login_shell_path();
+    match std::path::Path::new(&login_shell)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+    {
+        "zsh" => super::zsh_startup::agent_shell_command(
+            &login_shell,
+            &format!("export PATH={}:\"$PATH\"", shell_quote(&shim_dir)),
+        ),
+        "fish" => format!(
+            "exec {} -l -i -C {}",
+            shell_quote(&login_shell),
+            shell_quote(&format!(
+                "set -gx PATH '{}' $PATH",
+                shim_dir.replace('\\', "\\\\").replace('\'', "\\'")
+            ))
+        ),
+        _ => user_login_shell_exec_command(),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
