@@ -57,7 +57,7 @@ impl GhostexGpuiApp {
                         items.push(json!({"separator": true}));
                         items.push(json!({"label": "Configure Machines", "icon": "settings", "command": {"type": "machineAction", "action": "configure", "machineId": menu_id}}));
                         let items = serde_json::Value::Array(items);
-                        Self::show_native_sidebar_menu_hung(&items, menu_owner.get(), None, event.position, scale, window, cx);
+                        Self::show_native_sidebar_context_menu(&items, menu_owner.get(), event.position, scale, window, cx);
                     }))
             })).into_any_element())
     }

@@ -77,6 +77,7 @@ impl GhostexGpuiApp {
             Self::show_native_sidebar_menu_hung(
                 &menu,
                 menu_owner.get(),
+                None,
                 Some((
                     "workspace-tile".to_owned(),
                     super::menus::press_position(event),

@@ -8,11 +8,14 @@ pub(crate) enum SidebarMenuPlacement {
     /// from (a right-click on the list's empty space).
     #[default]
     Pointer,
-    /// Hung from what opened it, a sidebar row or a button (`owner`): `gap` below it with its left
-    /// edge (or, with `align_right`, its right edge) on the owner's, and above it instead when the
-    /// sidebar has no room below.
+    /// Hung from what opened it, a sidebar row or a button (`owner`): `gap` below it, and above it
+    /// instead when the sidebar has no room below. Across, its left edge (or, with `align_right`,
+    /// its right edge) is on `from`'s: the button that opened it, a zero-width span at a
+    /// right-click's pointer, or the owner itself; the other edge of `from` when that side runs
+    /// out of sidebar.
     Attached {
         owner: Bounds<Pixels>,
+        from: Bounds<Pixels>,
         align_right: bool,
         gap: Pixels,
     },
@@ -154,16 +157,23 @@ impl SidebarMenuPanel {
             .min((sidebar.size.height - margin * 2.0).max(gpui::px(0.0)));
         if let SidebarMenuPlacement::Attached {
             owner,
+            from,
             align_right,
             gap,
         } = self.placement
         {
             // No margin against the sidebar's sides: the owner sits inside them, and the panel's
             // edge has to meet the owner's exactly.
-            let left = if align_right {
-                owner.right() - width
+            let fits = |left: Pixels| left >= sidebar.left() && left + width <= sidebar.right();
+            let (preferred, flipped) = if align_right {
+                (from.right() - width, from.left())
             } else {
-                owner.left()
+                (from.left(), from.right() - width)
+            };
+            let left = if fits(preferred) || !fits(flipped) {
+                preferred
+            } else {
+                flipped
             }
             .min(sidebar.right() - width)
             .max(sidebar.left());

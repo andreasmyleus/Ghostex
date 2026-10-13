@@ -221,6 +221,7 @@ impl GhostexGpuiApp {
                             let command = item.get("command").cloned();
                             let children = item.get("children").cloned();
                             let header_bounds = header_bounds.clone();
+                            let button_owner = super::menus::MenuOwner::default();
                             let trigger_id = format!("project:{id}:{label}");
                             // CDXC:AgentLauncher 2026-09-18 DECISION:
                             // User: no gap between the last-used agent button and the Select agent chevron; the two halves join into one split button like the React header (24px action, 17px chevron, only the outer corners rounded).
@@ -243,6 +244,7 @@ impl GhostexGpuiApp {
                                     .into_any_element(),
                             };
                             div()
+                                .on_prepaint(super::menus::record_menu_owner(&button_owner))
                                 .id(format!("native-project-action-{id}-{index}"))
                                 .role(gpui::Role::Button)
                                 .aria_label(label.clone())
@@ -294,6 +296,7 @@ impl GhostexGpuiApp {
                                             Self::show_native_sidebar_menu_hung(
                                                 children,
                                                 header_bounds.get(),
+                                                button_owner.get(),
                                                 Some((
                                                     trigger_id.clone(),
                                                     super::menus::press_position(event),
@@ -313,10 +316,9 @@ impl GhostexGpuiApp {
             })
             .on_mouse_down(MouseButton::Right, move |event, window, cx| {
                 cx.stop_propagation();
-                Self::show_native_sidebar_menu_hung(
+                Self::show_native_sidebar_context_menu(
                     &menu,
                     header_bounds.get(),
-                    None,
                     event.position,
                     scale,
                     window,

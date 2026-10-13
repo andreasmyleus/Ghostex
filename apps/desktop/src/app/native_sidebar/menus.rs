@@ -21,6 +21,9 @@ pub(crate) const SIDEBAR_MORE_TRIGGER: &str = "sidebar-more";
 pub(crate) struct SidebarMenuOpener {
     /// The row or button the menu opens from; it stays uncovered.
     pub(crate) owner: Bounds<Pixels>,
+    /// What the menu lines up with across: the owner, the button inside it that opened the menu,
+    /// or a zero-width span at a right-click's pointer.
+    pub(crate) from: Bounds<Pixels>,
     /// Line the menu's right edge up with the owner's instead of its left edge.
     pub(crate) align_right: bool,
     /// The gap to the owner, unscaled.
@@ -38,11 +41,31 @@ impl SidebarMenuOpener {
     pub(crate) fn below(owner: Bounds<Pixels>) -> Self {
         Self {
             owner,
+            from: owner,
             align_right: false,
             gap: SIDEBAR_MENU_OWNER_GAP,
             trigger: None,
             press: None,
         }
+    }
+
+    /// The same, lined up with `button`, a button inside the owner: its left edge on the button's,
+    /// or its right edge when the button sits in the owner's right half.
+    pub(crate) fn from_button(mut self, button: Bounds<Pixels>) -> Self {
+        self.align_right = button.center().x > self.owner.center().x;
+        self.from = button;
+        self
+    }
+
+    /// The same, with its left edge at a right-click's pointer (its right edge there when the
+    /// sidebar has no room to the pointer's right).
+    pub(crate) fn at_pointer(mut self, pointer: Point<Pixels>) -> Self {
+        self.align_right = false;
+        self.from = Bounds {
+            origin: Point::new(pointer.x, self.owner.top()),
+            size: gpui::size(px(0.0), self.owner.size.height),
+        };
+        self
     }
 
     /// The same, toggled by the button `trigger`, opened by the press at `press`.
@@ -96,8 +119,8 @@ impl GhostexGpuiApp {
         );
     }
 
-    /// CDXC:Sidebar 2026-10-11 DECISION:
-    /// User: a menu opened from a sidebar row, such as a session card's tag menu or the project header's new-agent menu, opens 3px below that card, left-aligned with it, never covering it, and above it only when there is no room below; the workspace menu likewise opens above its button, left-aligned, 3px away. Every sidebar menu opened from a row or a button hangs from it this way (the sidebar menu button keeps its 2026-09-21 right-aligned drop). This supersedes centring those menus across the sidebar at the pointer.
+    /// CDXC:Sidebar 2026-10-13 DECISION:
+    /// User: "make the context menus that appear below the session card not appear aligned to the left always, should be related to where the button that spawned them or the right click that i did is". A menu opened from a sidebar row, such as a session card's tag menu or the project header's new-agent menu, still opens 3px below that row, never covering it, and above it only when there is no room below; the workspace menu likewise opens above its button, 3px away. Across, a right-click's menu puts its left edge at the pointer, and a button's menu lines up with that button (its right edge on the button's when the button sits in the row's right half), switching sides or shifting to stay inside the sidebar. The sidebar menu button keeps its 2026-09-21 right-aligned drop. This supersedes the 2026-10-11 rule that left-aligned every such menu with its row.
     /// CDXC:Sidebar 2026-10-11 DECISION:
     /// User: clicking the button that opened a menu while it is open closes it, "as should happen for all menus like this in the app". The outside press dismisses the menu first and records the trigger and where the press went down; the click that same press then makes on the trigger (`press_position`) is the closing half and opens nothing. This supersedes the 2026-09-21 250ms rule that did this for the sidebar menu button alone.
     pub(crate) fn show_native_sidebar_menu_from(
@@ -109,6 +132,7 @@ impl GhostexGpuiApp {
     ) {
         let placement = SidebarMenuPlacement::Attached {
             owner: opener.owner,
+            from: opener.from,
             align_right: opener.align_right,
             gap: px(opener.gap * scale),
         };
@@ -131,6 +155,7 @@ impl GhostexGpuiApp {
             items,
             SidebarMenuOpener {
                 owner: trigger,
+                from: trigger,
                 align_right: true,
                 gap: crate::app::consts::HEADER_MENU_TRIGGER_GAP,
                 trigger: None,
@@ -143,11 +168,35 @@ impl GhostexGpuiApp {
         );
     }
 
+    /// A row's right-click menu: hung below the row (`owner`) when it was painted, its left edge
+    /// at the pointer; else where the pointer is.
+    pub(crate) fn show_native_sidebar_context_menu(
+        items: &Value,
+        owner: Option<Bounds<Pixels>>,
+        pointer: Point<Pixels>,
+        scale: f32,
+        window: &mut Window,
+        cx: &mut gpui::App,
+    ) {
+        match owner {
+            Some(owner) => Self::show_native_sidebar_menu_from(
+                items,
+                SidebarMenuOpener::below(owner).at_pointer(pointer),
+                scale,
+                window,
+                cx,
+            ),
+            None => Self::show_native_sidebar_menu(items, pointer, scale, window, cx),
+        }
+    }
+
     /// A menu hung below `owner` (a row or a button) when it was painted, else where the pointer
-    /// is; `trigger` names the button that toggles it and the press that opened it.
+    /// is; `button` is the button inside the row that opened it, for the menu to line up with,
+    /// and `trigger` names the button that toggles it and the press that opened it.
     pub(crate) fn show_native_sidebar_menu_hung(
         items: &Value,
         owner: Option<Bounds<Pixels>>,
+        button: Option<Bounds<Pixels>>,
         trigger: Option<(String, Option<Point<Pixels>>)>,
         fallback: Point<Pixels>,
         scale: f32,
@@ -157,6 +206,9 @@ impl GhostexGpuiApp {
         match owner {
             Some(owner) => {
                 let mut opener = SidebarMenuOpener::below(owner);
+                if let Some(button) = button {
+                    opener = opener.from_button(button);
+                }
                 if let Some((trigger, press)) = trigger {
                     opener = opener.toggled_by(trigger, press);
                 }

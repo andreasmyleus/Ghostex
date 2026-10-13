@@ -9,7 +9,7 @@ use gpui::{
     div, px,
 };
 use gpui_component::{
-    h_flex,
+    ElementExt as _, h_flex,
     tooltip::{ManagedTooltipExt as _, ManagedTooltipPlacement},
 };
 use serde_json::{Value, json};
@@ -55,7 +55,9 @@ impl GhostexGpuiApp {
                 let storage_id = group.storage_id.clone();
                 let session_id = id.clone();
                 let trigger_label = label.clone();
+                let button_owner = super::menus::MenuOwner::default();
                 div()
+                    .on_prepaint(super::menus::record_menu_owner(&button_owner))
                     .id(format!("native-sidebar-hover-{id}-{index}"))
                     .role(gpui::Role::Button)
                     .aria_label(label.clone())
@@ -110,13 +112,14 @@ impl GhostexGpuiApp {
                                     cx,
                                 );
                             } else if let Some(menu) = &menu {
-                                // The session card's menus hang below the card (menus.rs).
+                                // The session card's menus hang below the card, lined up with this button (menus.rs).
                                 Self::show_native_sidebar_menu_hung(
                                     menu,
                                     app.native_sidebar
                                         .session_card_bounds
                                         .get(&session_id)
                                         .copied(),
+                                    button_owner.get(),
                                     Some((
                                         format!("session:{session_id}:{trigger_label}"),
                                         super::menus::press_position(event),

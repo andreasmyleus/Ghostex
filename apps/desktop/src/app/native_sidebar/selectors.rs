@@ -103,7 +103,7 @@ impl GhostexGpuiApp {
                         let mut items: Vec<_> = hidden.iter().map(|space| json!({"label": space.name, "icon": space.icon, "iconColor": crate::app::window::space_editor_modal::space_display_color(&space.color, light), "checked": space.selected, "command": {"type": "selectSpace", "spaceId": space.id}})).collect();
                         if !items.is_empty() { items.push(json!({"separator": true})); }
                         items.push(json!({"label": "New Space", "icon": "plus", "command": {"type": "editSpace"}}));
-                        Self::show_native_sidebar_menu_hung(&json!(items), more_owner.get(), Some(("more-spaces".to_owned(), super::menus::press_position(event))), event.position(), scale, window, cx);
+                        Self::show_native_sidebar_menu_hung(&json!(items), more_owner.get(), None, Some(("more-spaces".to_owned(), super::menus::press_position(event))), event.position(), scale, window, cx);
                     }))))
                 .when(snapshot.bots_enabled, |row| row.child(self.render_native_sidebar_bots_space_slot(snapshot.bots_mode, appearance, cx)))))
             .into_any_element()
@@ -199,7 +199,7 @@ impl GhostexGpuiApp {
                 items.push(json!({"label": "Sleep", "heading": true}));
                 let plans = app.gx_store_space_sleep_plans(&menu_id);
                 items.push(json!({"label": "Sleep Inactive", "icon": "moon", "disabled": !app.gx_store_space_sleep_has_work(plans.as_ref(), SpaceSleepScope::Inactive), "command": {"type": "sleepSpace", "spaceId": menu_id, "scope": SpaceSleepScope::Inactive.as_str()}}));
-                Self::show_native_sidebar_menu_hung(&json!(items), space_owner.get(), None, event.position, scale, window, cx);
+                Self::show_native_sidebar_context_menu(&json!(items), space_owner.get(), event.position, scale, window, cx);
             }))
             .into_any_element()
     }

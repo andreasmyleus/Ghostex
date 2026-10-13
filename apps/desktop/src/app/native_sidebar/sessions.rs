@@ -214,7 +214,7 @@ impl GhostexGpuiApp {
                 .on_mouse_down(MouseButton::Right, cx.listener(move |app, event: &gpui::MouseDownEvent, window, cx| {
                     cx.stop_propagation();
                     if !selected { app.dispatch_native_sidebar_ui(json!({"type": "selectSession", "mode": "clear", "sessionId": context_id}), cx); }
-                    Self::show_native_sidebar_menu_hung(context_session.details.get("menu").unwrap_or(&Value::Null), app.native_sidebar.session_card_bounds.get(&context_id).copied(), None, event.position, scale, window, cx);
+                    Self::show_native_sidebar_context_menu(context_session.details.get("menu").unwrap_or(&Value::Null), app.native_sidebar.session_card_bounds.get(&context_id).copied(), event.position, scale, window, cx);
                 })))
             .into_any_element()
     }

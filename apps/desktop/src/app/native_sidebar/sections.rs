@@ -144,10 +144,9 @@ impl GhostexGpuiApp {
                     MouseButton::Right,
                     cx.listener(move |_, event: &gpui::MouseDownEvent, window, cx| {
                         cx.stop_propagation();
-                        Self::show_native_sidebar_menu_hung(
+                        Self::show_native_sidebar_context_menu(
                             &menu,
                             menu_owner.get(),
-                            None,
                             event.position,
                             scale,
                             window,
