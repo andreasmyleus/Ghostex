@@ -1763,7 +1763,8 @@ with `mini`, which asks for a task in its terminal, and installs from PyPI with
 folder first when it is missing; `mise use --global pipx:mini-swe-agent` works too).
 Set its model and API key once with `mini-extra config setup`. Agent approvals adds
 `--yolo`, so it runs commands without asking. It works in the terminal only: it has
-no chat view, no hooks, and no resume, so a session that ends starts a fresh run.
+no chat view, no hooks, and no resume, so a run cannot be continued after it ends
+or after Ghostex restarts.
 Agent Hooks let gxserver watch agent status, questions, and
 completions for chat and notifications. Installing the Claude Code hooks also
 sets Claude Code's transcript retention (`cleanupPeriodDays`) so past

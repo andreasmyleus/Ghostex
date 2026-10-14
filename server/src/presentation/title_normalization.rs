@@ -515,6 +515,8 @@ pub(crate) fn is_agent_command_executable_name(value: &str) -> bool {
             | "hermes"
             | "kimi"
             | "kiro-cli"
+            | "mini"
+            | "mini-swe-agent"
             | "omp"
             | "openclaude"
             | "opencode"
