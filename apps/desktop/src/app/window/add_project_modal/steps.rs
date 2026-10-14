@@ -202,6 +202,11 @@ impl GpuiAddProjectModalWindow {
             RowAction::StartClone { machine_id, source } => {
                 self.start_clone_flow(machine_id, source)
             }
+            RowAction::ChooseRepository(name_with_owner) => {
+                self.query = name_with_owner;
+                self.highlight = None;
+                self.submit_repository_step(cx);
+            }
         }
         self.focus_path_input(window, cx);
         self.settle(window, cx);

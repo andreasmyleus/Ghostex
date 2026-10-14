@@ -460,6 +460,12 @@ pub(crate) mod message {
         json!({ "type": "setProjectWorkMode", "projectId": project_id, "enabled": enabled })
     }
 
+    /// Answered by `/api/setProjectGithubAccount` (server/src/github_accounts/): the project's
+    /// worktree runs as `login` from now on, and new worktrees of the repository's owner too.
+    pub(crate) fn set_project_github_account(project_id: &str, login: &str) -> Value {
+        json!({ "type": "setProjectGithubAccount", "projectId": project_id, "login": login })
+    }
+
     pub(crate) fn wake_project_sleeping_sessions(group_id: &str) -> Value {
         json!({ "type": "wakeProjectSleepingSessions", "groupId": group_id })
     }

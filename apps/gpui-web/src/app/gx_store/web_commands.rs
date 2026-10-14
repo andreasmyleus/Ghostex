@@ -132,6 +132,7 @@ impl GhostexGpuiApp {
             || self.web_run_in_box_page(&command, cx)
             || self.gx_store_run_sidebar_git(&command, cx)
             || self.gx_store_run_work_mode(&command, cx)
+            || self.gx_store_run_github_account(&command, cx)
             || self.gx_store_run_work_links(&command, cx)
             || self.gx_store_run_workspaces(&command, cx)
             || self.gx_store_run_sidebar_action(&command, cx)

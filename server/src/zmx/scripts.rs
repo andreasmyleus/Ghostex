@@ -310,7 +310,12 @@ pub(crate) fn build_zmx_run_command(input: ZmxRunCommandInput) -> String {
         with_atuin_ignored_shell_history_prefix(input.startup_text.trim_end_matches(['\r', '\n']));
     let prompt_editor_setup =
         zmx_provider_prompt_editor_setup_shell_command(input.prompt_editor.as_deref());
-    let startup = format!("{}\n{}", prompt_editor_setup, startup_command);
+    let startup = format!(
+        "{}\n{}{}",
+        prompt_editor_setup,
+        crate::github_accounts::session_startup_path_setup(&input.cwd),
+        startup_command
+    );
     let login_shell = user_login_shell_path();
     let login_shell_name = std::path::Path::new(&login_shell)
         .file_name()
@@ -345,7 +350,7 @@ pub(crate) fn build_zmx_shell_provider_command(input: ZmxShellProviderCommandInp
     let provider_shell_command = format!(
         "{}\n{}",
         zmx_provider_prompt_editor_setup_shell_command(input.prompt_editor.as_deref()),
-        user_login_shell_exec_command()
+        shell_provider_exec_command(&input.cwd)
     );
     format_zmx_provider_run_script(
         &input.session_name,
@@ -359,6 +364,38 @@ pub(crate) fn build_zmx_shell_provider_command(input: ZmxShellProviderCommandInp
         "zmx_shell_command",
         &input.zmx_executable_path,
     )
+}
+
+/// The login shell a plain terminal session runs. In a GitHub worktree it puts
+/// the gh shim first on PATH again once the user's profiles have run, so a `gh`
+/// typed by hand uses the worktree's account even when a profile (Homebrew's
+/// `shellenv`) put another gh first; zsh and fish do this, other shells keep
+/// the PATH the start script exported.
+#[cfg(not(windows))]
+fn shell_provider_exec_command(cwd: &str) -> String {
+    let Some(shim_dir) = crate::github_accounts::session_shim_dir(cwd) else {
+        return user_login_shell_exec_command();
+    };
+    let login_shell = user_login_shell_path();
+    match std::path::Path::new(&login_shell)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+    {
+        "zsh" => super::zsh_startup::agent_shell_command(
+            &login_shell,
+            &format!("export PATH={}:\"$PATH\"", shell_quote(&shim_dir)),
+        ),
+        "fish" => format!(
+            "exec {} -l -i -C {}",
+            shell_quote(&login_shell),
+            shell_quote(&format!(
+                "set -gx PATH '{}' $PATH",
+                shim_dir.replace('\\', "\\\\").replace('\'', "\\'")
+            ))
+        ),
+        _ => user_login_shell_exec_command(),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -415,7 +452,7 @@ fi
 if [ -n "$zmx_gxserver_protocol_version" ]; then
   export GHOSTEX_GXSERVER_PROTOCOL_VERSION="$zmx_gxserver_protocol_version"
 fi
-cd "$zmx_cwd" || exit
+{}cd "$zmx_cwd" || exit
 exec "$zmx_bin" run "$zmx_session" -d --initial-command {} {} "{}"
 "#,
         shell_quote(session_name),
@@ -434,6 +471,7 @@ exec "$zmx_bin" run "$zmx_session" -d --initial-command {} {} "{}"
         shell_quote(zmx_executable_path),
         startup_text_guard,
         zmx_session_identity_reset_shell_command(),
+        crate::github_accounts::session_shell_exports(cwd),
         &shell.executable,
         shell.command_flag(true),
         command_arg,
@@ -532,7 +570,7 @@ export VISUAL="$ghostex_prompt_editor_wrapper"
 /// CDXC:PromptEditor 2026-09-24 WHY:
 /// Chat sends reach the agent through its external editor (Ctrl+G), and the `$EDITOR` wrapper can only answer that handshake by running `ghostex prompt-editor`. The wrapper used to find the CLI through `GHOSTEX_CLI_EXECUTABLE`, which nothing had exported since the Swift host was retired, then through `ghostex` on PATH, then fell back to `vi`; on a computer without the CLI on PATH every chat send opened `vi`, the handshake never completed, and the agent stayed wedged in the editor. Every session is now pinned to the `ghostex` binary shipped beside this gxserver (the same pairing the Windows provider uses), and the wrapper fails with a message instead of opening an editor that cannot answer. The machine's own VISUAL/EDITOR still runs when the user chose it, through `ghostex prompt-editor`'s inherit backend.
 /// SEE-ALSO: `scripts_windows.rs` `start` pins the Windows CLI the same way; `gpui_auto_install_ghostex_cli_wrappers` in apps/desktop keeps `ghostex` on PATH for sessions started before the pin.
-fn session_ghostex_cli_executable() -> Option<String> {
+pub(crate) fn session_ghostex_cli_executable() -> Option<String> {
     let gxserver = std::env::current_exe().ok()?;
     let gxserver = std::fs::canonicalize(&gxserver).unwrap_or(gxserver);
     let cli = gxserver.with_file_name("ghostex");

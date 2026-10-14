@@ -297,6 +297,7 @@ export type GxserverEndpointPath =
   | "/api/createProjectDirectory"
   | "/api/discoverSourceControl"
   | "/api/lookupRepository"
+  | "/api/listRepositories"
   | "/api/resolveGitRootForPath"
   | "/api/queryLogs"
   | "/api/draftFeedback"

@@ -177,6 +177,15 @@ fn start(
             environment.insert(key.into(), value);
         }
     }
+    // Which of the user's gh accounts this worktree runs as (CDXC:GitHubAccounts).
+    let github = crate::github_accounts::windows_session_setup(cwd);
+    let github_path = match &github {
+        Some(setup) => {
+            environment.extend(setup.environment.iter().cloned());
+            format!("$env:PATH={} + ';' + $env:PATH; ", quote(&setup.path_dir))
+        }
+        None => String::new(),
+    };
     let cli = std::env::current_exe()
         .expect("resolve running gxserver for the session editor")
         .with_file_name("ghostex.exe");
@@ -184,8 +193,9 @@ fn start(
     // The profile runs after ConPTY applies launch.cwd and may change location.
     // Restore the selected project before any agent command can run.
     let startup = format!(
-        "Set-Location -LiteralPath {} -ErrorAction Stop; $env:GHOSTEX_PROMPT_EDITOR_MACHINE_VISUAL=$env:VISUAL; $env:GHOSTEX_PROMPT_EDITOR_MACHINE_EDITOR=$env:EDITOR; $env:VISUAL={}; $env:EDITOR=$env:VISUAL; $env:GHOSTEX_PROMPT_EDITING_ENABLED='1'; {}",
+        "Set-Location -LiteralPath {} -ErrorAction Stop; {}$env:GHOSTEX_PROMPT_EDITOR_MACHINE_VISUAL=$env:VISUAL; $env:GHOSTEX_PROMPT_EDITOR_MACHINE_EDITOR=$env:EDITOR; $env:VISUAL={}; $env:EDITOR=$env:VISUAL; $env:GHOSTEX_PROMPT_EDITING_ENABLED='1'; {}",
         quote(cwd),
+        github_path,
         quote(&editor),
         agent_without_powershell7_modules(startup.unwrap_or_default().trim_end_matches(['\r', '\n']))
     );

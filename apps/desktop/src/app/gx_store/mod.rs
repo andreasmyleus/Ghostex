@@ -135,6 +135,7 @@ mod space_sleep;
 mod space_switch;
 pub(crate) mod terminal_lifecycle;
 mod work_links;
+mod github_account;
 mod work_mode;
 mod workspaces;
 mod workspace_groups;

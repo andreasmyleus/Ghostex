@@ -191,6 +191,8 @@ pub(crate) fn create_agent_session_params_for_project(
                 .unwrap_or_default();
             let claude_sign_in_first = crate::accounts::launch::home()
                 .is_ok_and(|home| !crate::agentbox::claude_signed_in_for_boxes(&home));
+            // The box's git (through agentbox's host relay) uses the worktree's GitHub account.
+            crate::github_accounts::write_worktree_git_config(&project_path);
             crate::agentbox::prepare_box_launch(
                 provider,
                 family,

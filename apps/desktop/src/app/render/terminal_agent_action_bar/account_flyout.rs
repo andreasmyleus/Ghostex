@@ -32,6 +32,9 @@ use crate::app::model::*;
 use crate::*;
 
 pub(super) const ACCOUNT_PAGE_WIDTH: f32 = 280.0;
+/// The key the GitHub Account flyout's rows are kept under in the account-page slot, so the
+/// menu tells them apart from a Claude or Codex account page.
+pub(super) const GITHUB_PAGE_PREFIX: &str = "github-account:";
 const CHECK_ICON: &str = "titlebar/check.svg";
 
 impl GhostexGpuiApp {
@@ -55,6 +58,69 @@ impl GhostexGpuiApp {
             ghostex_gx_core::SessionKey::local(key.project_id, key.session_id)
                 .to_sidebar_session_id(),
         )
+    }
+
+    /// `(projectId, login, accounts)` of the GitHub account the session's worktree runs as, from
+    /// the sidebar's project context; `None` unless gh has two or more accounts on its host.
+    pub(super) fn terminal_agent_bar_github_account(
+        &self,
+        session_id: TerminalSessionId,
+    ) -> Option<(String, String, Vec<String>)> {
+        let project_id = self
+            .local_workspace_session_mappings
+            .iter()
+            .find_map(|(key, mapped)| (*mapped == session_id).then(|| key.project_id.clone()))?;
+        let snapshot = self.native_sidebar.snapshot.as_ref()?;
+        snapshot.groups.iter().find_map(|group| {
+            let context = group.project_context.as_ref()?;
+            if context.pointer("/editor/projectId")?.as_str()? != project_id {
+                return None;
+            }
+            let account = context.get("githubAccount")?;
+            let accounts: Vec<String> = account
+                .get("accounts")?
+                .as_array()?
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            (accounts.len() >= 2).then(|| {
+                (
+                    project_id.clone(),
+                    account["login"].as_str().unwrap_or_default().to_string(),
+                    accounts,
+                )
+            })
+        })
+    }
+
+    /// The GitHub Account flyout: one row per account signed in to gh, the worktree's ticked.
+    /// A pick sends the project menu's own `setProjectGithubAccount` (gx_store/github_account.rs).
+    ///
+    /// CDXC:GitHubAccounts 2026-10-13 DECISION: The user asked for the worktree's GitHub account to be switchable from the terminal's ⋯ menu too, not only from the sidebar's project menu.
+    pub(super) fn terminal_agent_bar_github_account_page(
+        &self,
+        session_id: TerminalSessionId,
+    ) -> Option<(String, Vec<Value>)> {
+        let (project_id, current, accounts) = self.terminal_agent_bar_github_account(session_id)?;
+        let rows = accounts
+            .iter()
+            .map(|login| {
+                json!({
+                    "label": login,
+                    "checked": login.eq_ignore_ascii_case(&current),
+                    "command": {
+                        "type": "command",
+                        "message": {
+                            "type": "setProjectGithubAccount",
+                            "projectId": project_id,
+                            "login": login,
+                        },
+                    },
+                })
+            })
+            .collect();
+        Some((format!("{GITHUB_PAGE_PREFIX}{project_id}"), rows))
     }
 
     /// Asks the store for the session's accounts; the answer lands in

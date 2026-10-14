@@ -14,6 +14,7 @@ pub mod browser_mcp;
 pub mod diagnostics;
 pub mod editors;
 pub mod extensions;
+mod github_account;
 pub mod guide;
 pub mod launchers;
 pub mod notify;
@@ -104,6 +105,7 @@ const HELP_GATE_EXCLUDED: &[&str] = &[
     "agents-orchestration",
     "find",
     "generate-title",
+    "github-account",
     "guide",
     "manage-beads",
     "notify",
@@ -346,6 +348,7 @@ fn is_known_command(name: &str) -> bool {
         "move-codex-session",
         "install-move-codex-session-skill",
         "guide",
+        "github-account",
         "agent-sync",
         "notify",
         "show",
@@ -890,6 +893,7 @@ fn run_command(name: &str, args: &[String]) -> CliResult<()> {
             skills::install_move_codex_session_skill_command(args)
         }
         "guide" => guide::guide_command(args),
+        "github-account" => github_account::github_account_command(args),
         "agent-sync" => agent_sync::agent_sync_command(args),
         "install-help-skill" => skills::install_help_skill_command(args),
         "settings" => settings::settings_command(args),

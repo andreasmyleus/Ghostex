@@ -60,6 +60,7 @@ pub(crate) struct ProjectContextInput {
     pub(crate) work_mode: bool,
     pub(crate) work_linear: bool,
     pub(crate) work_github: bool,
+    pub(crate) github_account: Option<ghostex_gx_protocol::PresentationGithubAccount>,
 }
 
 /// Who is focused right now, in the vocabulary the rows compare against.
@@ -224,6 +225,7 @@ pub(crate) fn build_group(
             work_mode: project.work_mode,
             work_linear: project.work_linear,
             work_github: project.work_github,
+            github_account: project.github_account.clone(),
         }),
         summary,
         collapsed: ui.collapse.collapsed_groups.contains(&plan.group_id),
@@ -390,7 +392,7 @@ fn project_title_tooltip(
     } else {
         "Repository project"
     };
-    format!(
+    let mut tooltip = format!(
         "{}\n{kind}\n{}\n{}\n{session_count} {} · {} {}",
         plan.title,
         project.path,
@@ -398,7 +400,15 @@ fn project_title_tooltip(
         count_label(session_count as i64, "session"),
         project.worktree_count,
         count_label(project.worktree_count as i64, "worktree"),
-    )
+    );
+    // The GitHub account the worktree runs as (CDXC:GitHubAccounts); the header shows `@login` too.
+    if let Some(account) = &project.github_account {
+        tooltip.push_str(&format!("\nGitHub account: {}", account.login));
+        if let Some(host) = account.host.as_deref().filter(|host| *host != "github.com") {
+            tooltip.push_str(&format!(" on {host}"));
+        }
+    }
+    tooltip
 }
 
 /// `formatProjectTooltipGitStats`.

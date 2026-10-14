@@ -262,7 +262,7 @@ pub(crate) fn refresh_work_feeds(
     };
     // Whether the repo lists may ask for project items (`projectItems`).
     if gh {
-        refresh_github_projects_access(force);
+        refresh_github_projects_access(None, force);
     }
     let viewer_stale = gh
         && cache().lock().ok().is_some_and(|cache| {
@@ -487,7 +487,8 @@ fn fetch_github_feed(cwd: &str) -> Result<GithubFeed, String> {
     let repo = work_repo_of(cwd);
     // `projectItems` makes `gh` fail outright without the `read:project` scope, so it is asked
     // for only once `gh` is known to have it.
-    let projects = cached_github_projects_access() == GithubProjectsAccess::Granted;
+    let projects =
+        refresh_github_projects_access(Some(cwd), false) == GithubProjectsAccess::Granted;
     let pull_request_fields = if projects {
         "number,title,url,state,isDraft,author,assignees,updatedAt,headRefName,statusCheckRollup,reviewDecision,body,projectItems"
     } else {
@@ -581,7 +582,7 @@ fn fetch_github_feed(cwd: &str) -> Result<GithubFeed, String> {
         .map(|(owner, _)| owner)
         .filter(|_| has_projects)
     {
-        let urls = project_urls_by_title(owner);
+        let urls = project_urls_by_title(cwd, owner);
         let projects = pull_requests
             .iter_mut()
             .filter_map(|pr| pr.project.as_mut())
@@ -599,8 +600,8 @@ fn fetch_github_feed(cwd: &str) -> Result<GithubFeed, String> {
 
 /// The open GitHub Projects of `owner` by title, for the Work page's project links. A project
 /// owned by someone else (a user's project holding an org's issue) stays without a link.
-fn project_urls_by_title(owner: &str) -> HashMap<String, String> {
-    list_github_projects(owner)
+fn project_urls_by_title(cwd: &str, owner: &str) -> HashMap<String, String> {
+    list_github_projects(Some(cwd), owner)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|project| Some((project.title?, project.url?)))

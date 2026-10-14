@@ -371,3 +371,49 @@ pub(crate) fn describe_add_project_error(error: &str, fallback: &str) -> String 
         trimmed.to_string()
     }
 }
+
+/// One repository a signed-in GitHub account can reach, offered on the GitHub step
+/// (`/api/listRepositories`, server/src/github_accounts/repos.rs).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AddProjectRepositorySuggestion {
+    pub(crate) name_with_owner: String,
+    pub(crate) host: String,
+    pub(crate) accounts: Vec<String>,
+    pub(crate) private: bool,
+    pub(crate) description: Option<String>,
+}
+
+/// The suggestions in a `/api/listRepositories` answer; anything unreadable is left out.
+pub(crate) fn read_add_project_repository_suggestions(
+    value: &Value,
+) -> Vec<AddProjectRepositorySuggestion> {
+    value
+        .get("repositories")
+        .and_then(Value::as_array)
+        .map(|repositories| {
+            repositories
+                .iter()
+                .filter_map(|repository| {
+                    Some(AddProjectRepositorySuggestion {
+                        name_with_owner: required_text(repository, "nameWithOwner")?,
+                        host: text(repository, "host").unwrap_or_else(|| "github.com".to_string()),
+                        accounts: repository
+                            .get("accounts")
+                            .and_then(Value::as_array)
+                            .map(|accounts| {
+                                accounts
+                                    .iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        private: repository.get("private").and_then(Value::as_bool) == Some(true),
+                        description: text(repository, "description")
+                            .filter(|description| !description.trim().is_empty()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}

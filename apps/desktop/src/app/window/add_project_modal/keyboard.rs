@@ -67,6 +67,15 @@ impl GpuiAddProjectModalWindow {
         }
         let d = self.derive();
         if d.is_repository_step {
+            // A suggestion picked with the arrow keys wins over the typed text.
+            if let Some(row) = d
+                .selectable_rows()
+                .find(|row| Some(row.value.as_str()) == self.highlight.as_deref())
+            {
+                let action = row.action.clone();
+                self.select_row(action, window, cx);
+                return;
+            }
             self.submit_repository(window, cx);
             return;
         }

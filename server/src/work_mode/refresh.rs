@@ -152,9 +152,6 @@ pub(crate) fn refresh_work_caches(paths: &GxserverPaths, projects: &[Value], ses
     if github_tracker_projects.is_empty() {
         return;
     }
-    if refresh_github_projects_access(false) == GithubProjectsAccess::MissingScope {
-        return;
-    }
     for session in sessions {
         if gh_budget == 0 {
             break;
@@ -168,10 +165,16 @@ pub(crate) fn refresh_work_caches(paths: &GxserverPaths, projects: &[Value], ses
             continue;
         };
         let targets = work_targets(project, session);
+        // The scope belongs to the account the session's worktree uses (CDXC:GitHubAccounts).
+        if refresh_github_projects_access(targets.cwd.as_deref(), false)
+            == GithubProjectsAccess::MissingScope
+        {
+            continue;
+        }
         match &targets.github_project {
             Some(Some(reference)) => {
                 if let Some((owner, number)) = parse_github_project_reference(reference) {
-                    if refresh_github_project(&owner, number) {
+                    if refresh_github_project(targets.cwd.as_deref(), &owner, number) {
                         gh_budget -= 1;
                     }
                 }

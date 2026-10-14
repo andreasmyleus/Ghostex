@@ -936,6 +936,10 @@ fn project_context(
         work_mode: project.work_mode,
         work_linear: project.work_linear,
         work_github: project.work_mode && project.work_tracker.as_deref() == Some("github"),
+        github_account: project
+            .github_account
+            .clone()
+            .filter(|account| account.accounts.len() >= 2),
     })
 }
 

@@ -151,7 +151,7 @@ fn read_work_tracker(
     let (tracker, source) = workspace_work_tracker(&state.paths, &workspaces, &workspace_id);
     let mut github_projects = github_projects_status_json();
     if tracker == WorkTracker::Github && crate::session_git_status::gh_cli_is_available() {
-        refresh_github_projects_access(force);
+        refresh_github_projects_access(None, force);
         github_projects = github_projects_status_json();
     }
     github_projects["noticeDismissed"] = json!(work_notice_dismissed(db, "githubProjectsScope"));

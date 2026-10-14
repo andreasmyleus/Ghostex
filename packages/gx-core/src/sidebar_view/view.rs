@@ -176,6 +176,9 @@ pub struct ProjectContextView {
     /// Work mode is on and the workspace's primary tracker is GitHub (issues and GitHub Projects),
     /// so its menu offers Create GitHub issue and Link to offers GitHub issues and projects.
     pub work_github: bool,
+    /// The GitHub account the project's worktree runs as and the ones it can switch to; absent
+    /// unless gh has two or more accounts on the repository's host.
+    pub github_account: Option<ghostex_gx_protocol::PresentationGithubAccount>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

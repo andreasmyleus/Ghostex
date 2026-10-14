@@ -103,3 +103,30 @@ pub(crate) fn project_status(
             .into_any_element(),
     )
 }
+
+/// The `@login` of the GitHub account the project's worktree runs as, drawn quietly on the
+/// header beside the git numbers; absent unless gh has two or more accounts on its host.
+///
+/// CDXC:GitHubAccounts 2026-10-13 DECISION: The user wanted the worktree's GitHub account visible at a glance, not only inside the project menu, so the header names it while it is not hovered (the hover buttons take that space).
+pub(crate) fn github_account_badge(
+    group: &NativeSidebarGroup,
+    appearance: &SidebarAppearance,
+) -> Option<AnyElement> {
+    let login = group
+        .project_context
+        .as_ref()?
+        .get("githubAccount")?
+        .get("login")?
+        .as_str()?
+        .to_string();
+    let scale = appearance.scale;
+    Some(
+        div()
+            .flex_shrink_0()
+            .text_size(px(10.0 * scale))
+            .text_color(appearance.muted)
+            .opacity(0.8)
+            .child(format!("@{login}"))
+            .into_any_element(),
+    )
+}

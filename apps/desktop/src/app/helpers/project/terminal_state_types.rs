@@ -263,6 +263,8 @@ pub(crate) enum GpuiAddProjectDialogOperation {
     /// Starts gxserver's managed install of a provider CLI (`gh`, `glab`) from its row.
     InstallSourceControlTool,
     ListMachines,
+    /// Every signed-in GitHub account's repositories, for the GitHub step's suggestions.
+    ListRepositories,
     LookupRepository,
     PreviewClone,
     ReadCloneJob,
@@ -282,6 +284,7 @@ impl GpuiAddProjectDialogOperation {
             "installSourceControlTool" => Some(Self::InstallSourceControlTool),
             "readSourceControlTool" => Some(Self::ReadSourceControlTool),
             "listMachines" => Some(Self::ListMachines),
+            "listRepositories" => Some(Self::ListRepositories),
             "lookupRepository" => Some(Self::LookupRepository),
             "previewClone" => Some(Self::PreviewClone),
             "readCloneJob" => Some(Self::ReadCloneJob),
@@ -300,6 +303,7 @@ impl GpuiAddProjectDialogOperation {
             Self::InstallSourceControlTool => "installSourceControlTool",
             Self::ReadSourceControlTool => "readSourceControlTool",
             Self::ListMachines => "listMachines",
+            Self::ListRepositories => "listRepositories",
             Self::LookupRepository => "lookupRepository",
             Self::PreviewClone => "previewClone",
             Self::ReadCloneJob => "readCloneJob",
@@ -318,6 +322,7 @@ impl GpuiAddProjectDialogOperation {
                 Some("/api/managedTools")
             }
             Self::ListMachines => None,
+            Self::ListRepositories => Some("/api/listRepositories"),
             Self::LookupRepository => Some("/api/lookupRepository"),
             Self::PreviewClone => Some("/api/previewRepositoryClone"),
             Self::ReadCloneJob => Some("/api/readRepositoryCloneJob"),
@@ -331,6 +336,7 @@ impl GpuiAddProjectDialogOperation {
             Self::Browse => GPUI_ADD_PROJECT_DIALOG_BROWSE_TIMEOUT,
             Self::DiscoverSourceControl => GPUI_ADD_PROJECT_DIALOG_DISCOVERY_TIMEOUT,
             Self::LookupRepository | Self::PreviewClone => GPUI_ADD_PROJECT_DIALOG_LOOKUP_TIMEOUT,
+            Self::ListRepositories => GPUI_ADD_PROJECT_DIALOG_JOB_TIMEOUT,
             Self::CancelCloneJob
             | Self::CreateDirectory
             | Self::ReadCloneJob

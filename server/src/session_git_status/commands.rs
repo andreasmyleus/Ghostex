@@ -122,7 +122,12 @@ pub(crate) fn run_gh_command(cwd: Option<&str>, args: &[&str]) -> Option<String>
         .env("NO_COLOR", "1")
         .env("GIT_TERMINAL_PROMPT", "0");
     if let Some(cwd) = cwd {
-        command.current_dir(cwd);
+        command
+            .current_dir(cwd)
+            .envs(crate::github_accounts::command_account_env(
+                cwd,
+                crate::github_accounts::AccountCommand::Gh,
+            ));
     }
     run_command_with_timeout(command, GH_COMMAND_TIMEOUT, &ABANDONED_COMMAND_READERS)
 }

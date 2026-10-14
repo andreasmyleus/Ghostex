@@ -37,6 +37,19 @@ pub(super) async fn run_git_clone_process(
     if let Some(ssh_command) = non_interactive_ssh_command(&clone_url, &cwd).await {
         environment.push(("GIT_SSH_COMMAND".to_string(), ssh_command));
     }
+    // With several gh accounts, clone as the account picked for the repository's owner (CDXC:GitHubAccounts).
+    let account_url = clone_url.clone();
+    let account_environment = tokio::task::spawn_blocking(move || {
+        crate::github_accounts::repository_account_env(&account_url)
+    })
+    .await
+    .unwrap_or_default();
+    environment.retain(|(key, _)| {
+        !account_environment
+            .iter()
+            .any(|(account_key, _)| account_key == key)
+    });
+    environment.extend(account_environment);
     run_clone_process_with_environment("git", args, cwd, environment, jobs, job_id).await
 }
 

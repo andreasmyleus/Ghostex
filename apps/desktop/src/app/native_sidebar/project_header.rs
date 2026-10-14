@@ -199,7 +199,10 @@ impl GhostexGpuiApp {
                 row.child(super::bots::bot_gateway_dot(running, appearance))
             })
             .when(!hovered && bot_gateway_running.is_none(), |row| {
-                row.children(super::project_status::project_status(
+                row.children(super::project_status::github_account_badge(
+                    group, appearance,
+                ))
+                .children(super::project_status::project_status(
                     group, hud, appearance,
                 ))
             })

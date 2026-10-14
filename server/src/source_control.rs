@@ -173,6 +173,26 @@ pub async fn dispatch_source_control_endpoint(
             let cwd = resolve_probe_cwd(params.get("cwd"), home_dir)?;
             Ok(json!({ "repository": lookup_repository(params, &cwd).await? }))
         }
+        // Add Project's GitHub step: every signed-in account's repositories (CDXC:GitHubAccounts).
+        "/api/listRepositories" => {
+            let query = params
+                .get("query")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let force = params.get("force").and_then(Value::as_bool) == Some(true);
+            let repositories = tokio::task::spawn_blocking(move || {
+                crate::github_accounts::search_account_repositories(&query, 200, force)
+            })
+            .await
+            .unwrap_or_default();
+            Ok(json!({
+                "repositories": repositories
+                    .iter()
+                    .map(|repository| repository.to_json())
+                    .collect::<Vec<_>>(),
+            }))
+        }
         _ => Err(SourceControlError::not_found(format!(
             "{endpoint_path} is not a gxserver source control endpoint."
         ))),
@@ -405,14 +425,32 @@ async fn lookup_repository(
         ],
     };
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = run_probe(executable, &borrowed, cwd, REPOSITORY_LOOKUP_TIMEOUT_MS)
-        .await
-        .map_err(|detail| {
-            SourceControlError::dependency_unavailable(format!(
-                "{} repository lookup failed. {detail} Try Lookup again.",
-                provider.label()
-            ))
-        })?;
+    // With several gh accounts, look the repository up as the account picked for its owner (CDXC:GitHubAccounts).
+    let account_environment = if provider == ProviderKind::GitHub {
+        let url = format!("https://github.com/{repository}");
+        tokio::task::spawn_blocking(move || crate::github_accounts::repository_account_env(&url))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(key, _)| key.starts_with("GH_"))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let output = run_probe_with_env(
+        executable,
+        &borrowed,
+        cwd,
+        REPOSITORY_LOOKUP_TIMEOUT_MS,
+        &account_environment,
+    )
+    .await
+    .map_err(|detail| {
+        SourceControlError::dependency_unavailable(format!(
+            "{} repository lookup failed. {detail} Try Lookup again.",
+            provider.label()
+        ))
+    })?;
     if output.exit_code != 0 {
         return Err(SourceControlError::not_found(
             first_safe_auth_line(&output.combined()).unwrap_or_else(|| {
@@ -553,7 +591,18 @@ async fn run_probe(
     cwd: &Path,
     timeout_ms: u64,
 ) -> Result<ProbeOutput, String> {
+    run_probe_with_env(executable, args, cwd, timeout_ms, &[]).await
+}
+
+async fn run_probe_with_env(
+    executable: &str,
+    args: &[&str],
+    cwd: &Path,
+    timeout_ms: u64,
+    environment: &[(String, String)],
+) -> Result<ProbeOutput, String> {
     let mut command = Command::new(executable);
+    command.envs(environment.iter().map(|(key, value)| (key, value)));
     command
         .args(args)
         .current_dir(cwd)

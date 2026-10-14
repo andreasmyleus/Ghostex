@@ -62,6 +62,8 @@ fn environment_keys_to_strip() -> Vec<&'static str> {
         "XPC_FLAGS",
         "XPC_SERVICE_NAME",
         "__CFBundleIdentifier",
+        "GHOSTEX_GITHUB_ACCOUNT_FILE",
+        "GHOSTEX_GITHUB_REAL_GH",
     ]);
     keys.extend(session_identity_environment_keys());
     keys

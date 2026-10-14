@@ -50,6 +50,22 @@ pub(crate) fn project_presentation_project(project: &Value) -> Value {
             crate::project_git_remote::published_project_git_repository_root_path(path)
         }),
     );
+    // The worktree's GitHub account, read from the background pass's cache (CDXC:GitHubAccounts).
+    if let Some(account) = project
+        .get("path")
+        .and_then(Value::as_str)
+        .and_then(crate::github_accounts::cached_project_github_account)
+    {
+        output.insert(
+            "githubAccount".to_string(),
+            serde_json::json!({
+                "login": account.login,
+                "accounts": account.accounts,
+                "host": account.host,
+                "source": account.source,
+            }),
+        );
+    }
     /*
     CDXC:Icons 2026-07-29 (discovered icons):
     The icon the project itself ships through a favicon, app icon, or

@@ -256,7 +256,10 @@ impl GpuiAddProjectModalWindow {
     }
 
     fn build_rows(&self, d: &Derived) -> Vec<AddProjectRow> {
-        if d.is_repository_step || d.is_new_folder_step {
+        if d.is_repository_step {
+            return self.build_repository_rows(d);
+        }
+        if d.is_new_folder_step {
             return Vec::new();
         }
         if let (Some((query, clone)), Some(target)) = (&d.ambiguous, &d.detection_machine) {
@@ -475,5 +478,69 @@ impl GpuiAddProjectModalWindow {
             });
         }
         rows
+    }
+}
+
+impl GpuiAddProjectModalWindow {
+    /// The GitHub step's suggestions: the signed-in accounts' repositories whose `owner/repo` or
+    /// description holds every typed word, at most 50, each naming the accounts that reach it.
+    /// None while the input is a URL or a clone command.
+    fn build_repository_rows(&self, d: &Derived) -> Vec<AddProjectRow> {
+        let is_github = self
+            .clone_flow
+            .as_ref()
+            .is_some_and(|flow| flow.source == AddProjectSourceId::Github);
+        let query = self.query.trim().to_ascii_lowercase();
+        if !is_github
+            || query.contains("://")
+            || query.starts_with("git@")
+            || query.starts_with("git ")
+            || query.starts_with("gh ")
+        {
+            return Vec::new();
+        }
+        let Some(suggestions) = d
+            .machine_id
+            .as_deref()
+            .and_then(|machine_id| self.repository_suggestions.get(machine_id))
+        else {
+            return Vec::new();
+        };
+        let words: Vec<&str> = query.split_whitespace().collect();
+        suggestions
+            .iter()
+            .filter(|repository| {
+                let haystack = format!(
+                    "{} {}",
+                    repository.name_with_owner,
+                    repository.description.as_deref().unwrap_or_default()
+                )
+                .to_ascii_lowercase();
+                words.iter().all(|word| haystack.contains(word))
+            })
+            .take(50)
+            .map(|repository| {
+                let mut description = repository.accounts.join(", ");
+                if repository.host != "github.com" {
+                    description = format!("{} · {description}", repository.host);
+                }
+                if repository.private {
+                    description.push_str(" · private");
+                }
+                if let Some(text) = &repository.description {
+                    description.push_str(" · ");
+                    description.push_str(text);
+                }
+                AddProjectRow {
+                    value: format!("repo:{}", repository.name_with_owner),
+                    icon: source_icon(AddProjectSourceId::Github),
+                    title: repository.name_with_owner.clone(),
+                    description: Some(description),
+                    disabled: false,
+                    setup_required: None,
+                    action: RowAction::ChooseRepository(repository.name_with_owner.clone()),
+                }
+            })
+            .collect()
     }
 }

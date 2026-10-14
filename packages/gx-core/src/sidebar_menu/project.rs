@@ -118,6 +118,9 @@ pub fn project_menu(input: &ProjectMenuInput<'_>) -> Vec<MenuItem> {
                 .collect(),
         ));
     }
+    if let Some(item) = github_account_menu(group, project) {
+        menu.push(item);
+    }
     if project.worktree.is_some() {
         menu.push(MenuItem::row(
             "Rename Worktree",
@@ -247,4 +250,38 @@ pub fn project_menu(input: &ProjectMenuInput<'_>) -> Vec<MenuItem> {
         .with_danger(),
     );
     menu
+}
+
+/// "GitHub Account ›" with the accounts signed in to gh, the current one ticked.
+///
+/// CDXC:GitHubAccounts 2026-10-13 DECISION: The user asked for the worktree's GitHub account to be visible and switchable in the app, not only with `gh auth switch`. It is a per-project row (a worktree is a project) because the account belongs to the checkout every session in it shares. Only this computer's projects, like Work Mode: the desktop's executor talks to its own gxserver.
+fn github_account_menu(
+    group: &MenuGroup<'_>,
+    project: &crate::sidebar_view::view::ProjectContextView,
+) -> Option<MenuItem> {
+    let account = project
+        .github_account
+        .as_ref()
+        .filter(|account| account.accounts.len() >= 2)?;
+    if group.is_remote || group.is_stale || project.bot_profile.is_some() {
+        return None;
+    }
+    let children = account
+        .accounts
+        .iter()
+        .map(|login| {
+            MenuItem::row(
+                login,
+                "user",
+                MenuCommand::command(message::set_project_github_account(
+                    project.project_id.as_str(),
+                    login,
+                )),
+            )
+            .with_checked(login.eq_ignore_ascii_case(&account.login))
+        })
+        .collect();
+    let mut item = MenuItem::submenu("GitHub Account", "brand-github", children);
+    item.suffix = Some(account.login.clone());
+    Some(item)
 }
