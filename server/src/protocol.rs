@@ -710,6 +710,8 @@ pub fn endpoint_for(path: &str) -> Option<EndpointDescriptor> {
         */
         | "/api/discoverSourceControl"
         | "/api/lookupRepository"
+        // The repository names, URLs and accounts of the user's own gh accounts, like lookup.
+        | "/api/listRepositories"
         | "/api/listExtensions"
         | "/api/extensionsCatalog"
         | "/api/installExtension"

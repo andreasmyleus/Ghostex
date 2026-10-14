@@ -156,6 +156,8 @@ pub(super) enum RowAction {
         machine_id: String,
         source: AddProjectSourceId,
     },
+    /// A repository from the GitHub step's suggestions (`owner/repo`).
+    ChooseRepository(String),
 }
 
 #[derive(Clone, Debug)]
@@ -262,6 +264,10 @@ pub(super) enum Pending {
     ToolInstall {
         machine_id: String,
     },
+    /// `listRepositories`: the GitHub step's suggestions for a machine.
+    Repositories {
+        machine_id: String,
+    },
 }
 
 /// Keyboard focus outside the path input: the chrome buttons Tab reaches.
@@ -299,6 +305,8 @@ pub(crate) struct GpuiAddProjectModalWindow {
     pub(super) busy: Option<Busy>,
     pub(super) is_slow: bool,
     pub(super) discovery: HashMap<String, Option<AddProjectSourceControlDiscovery>>,
+    /// Every signed-in GitHub account's repositories, by machine, asked once per dialog.
+    pub(super) repository_suggestions: HashMap<String, Vec<AddProjectRepositorySuggestion>>,
     pub(super) pending_discovery_machine_id: Option<String>,
     /// The provider CLI being installed from its row (tool_install.rs).
     pub(super) tool_install: Option<super::tool_install::ToolInstall>,
@@ -418,6 +426,7 @@ impl GpuiAddProjectModalWindow {
             busy: None,
             is_slow: false,
             discovery: HashMap::new(),
+            repository_suggestions: HashMap::new(),
             pending_discovery_machine_id: None,
             tool_install: None,
             new_folder_name: None,
@@ -502,6 +511,32 @@ impl GpuiAddProjectModalWindow {
                     Pending::Discovery {
                         machine_id: machine_id.clone(),
                         generation,
+                    },
+                    cx,
+                );
+            }
+        }
+
+        // CDXC:GitHubAccounts 2026-10-13 DECISION: the GitHub step suggests the repositories of every account signed in to gh (the user asked for searching and picking to cover all accounts), listed once per machine when the step opens.
+        if d.is_repository_step
+            && self
+                .clone_flow
+                .as_ref()
+                .is_some_and(|flow| flow.source == AddProjectSourceId::Github)
+        {
+            if let Some(machine_id) = d
+                .machine_id
+                .clone()
+                .filter(|id| !self.repository_suggestions.contains_key(id))
+            {
+                self.repository_suggestions
+                    .insert(machine_id.clone(), Vec::new());
+                self.request(
+                    "listRepositories",
+                    &machine_id,
+                    serde_json::json!({}),
+                    Pending::Repositories {
+                        machine_id: machine_id.clone(),
                     },
                     cx,
                 );
@@ -845,6 +880,12 @@ impl GpuiAddProjectModalWindow {
             }
             Pending::ToolInstall { machine_id } => {
                 self.receive_tool_install(machine_id, result, cx);
+            }
+            Pending::Repositories { machine_id } => {
+                if let Ok(value) = result {
+                    self.repository_suggestions
+                        .insert(machine_id, read_add_project_repository_suggestions(&value));
+                }
             }
             Pending::CreateFolder => {
                 self.set_busy(None, cx);

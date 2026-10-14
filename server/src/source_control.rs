@@ -173,6 +173,26 @@ pub async fn dispatch_source_control_endpoint(
             let cwd = resolve_probe_cwd(params.get("cwd"), home_dir)?;
             Ok(json!({ "repository": lookup_repository(params, &cwd).await? }))
         }
+        // Add Project's GitHub step: every signed-in account's repositories (CDXC:GitHubAccounts).
+        "/api/listRepositories" => {
+            let query = params
+                .get("query")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let force = params.get("force").and_then(Value::as_bool) == Some(true);
+            let repositories = tokio::task::spawn_blocking(move || {
+                crate::github_accounts::search_account_repositories(&query, 200, force)
+            })
+            .await
+            .unwrap_or_default();
+            Ok(json!({
+                "repositories": repositories
+                    .iter()
+                    .map(|repository| repository.to_json())
+                    .collect::<Vec<_>>(),
+            }))
+        }
         _ => Err(SourceControlError::not_found(format!(
             "{endpoint_path} is not a gxserver source control endpoint."
         ))),

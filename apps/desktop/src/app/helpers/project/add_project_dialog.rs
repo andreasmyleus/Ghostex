@@ -57,7 +57,8 @@ pub(crate) fn gpui_add_project_dialog_params(
             forwarded.insert("name".to_string(), serde_json::json!(name));
             forwarded.insert("parentPath".to_string(), serde_json::json!(parent_path));
         }
-        GpuiAddProjectDialogOperation::DiscoverSourceControl => {}
+        GpuiAddProjectDialogOperation::DiscoverSourceControl
+        | GpuiAddProjectDialogOperation::ListRepositories => {}
         GpuiAddProjectDialogOperation::LookupRepository => {
             let provider = gpui_add_project_dialog_bounded_text(params, "provider", 64)?;
             let repository = gpui_add_project_dialog_bounded_text(params, "repository", 512)?;
@@ -144,6 +145,7 @@ pub(crate) fn gpui_add_project_dialog_translate_local_windows_paths(
         | GpuiAddProjectDialogOperation::InstallSourceControlTool
         | GpuiAddProjectDialogOperation::ReadSourceControlTool
         | GpuiAddProjectDialogOperation::ListMachines
+        | GpuiAddProjectDialogOperation::ListRepositories
         | GpuiAddProjectDialogOperation::LookupRepository
         | GpuiAddProjectDialogOperation::ReadCloneJob => &[],
     };

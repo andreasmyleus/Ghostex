@@ -25,6 +25,9 @@ Usage:
   ghostex github-account identity <login> [--name <name>] [--email <email>]
       [--signing-key <key id or SSH key file>] [--signing-format openpgp|ssh] [--host <host>]
       Show or set the name, email and signing key commits made as <login> use
+  ghostex github-account repos [<search words>] [--refresh] [--json]
+      List the repositories every signed-in account can reach, with the
+      accounts that reach each one (the most recently pushed first)
   ghostex github-account write-config [--cwd <folder>]
       Write the worktree's account into its own git config, so git uses it
       outside Ghostex sessions too (other terminals, editors, agentbox)
@@ -51,6 +54,7 @@ pub fn github_account_command(args: &[String]) -> CliResult<()> {
         "use" => use_command(rest),
         "identity" => identity_command(rest),
         "ssh-key" => ssh_key_command(rest),
+        "repos" => repos_command(rest),
         "write-config" => {
             let cwd = cwd_from(rest)?;
             if github_accounts::write_worktree_git_config(&cwd) {
@@ -507,4 +511,39 @@ fn run_gh(real_gh: &Path, args: &[String], token: GhToken) -> CliResult<()> {
         crate::ghostex_cli::set_exit_code(status.code().unwrap_or(1));
         Ok(())
     }
+}
+
+fn repos_command(args: &[String]) -> CliResult<()> {
+    let query = positionals(args, &[]).join(" ");
+    let force = args.iter().any(|arg| arg == "--refresh");
+    let repositories = github_accounts::search_account_repositories(&query, 1000, force);
+    if cli_args_want_json(args) {
+        print_json(&json!({
+            "ok": true,
+            "repositories": repositories.iter().map(|repository| repository.to_json()).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
+    if repositories.is_empty() {
+        println!("No repositories found. Sign accounts in with: gh auth login");
+        return Ok(());
+    }
+    for repository in &repositories {
+        let host = if repository.host == github_accounts::GITHUB_HOST {
+            String::new()
+        } else {
+            format!("{}/", repository.host)
+        };
+        println!(
+            "{host}{:<48} {}{}",
+            repository.name_with_owner,
+            repository.accounts.join(", "),
+            if repository.private {
+                "  (private)"
+            } else {
+                ""
+            }
+        );
+    }
+    Ok(())
 }

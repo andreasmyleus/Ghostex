@@ -627,6 +627,8 @@ impl GpuiAddProjectModalWindow {
     fn group_label(&self, d: &Derived) -> &'static str {
         if d.ambiguous.is_some() {
             "Choose how to open this"
+        } else if d.is_repository_step {
+            "Your repositories"
         } else if d.is_browsing {
             if d.is_clone_destination_step {
                 "Select where to clone"

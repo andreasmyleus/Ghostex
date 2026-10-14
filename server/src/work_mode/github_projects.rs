@@ -21,7 +21,6 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-
 /// The command the notice and Settings show.
 pub(crate) const GITHUB_PROJECTS_SCOPE_COMMAND: &str = "gh auth refresh -s read:project";
 const ACCESS_TTL: Duration = Duration::from_secs(10 * 60);
@@ -309,6 +308,16 @@ fn scope_command(host: &str, login: &str) -> String {
         } else {
             format!("gh auth refresh -h {host} -s read:project")
         };
+    }
+    if cfg!(windows) {
+        // PowerShell: the real gh.exe by path (the session's `gh` is Ghostex's shim, whose
+        // `auth switch` only switches the worktree), `;` because 5.1 has no `&&`.
+        let gh = crate::github_accounts::real_gh_path()
+            .map(|path| format!("& '{}'", path.to_string_lossy().replace('\'', "''")))
+            .unwrap_or_else(|| "gh.exe".to_string());
+        return format!(
+            "{gh} auth switch -h {host} -u {login}; {gh} auth refresh -h {host} -s read:project; {gh} auth switch -h {host} -u {active}"
+        );
     }
     let gh = "env -u GHOSTEX_GITHUB_ACCOUNT_FILE gh";
     format!(

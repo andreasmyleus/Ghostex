@@ -202,6 +202,9 @@ pub(crate) enum TerminalAgentBarAction {
     /// Rust store with the agent id (gx_store/terminal_lifecycle/runtime_actions.rs). Hidden when the session has no
     /// compatible account.
     SwitchAccount,
+    /// Opens the worktree's GitHub Account flyout (`account_flyout.rs`); hidden unless gh has two
+    /// or more accounts on the repository's host.
+    GithubAccount,
     /// Opens the Skills flyout (`skills_flyout.rs`).
     Skills,
     ExportTranscript,
@@ -227,6 +230,7 @@ impl TerminalAgentBarAction {
             Self::Fork => "fork",
             Self::FullReload => "full-reload",
             Self::SwitchAccount => "switch-account",
+            Self::GithubAccount => "github-account",
             Self::Skills => "skills",
             Self::ExportTranscript => "export-transcript",
         }
@@ -256,6 +260,7 @@ impl TerminalAgentBarAction {
             Self::Fork => ("Fork Session", "forkSession"),
             Self::FullReload => ("Full Reload", "reloadSession"),
             Self::SwitchAccount => ("Switch Account", ""),
+            Self::GithubAccount => ("GitHub Account", ""),
             Self::Skills => ("Skills", ""),
             Self::ExportTranscript => ("Handoff / Export", "exportTranscript"),
         }
@@ -279,7 +284,7 @@ impl TerminalAgentBarAction {
             Self::Sleep => TERMINAL_AGENT_BAR_SLEEP_ICON,
             Self::Fork => TERMINAL_AGENT_BAR_FORK_ICON,
             Self::FullReload => TERMINAL_AGENT_BAR_FULL_RELOAD_ICON,
-            Self::SwitchAccount => TERMINAL_AGENT_BAR_SWITCH_ACCOUNT_ICON,
+            Self::SwitchAccount | Self::GithubAccount => TERMINAL_AGENT_BAR_SWITCH_ACCOUNT_ICON,
             Self::Skills => TERMINAL_AGENT_BAR_SKILLS_ICON,
             Self::ExportTranscript => TERMINAL_AGENT_BAR_EXPORT_TRANSCRIPT_ICON,
         }
@@ -287,7 +292,7 @@ impl TerminalAgentBarAction {
 
     /// A row that opens a flyout beside the menu instead of acting, drawn with a chevron.
     fn opens_flyout(self) -> bool {
-        matches!(self, Self::SwitchAccount | Self::Skills)
+        matches!(self, Self::SwitchAccount | Self::GithubAccount | Self::Skills)
     }
 
     fn icon_size(self) -> f32 {
@@ -319,6 +324,7 @@ impl TerminalAgentBarAction {
             | Self::Dictate
             | Self::PromptEditor
             | Self::SwitchAccount
+            | Self::GithubAccount
             | Self::Skills
             | Self::VerboseMode => None,
         }
@@ -348,6 +354,7 @@ const TERMINAL_AGENT_BAR_MENU_ROWS: &[Option<TerminalAgentBarAction>] = &[
     // under another same-family agent configuration; both above Handoff.
     Some(TerminalAgentBarAction::FullReload),
     Some(TerminalAgentBarAction::SwitchAccount),
+    Some(TerminalAgentBarAction::GithubAccount),
     None,
     // Second from the bottom, as in the chat's More actions menu.
     Some(TerminalAgentBarAction::Skills),
@@ -735,6 +742,7 @@ impl GhostexGpuiApp {
         // other agent between the daemon's switchable-agent rows.
         let accounts_target = self.terminal_agent_bar_account_target(session_id);
         let has_switch_account = accounts_target.is_some() || !switchable_agents.is_empty();
+        let has_github_account = self.terminal_agent_bar_github_account(session_id).is_some();
         let menu_width =
             self.terminal_agent_bar_menu_width(surface, session_id, has_switch_account, cx);
         let mut menu = div()
@@ -776,6 +784,9 @@ impl GhostexGpuiApp {
                     if *action == TerminalAgentBarAction::SwitchAccount && !has_switch_account {
                         continue;
                     }
+                    if *action == TerminalAgentBarAction::GithubAccount && !has_github_account {
+                        continue;
+                    }
                     if let Some(heading) = terminal_agent_bar_menu_group_heading(*action) {
                         menu = menu.child(terminal_agent_bar_menu_group_label(heading));
                     }
@@ -795,7 +806,21 @@ impl GhostexGpuiApp {
                         + px(TERMINAL_AGENT_BAR_ACCOUNT_SUBMENU_GAP + flyout_width)
                         > window_width - px(TERMINAL_AGENT_BAR_FLYOUT_WINDOW_MARGIN)
             };
-            if accounts_target.is_some() {
+            let github_page = self
+                .agents_terminal_action_bar_account_page
+                .as_ref()
+                .filter(|(key, _)| key.starts_with(account_flyout::GITHUB_PAGE_PREFIX))
+                .map(|(_, rows)| rows.clone());
+            if let Some(rows) = github_page {
+                menu = menu.child(self.render_terminal_agent_bar_account_page(
+                    menu_width,
+                    opens_left(account_flyout::ACCOUNT_PAGE_WIDTH),
+                    &rows,
+                    suffix,
+                    flyout_bounds,
+                    cx,
+                ));
+            } else if accounts_target.is_some() {
                 if let Some((_, rows)) = self.agents_terminal_action_bar_account_page.clone() {
                     menu = menu.child(
                         self.render_terminal_agent_bar_account_page(
@@ -1028,6 +1053,26 @@ impl GhostexGpuiApp {
         }
         if action == TerminalAgentBarAction::Skills {
             self.toggle_terminal_agent_bar_skills(session_id, cx);
+            return;
+        }
+        // The GitHub Account row opens its flyout the same way, from the sidebar's data.
+        if action == TerminalAgentBarAction::GithubAccount {
+            let showing = self.agents_terminal_action_bar_account_submenu_open
+                && self
+                    .agents_terminal_action_bar_account_page
+                    .as_ref()
+                    .is_some_and(|(key, _)| key.starts_with(account_flyout::GITHUB_PAGE_PREFIX));
+            self.agents_terminal_action_bar_skills = None;
+            if showing {
+                self.agents_terminal_action_bar_account_submenu_open = false;
+                self.agents_terminal_action_bar_account_page = None;
+            } else {
+                self.agents_terminal_action_bar_account_page =
+                    self.terminal_agent_bar_github_account_page(session_id);
+                self.agents_terminal_action_bar_account_submenu_open =
+                    self.agents_terminal_action_bar_account_page.is_some();
+            }
+            cx.notify();
             return;
         }
         // The Switch Account row only opens its flyout; the menu stays up so

@@ -7,6 +7,7 @@ mod gh;
 mod identity;
 mod presentation;
 mod repo;
+mod repos;
 mod resolve;
 mod run;
 mod shim;
@@ -36,3 +37,4 @@ pub(crate) use resolve::{
 pub(crate) use ssh::{account_key, discover_keys, set_account_key};
 pub(crate) use store::{owner_logins, prune_removed_worktrees, read_worktree_record};
 pub(crate) use worktree_config::write_worktree_git_config;
+pub(crate) use repos::search_account_repositories;
