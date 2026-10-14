@@ -15,6 +15,7 @@ pub(crate) fn default_agent_icon_to_id(icon: &str) -> Option<&'static str> {
         "copilot" => Some("copilot"),
         "cursor-cli" => Some("cursor"),
         "mastra" => Some("mastra"),
+        "mini-swe-agent" => Some("mini-swe-agent"),
         "devin" => Some("devin"),
         // CDXC:AgentProviders 2026-10-06 DECISION: "`empryo` is a built-in agent id, with `em` as a command alias. Custom agents whose icon is Empryo resolve to the `empryo` family." The alias folds live in normalize_agent_id (agents/identity/agent_ids.rs) and the hook and process tables.
         "empryo" => Some("empryo"),
@@ -47,6 +48,7 @@ pub(crate) fn default_agent_command(agent_id: &str) -> Option<&'static str> {
         "copilot" => Some("copilot"),
         "cursor" => Some("cursor-agent"),
         "mastra" => Some("mastracode"),
+        "mini-swe-agent" => Some("mini"),
         "devin" => Some("devin"),
         "droid" => Some("droid"),
         "empryo" => Some("empryo"),

@@ -30,6 +30,7 @@ pub(crate) fn normalize_agent_id(value: Option<&str>) -> Option<String> {
         "openclaude" | "open claude" | "open-claude" | "openclaude cli" => "openclaude",
         "command-code" | "command code" | "commandcode" => "command-code",
         "mastra" | "mastra code" | "mastracode" => "mastra",
+        "mini" | "mini swe agent" | "mini-swe-agent" | "mini-swe agent" => "mini-swe-agent",
         "devin" => "devin",
         other => other,
     };
@@ -209,6 +210,7 @@ pub(crate) fn infer_agent_id_from_command(command: &str) -> Option<String> {
             "commandcode" => "command-code",
             "openclaude" => "openclaude",
             "mastracode" => "mastra",
+            "mini" | "mini-swe-agent" => "mini-swe-agent",
             "devin" => "devin",
             "kimi" => "kimi",
             "kiro-cli" => "kiro",

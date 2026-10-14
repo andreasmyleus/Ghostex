@@ -168,6 +168,7 @@ pub(crate) fn gpui_sidebar_agent_icon(value: Option<&str>) -> Option<&'static st
         "openclaude" | "open claude" | "open-claude" => Some("openclaude"),
         "command-code" | "command code" | "commandcode" => Some("command-code"),
         "mastra" | "mastracode" | "mastra code" => Some("mastra"),
+        "mini" | "mini-swe-agent" | "mini swe agent" => Some("mini-swe-agent"),
         "zcode" => Some("zcode"),
         "freebuff" => Some("freebuff"),
         "devin" => Some("devin"),

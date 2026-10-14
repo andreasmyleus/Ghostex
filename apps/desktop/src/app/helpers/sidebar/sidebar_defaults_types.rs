@@ -363,6 +363,13 @@ pub(crate) const GPUI_DEFAULT_SIDEBAR_AGENTS: &[GpuiDefaultSidebarAgent] = &[
         icon: "empryo",
         name: "Empryo",
     },
+    GpuiDefaultSidebarAgent {
+        agent_id: "mini-swe-agent",
+        command: "mini",
+        hidden_by_default: true,
+        icon: "mini-swe-agent",
+        name: "mini-SWE-agent",
+    },
 ];
 
 pub(crate) const GPUI_DEFAULT_SIDEBAR_COMMANDS: &[GpuiDefaultSidebarCommand] = &[

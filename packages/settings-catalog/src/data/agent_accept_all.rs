@@ -42,6 +42,14 @@ pub const AGENT_ACCEPT_ALL_SPECS: J = J::Obj(&[
         ]),
     ),
     ("mastra", J::Obj(&[("kind", J::Str("runtimeConfig"))])),
+    (
+        "mini-swe-agent",
+        J::Obj(&[
+            ("kind", J::Str("flag")),
+            ("aliases", J::Arr(&[J::Str("-y"), J::Str("--yolo")])),
+            ("canonicalFlag", J::Str("--yolo")),
+        ]),
+    ),
     ("zcode", J::Null),
     ("freebuff", J::Null),
     (

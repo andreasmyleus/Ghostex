@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### 🤖 Agents
+- **mini-SWE-agent is a built-in agent:** it launches with `mini`, installs from PyPI in one click (Ghostex adds Astral's uv first when it's missing, or uses mise), shows its installed and newest version, and Agent approvals runs it with `--yolo`. It works in the terminal only and starts switched off in Settings > Agents.
+
 ## 10.22.0 - 2026-10-13
 
 **Ghostex 10.22.0 is out.** A Files and links card lists everything a session mentioned, the Kanban board scrolls with a mouse and opens in a window of its own, the Work panel shows formatted Markdown, and Ghostex has a new app icon.

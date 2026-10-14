@@ -12,7 +12,7 @@ use gpui::{
 };
 
 /// The agent icons shipped under `agent-icons/` (`SidebarAgentIcon`).
-const AGENT_ICONS: [&str; 26] = [
+const AGENT_ICONS: [&str; 27] = [
     "amp-cli",
     "antigravity-cli",
     "browser",
@@ -30,6 +30,7 @@ const AGENT_ICONS: [&str; 26] = [
     "grok-build",
     "hermes-agent",
     "mastra",
+    "mini-swe-agent",
     "kimi",
     "kiro",
     "omp",

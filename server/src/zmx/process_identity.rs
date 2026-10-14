@@ -568,6 +568,7 @@ fn infer_agent_id_from_process_executable(
             "copilot" => "copilot",
             "cursor-agent" => "cursor",
             "mastracode" => "mastra",
+            "mini" | "mini-swe-agent" => "mini-swe-agent",
             "devin" => "devin",
             "droid" => "droid",
             "empryo" | "em" => "empryo",

@@ -73,6 +73,7 @@ pub(crate) fn workspace_tab_agent_icon_path(agent_icon: &str) -> Option<&'static
         "codex" => Some("agent-icons/codex.svg"),
         "copilot" => Some("agent-icons/copilot.svg"),
         "mastra" => Some("agent-icons/mastra.svg"),
+        "mini-swe-agent" => Some("agent-icons/mini-swe-agent.svg"),
         "zcode" => Some("agent-icons/zcode.svg"),
         "devin" => Some("agent-icons/devin.svg"),
         "empryo" => Some("agent-icons/empryo.svg"),
@@ -114,6 +115,7 @@ pub(crate) fn workspace_tab_agent_icon_accent_color(agent_icon: &str) -> u32 {
         "codex" => 0xffffff,
         "copilot" => 0xffffff,
         "mastra" => 0xffffff,
+        "mini-swe-agent" => 0xffffff,
         "zcode" => {
             if crate::app::helpers::titlebar::CHROME_LIGHT_APPEARANCE
                 .load(std::sync::atomic::Ordering::Relaxed)

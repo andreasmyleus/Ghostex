@@ -168,6 +168,10 @@ pub(crate) fn accept_all_spec(agent_id: &str) -> Option<AcceptAllSpec> {
             aliases: vec!["--always-approve".to_string()],
             canonical: "--always-approve",
         },
+        "mini-swe-agent" => AcceptAllSpec::Flag {
+            aliases: vec!["-y".to_string(), "--yolo".to_string()],
+            canonical: "--yolo",
+        },
         "mastra" => AcceptAllSpec::Environment {
             assignments: vec!["MASTRACODE_YOLO=1".to_string()],
             legacy_aliases: vec![],

@@ -32,6 +32,7 @@ pub(crate) fn agent_image(value: &str, agent: Option<&str>, light: bool) -> Opti
                         | "cursor-cli"
                         | "grok-build"
                         | "mastra"
+                        | "mini-swe-agent"
                         | "zcode"
                         | "freebuff"
                 )

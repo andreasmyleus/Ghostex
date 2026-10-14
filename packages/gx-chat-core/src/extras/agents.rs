@@ -32,6 +32,7 @@ const AGENTS: &[(&str, &str, &str)] = &[
     ("command-code", "command-code", "Command Code"),
     ("devin", "devin", "Devin"),
     ("mastra", "mastra", "Mastra Code"),
+    ("mini-swe-agent", "mini-swe-agent", "mini-SWE-agent"),
     ("zcode", "zcode", "ZCode"),
     ("freebuff", "freebuff", "Freebuff"),
     ("empryo", "empryo", "Empryo"),

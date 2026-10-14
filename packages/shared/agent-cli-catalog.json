@@ -320,5 +320,29 @@
       "url": "https://empryo.com/releases.json",
       "jsonField": "latest"
     }
+  },
+  {
+    "agentId": "mini-swe-agent",
+    "binary": "mini",
+    "docsUrl": "https://mini-swe-agent.com/latest/quickstart/",
+    "miseTool": "pipx:mini-swe-agent",
+    "versionArgs": ["--help"],
+    "native": {
+      "install": "(command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh) && \"$(command -v uv || echo \"$HOME/.local/bin/uv\")\" tool install --upgrade mini-swe-agent",
+      "windowsInstall": "if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { irm https://astral.sh/uv/install.ps1 | iex }; $uv = (Get-Command uv -ErrorAction SilentlyContinue).Source; if (-not $uv) { $uv = Join-Path $HOME '.local\\bin\\uv.exe' }; & $uv tool install --upgrade mini-swe-agent",
+      "plan": "Installs mini-swe-agent from PyPI as a uv tool, installing Astral's uv into your user folder first if it is missing. No password needed.",
+      "requires": {
+        "unix": ["curl"]
+      },
+      "pathMarkers": ["/uv/tools/mini-swe-agent/"]
+    },
+    "installDirs": {
+      "windows": ["~/.local/bin"],
+      "unix": ["~/.local/bin"]
+    },
+    "latestVersion": {
+      "url": "https://pypi.org/pypi/mini-swe-agent/json",
+      "jsonField": "info.version"
+    }
   }
 ]
