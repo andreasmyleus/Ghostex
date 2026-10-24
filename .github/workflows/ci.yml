@@ -1,0 +1,41 @@
+name: CI
+
+# The release Vitest suite is not part of this gate. On current main,
+# `bun run release:test` fails with ENOENT for .dependencies/zmx/build.zig.zon
+# because the zmx submodule is not checked out. The native cargo xtask app
+# build stays in the release workflows.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: |
+          bun tooling/client-storage/check.mjs
+          bun x tsc --noEmit --pretty false
+          bun x tsc -p apps/desktop/tsconfig.json --noEmit --pretty false
+          bun run release:typecheck
+
+      - name: Build
+        run: |
+          bunx tailwindcss -i packages/core-ui/styles/shadcn.css -o packages/core-ui/styles/shadcn.generated.css --minify
+          bunx vite build --config apps/desktop/vite.config.ts
