@@ -140,7 +140,8 @@ jobs:
       - name: Build and upload TestFlight release
         env:
           GHOSTEX_IOS_ARCHIVE_ONLY: ${{ inputs.archive_only }}
-        run: tooling/release-mobile/ios-testflight.sh "${{ inputs.version }}"
+          INPUT_VERSION: ${{ inputs.version }}
+        run: tooling/release-mobile/ios-testflight.sh "${INPUT_VERSION}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ !inputs.archive_only }}
         with:

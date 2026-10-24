@@ -137,7 +137,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       # Component tags are published to a separate repository that
@@ -165,15 +165,21 @@ jobs:
       - name: Prepare native editor build tools for a standalone dispatch
         if: ${{ ! inputs.runtime_artifacts_ready }}
         shell: pwsh
-        run: tooling/release-gpui/prepare-windows-editor-tools.ps1 -Arch '${{ inputs.arch }}'
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: tooling/release-gpui/prepare-windows-editor-tools.ps1 -Arch "$env:INPUT_ARCH"
       - name: Resolve immutable code-server component identity
         id: code_server_identity
         shell: bash
-        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "linux-${{ inputs.arch }}" --github-output >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "linux-${INPUT_ARCH}" --github-output >> "$GITHUB_OUTPUT"
       - name: Resolve the native editor component artifact name
         id: code_server_native
         shell: bash
-        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "windows-native-${{ inputs.arch }}" --github-output >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "windows-native-${INPUT_ARCH}" --github-output >> "$GITHUB_OUTPUT"
       - name: Resolve dependency cache keys
         id: cache_keys
         shell: bash
@@ -196,7 +202,7 @@ jobs:
       # which inherit this step environment), and exports the Actions cache
       # endpoint/token that the GHA backend needs into GITHUB_ENV.
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Restore CEF distribution cache
         uses: actions/cache@v6
         id: cef_cache
@@ -212,7 +218,9 @@ jobs:
           restore-keys: zig-windows-${{ inputs.arch }}-
       - name: Install pinned Zig
         shell: pwsh
-        run: tooling/release-gpui/prepare-zig.ps1 -Arch "${{ inputs.arch }}"
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: tooling/release-gpui/prepare-zig.ps1 -Arch "$env:INPUT_ARCH"
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
@@ -285,8 +293,10 @@ jobs:
           GHOSTEX_WINDOWS_WSL_CODE_SERVER_ARCHIVE: ${{ github.workspace }}\build\runtime-artifacts\${{ inputs.arch }}\${{ steps.code_server_identity.outputs.archive_name }}
           GHOSTEX_WINDOWS_NATIVE_CODE_SERVER_ARCHIVE: ${{ inputs.runtime_artifacts_ready && format('{0}\build\runtime-artifacts\native-editor-{1}\{2}', github.workspace, inputs.arch, steps.code_server_native.outputs.archive_name) || '' }}
           GHOSTEX_WINDOWS_BUILD_SILENCE_SECONDS: '900'
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
-          & (Join-Path $env:GITHUB_WORKSPACE 'tooling/release-gpui/windows-build-watchdog.ps1') -Phase compile-app -Version '${{ inputs.version }}' -Arch '${{ inputs.arch }}'
+          & (Join-Path $env:GITHUB_WORKSPACE 'tooling/release-gpui/windows-build-watchdog.ps1') -Phase compile-app -Version "$env:INPUT_VERSION" -Arch "$env:INPUT_ARCH"
       # The runtime artifacts are only read by the packaging phase (WSL
       # gxserver staging + code-server component resealing), so they are
       # awaited here, after the compile, not before it.
@@ -295,10 +305,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           node tooling/release-gpui/await-run-artifacts.mjs \
-            --names "release-gxserver-linux-${{ inputs.arch }},${{ steps.code_server_identity.outputs.artifact_name }}" \
-            --producer-pattern '^(gxserver_${{ inputs.arch }}|code_server_${{ inputs.arch }}|reuse)' \
+            --names "release-gxserver-linux-${INPUT_ARCH},${{ steps.code_server_identity.outputs.artifact_name }}" \
+            --producer-pattern "^(gxserver_${INPUT_ARCH}|code_server_${INPUT_ARCH}|reuse)" \
             --timeout-minutes 45
       - uses: actions/download-artifact@v8
         if: ${{ inputs.runtime_artifacts_ready }}
@@ -315,6 +326,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           tooling/release-gpui/retry.sh 4 2 -- node tooling/release-gpui/publish-component.mjs \
             --reuse-published \
@@ -322,16 +334,18 @@ jobs:
             --require-sha256-sidecars \
             --component code-server \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "linux-${{ inputs.arch }}" \
-            --asset-dir "build/runtime-artifacts/${{ inputs.arch }}" \
+            --platform "linux-${INPUT_ARCH}" \
+            --asset-dir "build/runtime-artifacts/${INPUT_ARCH}" \
             --output build/runtime-artifacts/code-server-components.json
       - name: Validate the Source component archive
         shell: bash
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           node tooling/release-gpui/verify-code-server-archive.mjs \
-            --archive "build/runtime-artifacts/${{ inputs.arch }}/${{ steps.code_server_identity.outputs.archive_name }}" \
+            --archive "build/runtime-artifacts/${INPUT_ARCH}/${{ steps.code_server_identity.outputs.archive_name }}" \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "linux-${{ inputs.arch }}"
+            --platform "linux-${INPUT_ARCH}"
       # The native editor component is published by its own job and is only
       # read by the packaging phase, so it is awaited here, after the compile.
       # A cold editor build takes about 28 minutes on x64 and 50 on ARM64 after
@@ -343,11 +357,13 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
+          INPUT_ARCH_TIMEOUT_MINUTES: ${{ inputs.arch == 'arm64' && 90 || 60 }}
         run: |
           node tooling/release-gpui/await-run-artifacts.mjs \
             --names "${{ steps.code_server_native.outputs.artifact_name }}" \
-            --producer-pattern '^(code_server_windows_${{ inputs.arch }})' \
-            --timeout-minutes ${{ inputs.arch == 'arm64' && 90 || 60 }}
+            --producer-pattern "^(code_server_windows_${INPUT_ARCH})" \
+            --timeout-minutes ${INPUT_ARCH_TIMEOUT_MINUTES}
       - uses: actions/download-artifact@v8
         if: ${{ inputs.runtime_artifacts_ready }}
         with:
@@ -356,11 +372,13 @@ jobs:
       - name: Validate the native editor component archive
         if: ${{ inputs.runtime_artifacts_ready }}
         shell: bash
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           node tooling/release-gpui/verify-windows-native-code-server-archive.mjs \
-            --archive "build/runtime-artifacts/native-editor-${{ inputs.arch }}/${{ steps.code_server_native.outputs.archive_name }}" \
+            --archive "build/runtime-artifacts/native-editor-${INPUT_ARCH}/${{ steps.code_server_native.outputs.archive_name }}" \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "windows-native-${{ inputs.arch }}"
+            --platform "windows-native-${INPUT_ARCH}"
       # The `runtime` job of this workflow compiles gxserver, ghostex, wmx and
       # the prompt editor on a second runner of the same label while this job
       # compiles the desktop app; it uploads them at their repo paths, so the
@@ -371,10 +389,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           node tooling/release-gpui/await-run-artifacts.mjs \
-            --names "release-windows-native-runtime-${{ inputs.arch }}" \
-            --producer-pattern '(^|/ )native runtime \(${{ inputs.arch }}\)$' \
+            --names "release-windows-native-runtime-${INPUT_ARCH}" \
+            --producer-pattern "(^|/ )native runtime \(${INPUT_ARCH}\)$" \
             --timeout-minutes 60
       - uses: actions/download-artifact@v8
         with:
@@ -412,8 +431,10 @@ jobs:
           GHOSTEX_WINDOWS_WSL_CODE_SERVER_ARCHIVE: ${{ github.workspace }}\build\runtime-artifacts\${{ inputs.arch }}\${{ steps.code_server_identity.outputs.archive_name }}
           GHOSTEX_WINDOWS_NATIVE_CODE_SERVER_ARCHIVE: ${{ inputs.runtime_artifacts_ready && format('{0}\build\runtime-artifacts\native-editor-{1}\{2}', github.workspace, inputs.arch, steps.code_server_native.outputs.archive_name) || '' }}
           GHOSTEX_WINDOWS_BUILD_SILENCE_SECONDS: '900'
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
-          & (Join-Path $env:GITHUB_WORKSPACE 'tooling/release-gpui/windows-build-watchdog.ps1') -Phase package -Version '${{ inputs.version }}' -Arch '${{ inputs.arch }}'
+          & (Join-Path $env:GITHUB_WORKSPACE 'tooling/release-gpui/windows-build-watchdog.ps1') -Phase package -Version "$env:INPUT_VERSION" -Arch "$env:INPUT_ARCH"
       - name: Write release provenance
         if: ${{ inputs.plan != '' }}
         shell: bash
@@ -492,7 +513,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       # Same Node.js as jobs.build, which pins it from the code-server checkout.
@@ -515,12 +536,14 @@ jobs:
           key: cargo-reg-windows-${{ inputs.arch }}-runtime-${{ hashFiles('server/Cargo.lock', 'apps/editor/desktop/Cargo.lock') }}
           restore-keys: cargo-reg-windows-${{ inputs.arch }}-runtime-
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       # tooling/prepare-windows-build.ps1 requires the pinned Zig for every
       # Windows build entry, even though this half compiles no Zig code.
       - name: Install pinned Zig
         shell: pwsh
-        run: tooling/release-gpui/prepare-zig.ps1 -Arch "${{ inputs.arch }}"
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: tooling/release-gpui/prepare-zig.ps1 -Arch "$env:INPUT_ARCH"
       - name: Install JavaScript dependencies
         shell: bash
         run: tooling/release-gpui/retry.sh 3 5 -- bun install --frozen-lockfile
@@ -530,13 +553,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           GHOSTEX_WINDOWS_BUILD_SILENCE_SECONDS: '900'
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
-          & (Join-Path $env:GITHUB_WORKSPACE 'tooling/release-gpui/windows-build-watchdog.ps1') -Phase compile-runtime -Version '${{ inputs.version }}' -Arch '${{ inputs.arch }}'
+          & (Join-Path $env:GITHUB_WORKSPACE 'tooling/release-gpui/windows-build-watchdog.ps1') -Phase compile-runtime -Version "$env:INPUT_VERSION" -Arch "$env:INPUT_ARCH"
       - name: Record the native runtime checksums
         shell: bash
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           {
-            echo "### Native runtime (${{ inputs.arch }})"
+            echo "### Native runtime (${INPUT_ARCH})"
             echo '```'
             sha256sum server/target/release/gxserver.exe server/target/release/ghostex.exe \
               .dependencies/wmx/target/release/wmx.exe apps/editor/desktop/target/release/ghostex-editor.exe

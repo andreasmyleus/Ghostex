@@ -131,7 +131,7 @@ jobs:
           path: apps/desktop/target
           key: cargo-check-windows-${{ hashFiles('apps/desktop/Cargo.lock') }}-${{ steps.cache_keys.outputs.cef }}
           restore-keys: cargo-check-windows-${{ hashFiles('apps/desktop/Cargo.lock') }}-
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       - name: Install pinned Zig
@@ -165,6 +165,8 @@ jobs:
       - name: Record job observability
         if: ${{ always() }}
         shell: bash
+        env:
+          INPUT_ARM64_TARGET: ${{ inputs.arm64_target }}
         run: |
           {
             echo "### Windows compile validation"
@@ -173,5 +175,5 @@ jobs:
             echo "- CEF distribution cache: ${{ steps.cef_cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
             echo "- Zig package cache: ${{ steps.zig_cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
             echo "- cargo check target cache: ${{ steps.target_cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
-            echo "- ARM64 target checked: ${{ inputs.arm64_target }}"
+            echo "- ARM64 target checked: ${INPUT_ARM64_TARGET}"
           } >> "$GITHUB_STEP_SUMMARY"

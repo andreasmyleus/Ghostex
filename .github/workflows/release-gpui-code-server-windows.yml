@@ -82,7 +82,9 @@ jobs:
       - name: Resolve immutable code-server component identity
         id: code_server_identity
         shell: bash
-        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "windows-native-${{ inputs.arch }}" --github-output >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "windows-native-${INPUT_ARCH}" --github-output >> "$GITHUB_OUTPUT"
       - name: Probe the published component tag
         id: probe
         shell: bash
@@ -149,6 +151,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           tooling/release-gpui/retry.sh 4 2 -- node tooling/release-gpui/publish-component.mjs \
             --reuse-published \
@@ -156,19 +159,21 @@ jobs:
             --require-sha256-sidecars \
             --component code-server \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "windows-native-${{ inputs.arch }}" \
+            --platform "windows-native-${INPUT_ARCH}" \
             --asset-dir "$OUTPUT_DIR" \
             --output build/on-demand-components/components.json
           node tooling/release-gpui/verify-windows-native-code-server-archive.mjs \
             --archive "$OUTPUT_DIR/${{ steps.code_server_identity.outputs.archive_name }}" \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "windows-native-${{ inputs.arch }}"
+            --platform "windows-native-${INPUT_ARCH}"
       # The toolchain step also restores the pinned VS Code sources, so it runs
       # before setup-node: the npm cache key below hashes both lock files.
       - name: Prepare native editor build tools
         if: ${{ steps.probe.outputs.action == 'build' }}
         shell: pwsh
-        run: tooling/release-gpui/prepare-windows-editor-tools.ps1 -Arch '${{ inputs.arch }}'
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: tooling/release-gpui/prepare-windows-editor-tools.ps1 -Arch "$env:INPUT_ARCH"
       # The editor build needs native Windows Node at the version pinned by
       # code-server, for the requested architecture; the script refuses any
       # other Node.
@@ -199,16 +204,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COMPONENTS_GITHUB_TOKEN: ${{ secrets.COMPONENTS_GITHUB_TOKEN }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           ARCHIVE="$OUTPUT_DIR/${{ steps.code_server_identity.outputs.archive_name }}"
           [[ -f "$ARCHIVE" && -f "$ARCHIVE.sha256" ]]
           node tooling/release-gpui/verify-windows-native-code-server-archive.mjs \
             --archive "$ARCHIVE" \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "windows-native-${{ inputs.arch }}"
+            --platform "windows-native-${INPUT_ARCH}"
           tooling/release-gpui/retry.sh 4 2 -- node tooling/release-gpui/publish-component.mjs \
             --require-sha256-sidecars \
-            --require-platforms "windows-native-${{ inputs.arch }}" \
+            --require-platforms "windows-native-${INPUT_ARCH}" \
             --component code-server \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
             --asset-dir "$OUTPUT_DIR" \
@@ -221,9 +227,11 @@ jobs:
       - name: Record job observability
         if: ${{ always() }}
         shell: bash
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           {
-            echo "### code-server windows-native-${{ inputs.arch }}: ${{ steps.probe.outputs.action }}"
+            echo "### code-server windows-native-${INPUT_ARCH}: ${{ steps.probe.outputs.action }}"
             echo ""
             echo "- Component version \`${{ steps.code_server_identity.outputs.component_version }}\`"
             echo "- Download tag \`${{ steps.code_server_identity.outputs.download_tag }}\`"

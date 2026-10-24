@@ -89,7 +89,7 @@ jobs:
             ~/.cache/zig
           key: zig-gxserver-${{ runner.os }}-${{ inputs.arch }}-${{ steps.cache_keys.outputs.zig }}
           restore-keys: zig-gxserver-${{ runner.os }}-${{ inputs.arch }}-
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       # sccache with the GitHub Actions cache backend. The registry cache above
@@ -105,7 +105,7 @@ jobs:
       # every release build workflow uses this same tag.
       - name: Install sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Install native build dependencies
         run: |
           tooling/release-gpui/retry.sh 3 5 -- sudo apt-get update
@@ -135,19 +135,22 @@ jobs:
       - name: Pre-fetch Zig package dependencies
         run: tooling/release-gpui/fetch-zig-deps.sh zmx
       - name: Build remote runtime
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          tooling/build-remote-gxserver-linux-release.sh --arch "${{ inputs.arch }}"
-          OUTPUT="build/release-gpui/${{ inputs.version }}/gxserver-linux-${{ inputs.arch }}"
+          tooling/build-remote-gxserver-linux-release.sh --arch "${INPUT_ARCH}"
+          OUTPUT="build/release-gpui/${INPUT_VERSION}/gxserver-linux-${INPUT_ARCH}"
           mkdir -p "$OUTPUT"
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
-            -C "build/remote-gxserver-linux/${{ inputs.arch }}/package" \
-            -czf "$OUTPUT/gxserver-linux-${{ inputs.arch }}.tar.gz" .
+            -C "build/remote-gxserver-linux/${INPUT_ARCH}/package" \
+            -czf "$OUTPUT/gxserver-linux-${INPUT_ARCH}.tar.gz" .
           source tooling/release-gpui/common.sh
           release_gpui_write_manifest \
             "$OUTPUT" \
-            "gxserver-linux-${{ inputs.arch }}" \
-            "${{ inputs.version }}" \
-            "$OUTPUT/gxserver-linux-${{ inputs.arch }}.tar.gz"
+            "gxserver-linux-${INPUT_ARCH}" \
+            "${INPUT_VERSION}" \
+            "$OUTPUT/gxserver-linux-${INPUT_ARCH}.tar.gz"
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
         with:

@@ -74,7 +74,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       # sccache with the GitHub Actions cache backend. The registry cache below
@@ -99,7 +99,7 @@ jobs:
           fi
       - name: Install sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Validate the requested package formats
         env:
           REQUESTED_PACKAGES: ${{ inputs.packages }}
@@ -234,18 +234,20 @@ jobs:
           COMPONENTS_GITHUB_TOKEN: ${{ secrets.COMPONENTS_GITHUB_TOKEN }}
           GHOSTEX_CODE_SERVER_COMPONENT_VERSION: ${{ steps.code_server_identity.outputs.component_version }}
           GHOSTEX_ON_DEMAND_CODE_SERVER_LINUX_X64_ARCHIVE: ${{ github.workspace }}/build/runtime-artifacts/code-server-x64/${{ steps.code_server_identity.outputs.archive_name }}
-        run: tooling/release-gpui/linux-stage.sh "${{ inputs.version }}" "$GHOSTEX_LINUX_PACKAGE_ROOT"
+          INPUT_VERSION: ${{ inputs.version }}
+        run: tooling/release-gpui/linux-stage.sh "${INPUT_VERSION}" "$GHOSTEX_LINUX_PACKAGE_ROOT"
       # RPM and the portable tarball first: both archive the whole staged root,
       # and linux-deb.sh creates DEBIAN/ inside it.
       - name: Build the RPM package
         if: ${{ contains(inputs.packages, 'rpm') }}
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          tooling/release-gpui/linux-rpm.sh "${{ inputs.version }}"
+          tooling/release-gpui/linux-rpm.sh "${INPUT_VERSION}"
           # Risk R8: the shared package root is reused by the DEB step, so prove
           # the RPM payload never contains Debian control metadata.
-          RPM_PATH="$(realpath "build/release-gpui/${{ inputs.version }}/linux-rpm-x64/ghostex-${{ inputs.version }}-1.x86_64.rpm")"
+          RPM_PATH="$(realpath "build/release-gpui/${INPUT_VERSION}/linux-rpm-x64/ghostex-${INPUT_VERSION}-1.x86_64.rpm")"
           if rpm -qpl "$RPM_PATH" | grep -q '^/DEBIAN'; then
             echo "RPM payload leaked DEBIAN/ control metadata" >&2
             exit 1
@@ -265,12 +267,13 @@ jobs:
         if: ${{ contains(inputs.packages, 'tar') }}
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          tooling/release-gpui/linux-tar.sh "${{ inputs.version }}"
+          tooling/release-gpui/linux-tar.sh "${INPUT_VERSION}"
           # Prove the published archive really installs onto a filesystem root
           # with its prefix intact: /usr/bin/ghostex wraps hardcoded
           # /opt/ghostex paths, and gx must arrive as a symlink, not a copy.
-          TAR_PATH="$(realpath "build/release-gpui/${{ inputs.version }}/linux-tar-x64/ghostex-${{ inputs.version }}-linux-x64.tar.zst")"
+          TAR_PATH="$(realpath "build/release-gpui/${INPUT_VERSION}/linux-tar-x64/ghostex-${INPUT_VERSION}-linux-x64.tar.zst")"
           TAR_TEST_ROOT="$(mktemp -d)"
           trap 'sudo rm -rf "$TAR_TEST_ROOT"' EXIT
           zstd -dc "$TAR_PATH" | sudo tar -xpf - -C "$TAR_TEST_ROOT"
@@ -282,19 +285,20 @@ jobs:
         if: ${{ contains(inputs.packages, 'deb') }}
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          tooling/release-gpui/linux-deb.sh "${{ inputs.version }}"
+          tooling/release-gpui/linux-deb.sh "${INPUT_VERSION}"
           # Resolve the built package against this Ubuntu runner's real package
           # database, then install the same downloaded DEB again through dpkg.
           # This catches renamed distro dependencies as well as package-owned
           # file replacement regressions before publication.
-          DEB_PATH="$(realpath "build/release-gpui/${{ inputs.version }}/linux-deb-x64/ghostex_${{ inputs.version }}_amd64.deb")"
+          DEB_PATH="$(realpath "build/release-gpui/${INPUT_VERSION}/linux-deb-x64/ghostex_${INPUT_VERSION}_amd64.deb")"
           sudo apt-get install -y --no-install-recommends "$DEB_PATH"
           sudo dpkg --install "$DEB_PATH"
           test -x /opt/ghostex/Ghostex
           test -x /usr/bin/ghostex
           test -L /usr/bin/gx
-          test "$(dpkg-query --showformat='${Version}' --show ghostex)" = "${{ inputs.version }}"
+          test "$(dpkg-query --showformat='${Version}' --show ghostex)" = "${INPUT_VERSION}"
       - name: Attest the RPM package
         if: ${{ contains(inputs.packages, 'rpm') }}
         uses: actions/attest-build-provenance@v4
@@ -315,9 +319,11 @@ jobs:
         run: sccache --show-stats
       - name: Record job observability
         if: ${{ always() }}
+        env:
+          INPUT_PACKAGES: ${{ inputs.packages }}
         run: |
           {
-            echo "- Packages produced: ${{ inputs.packages }} (single compile)"
+            echo "- Packages produced: ${INPUT_PACKAGES} (single compile)"
             echo "- Cargo registry cache: ${{ steps.cargo_cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
             echo "- CEF distribution cache: ${{ steps.cef_cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
             echo "- Zig package cache: ${{ steps.zig_cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"

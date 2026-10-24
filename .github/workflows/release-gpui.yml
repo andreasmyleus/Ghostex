@@ -205,7 +205,8 @@ jobs:
           WINDOWS_CODE_SIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODE_SIGN_PFX_BASE64 }}
           WINDOWS_CODE_SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGN_PFX_PASSWORD }}
           COMPONENTS_GITHUB_TOKEN: ${{ secrets.COMPONENTS_GITHUB_TOKEN }}
-        run: node tooling/release-gpui/preflight.mjs "${{ inputs.version }}"
+          INPUT_VERSION: ${{ inputs.version }}
+        run: node tooling/release-gpui/preflight.mjs "${INPUT_VERSION}"
       - name: Verify clean GPUI release reference contract
         if: ${{ inputs.macos || inputs.linux_deb || inputs.linux_rpm || inputs.linux_tar || inputs.windows_x64 || inputs.windows_arm64 }}
         run: node tooling/release-gpui/verify-reference-contract.mjs --clean
@@ -250,7 +251,9 @@ jobs:
             --emit-step-summary \
             "${ARGS[@]}"
       - name: Validate the plan against the requested scope
-        run: node tooling/release-gpui/preflight.mjs "${{ inputs.version }}" --only-plan --plan build/release-gpui/release-plan.json
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: node tooling/release-gpui/preflight.mjs "${INPUT_VERSION}" --only-plan --plan build/release-gpui/release-plan.json
       - uses: actions/upload-artifact@v7
         with:
           name: release-plan
@@ -273,7 +276,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       # release:test reads zmx's build.zig.zon for the Zig pin assertion.
