@@ -246,6 +246,11 @@ fn verify_archive_sha256(path: &Path, expected: &str) -> ExtensionResult<()> {
     Ok(())
 }
 
+fn zip_entry_name(name: zip::result::ZipResult<std::borrow::Cow<'_, str>>) -> String {
+    name.map(|value| value.into_owned())
+        .unwrap_or_else(|error| error.to_string())
+}
+
 fn unpack_archive(archive_path: &Path, destination: &Path) -> ExtensionResult<()> {
     fs::create_dir(destination).map_err(|error| {
         ExtensionError::internal(format!(
@@ -273,13 +278,13 @@ fn unpack_archive(archive_path: &Path, destination: &Path) -> ExtensionResult<()
         let relative_path = entry.enclosed_name().ok_or_else(|| {
             ExtensionError::bad_request(format!(
                 "Extension ZIP contains an unsafe path: {}",
-                entry.name()
+                zip_entry_name(entry.name())
             ))
         })?;
         if relative_path.as_os_str().is_empty() || !extracted_paths.insert(relative_path.clone()) {
             return Err(ExtensionError::bad_request(format!(
                 "Extension ZIP contains an empty or duplicate path: {}",
-                entry.name()
+                zip_entry_name(entry.name())
             )));
         }
         if entry
@@ -288,7 +293,7 @@ fn unpack_archive(archive_path: &Path, destination: &Path) -> ExtensionResult<()
         {
             return Err(ExtensionError::bad_request(format!(
                 "Extension ZIP may not contain symlinks: {}",
-                entry.name()
+                zip_entry_name(entry.name())
             )));
         }
         total_size = total_size.saturating_add(entry.size());

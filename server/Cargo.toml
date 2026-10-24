@@ -52,7 +52,7 @@ tower = "0.5"
 url = "2"
 vt100 = "0.16"
 uuid = { version = "1", features = ["v4"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 jsonc-parser = { version = "0.33.2", features = ["cst", "serde"] }
 
 [target.'cfg(windows)'.dependencies]
