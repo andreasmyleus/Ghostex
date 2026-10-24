@@ -34,7 +34,8 @@ jobs:
           ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
           GHOSTEX_MOBILE_DEPLOY_KEY: ${{ secrets.GHOSTEX_MOBILE_DEPLOY_KEY }}
-        run: node tooling/release-gpui/preflight.mjs "${{ inputs.version }}"
+          INPUT_VERSION: ${{ inputs.version }}
+        run: node tooling/release-gpui/preflight.mjs "${INPUT_VERSION}"
 
   build:
     needs: validate
@@ -58,7 +59,8 @@ jobs:
       - name: Replace only the released React Native APK
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: >-
           node tooling/release-gpui/replace-android.mjs
-          "${{ inputs.version }}"
+          "${INPUT_VERSION}"
           build/release-gpui/android-replacement

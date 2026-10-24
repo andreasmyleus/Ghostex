@@ -125,21 +125,34 @@ jobs:
         id: scope
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_MACOS: ${{ inputs.macos }}
+          INPUT_LINUX_DEB: ${{ inputs.linux_deb }}
+          INPUT_LINUX_RPM: ${{ inputs.linux_rpm }}
+          INPUT_LINUX_TAR: ${{ inputs.linux_tar }}
+          INPUT_WINDOWS_X64: ${{ inputs.windows_x64 }}
+          INPUT_WINDOWS_ARM64: ${{ inputs.windows_arm64 }}
+          INPUT_ANDROID: ${{ inputs.android }}
+          INPUT_GXSERVER_LINUX_X64: ${{ inputs.gxserver_linux_x64 }}
+          INPUT_GXSERVER_LINUX_ARM64: ${{ inputs.gxserver_linux_arm64 }}
+          INPUT_GXSERVER_WSL_WINDOWS_X64: ${{ inputs.gxserver_wsl_windows_x64 }}
+          INPUT_GXSERVER_WSL_WINDOWS_ARM64: ${{ inputs.gxserver_wsl_windows_arm64 }}
+          INPUT_UPDATE_SPARKLE: ${{ inputs.update_sparkle }}
         run: >-
           node tooling/release-gpui/resolve-amend-scope.mjs
-          --version "${{ inputs.version }}"
-          --macos "${{ inputs.macos }}"
-          --linux-deb "${{ inputs.linux_deb }}"
-          --linux-rpm "${{ inputs.linux_rpm }}"
-          --linux-tar "${{ inputs.linux_tar }}"
-          --windows-x64 "${{ inputs.windows_x64 }}"
-          --windows-arm64 "${{ inputs.windows_arm64 }}"
-          --android "${{ inputs.android }}"
-          --gxserver-linux-x64 "${{ inputs.gxserver_linux_x64 }}"
-          --gxserver-linux-arm64 "${{ inputs.gxserver_linux_arm64 }}"
-          --gxserver-wsl-windows-x64 "${{ inputs.gxserver_wsl_windows_x64 }}"
-          --gxserver-wsl-windows-arm64 "${{ inputs.gxserver_wsl_windows_arm64 }}"
-          --update-sparkle "${{ inputs.update_sparkle }}"
+          --version "${INPUT_VERSION}"
+          --macos "${INPUT_MACOS}"
+          --linux-deb "${INPUT_LINUX_DEB}"
+          --linux-rpm "${INPUT_LINUX_RPM}"
+          --linux-tar "${INPUT_LINUX_TAR}"
+          --windows-x64 "${INPUT_WINDOWS_X64}"
+          --windows-arm64 "${INPUT_WINDOWS_ARM64}"
+          --android "${INPUT_ANDROID}"
+          --gxserver-linux-x64 "${INPUT_GXSERVER_LINUX_X64}"
+          --gxserver-linux-arm64 "${INPUT_GXSERVER_LINUX_ARM64}"
+          --gxserver-wsl-windows-x64 "${INPUT_GXSERVER_WSL_WINDOWS_X64}"
+          --gxserver-wsl-windows-arm64 "${INPUT_GXSERVER_WSL_WINDOWS_ARM64}"
+          --update-sparkle "${INPUT_UPDATE_SPARKLE}"
       - name: Validate immutable release inputs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -175,7 +188,8 @@ jobs:
           GHOSTEX_MOBILE_DEPLOY_KEY: ${{ secrets.GHOSTEX_MOBILE_DEPLOY_KEY }}
           WINDOWS_CODE_SIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODE_SIGN_PFX_BASE64 }}
           WINDOWS_CODE_SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGN_PFX_PASSWORD }}
-        run: node tooling/release-gpui/preflight.mjs "${{ inputs.version }}"
+          INPUT_VERSION: ${{ inputs.version }}
+        run: node tooling/release-gpui/preflight.mjs "${INPUT_VERSION}"
       - name: Verify clean GPUI release reference contract
         if: ${{ steps.scope.outputs.GHOSTEX_RELEASE_MACOS == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_LINUX_DEB == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_LINUX_RPM == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_LINUX_TAR == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_WINDOWS_X64 == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_WINDOWS_ARM64 == 'true' }}
         run: node tooling/release-gpui/verify-reference-contract.mjs --clean
@@ -187,7 +201,7 @@ jobs:
       - name: Check the Ghostty Zig toolchain pin against the vendored source
         if: ${{ steps.scope.outputs.GHOSTEX_RELEASE_MACOS == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_LINUX_DEB == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_LINUX_RPM == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_LINUX_TAR == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_WINDOWS_X64 == 'true' || steps.scope.outputs.GHOSTEX_RELEASE_WINDOWS_ARM64 == 'true' }}
         run: node tooling/release-gpui/check-ghostty-zig-pin.mjs
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       - name: Restore release-test prerequisites
@@ -245,7 +259,8 @@ jobs:
           GHOSTEX_RELEASE_GXSERVER_WSL_WINDOWS_ARM64: ${{ steps.scope.outputs.GHOSTEX_RELEASE_GXSERVER_WSL_WINDOWS_ARM64 }}
           GHOSTEX_RELEASE_UPDATE_SPARKLE: ${{ steps.scope.outputs.update_sparkle }}
           GHOSTEX_RELEASE_PRERELEASE: 'false'
-        run: node tooling/release-gpui/preflight.mjs "${{ inputs.version }}" --only-plan --plan build/release-gpui/release-plan.json
+          INPUT_VERSION: ${{ inputs.version }}
+        run: node tooling/release-gpui/preflight.mjs "${INPUT_VERSION}" --only-plan --plan build/release-gpui/release-plan.json
       - uses: actions/upload-artifact@v7
         with:
           name: release-plan

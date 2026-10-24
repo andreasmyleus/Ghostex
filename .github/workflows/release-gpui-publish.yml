@@ -161,12 +161,14 @@ jobs:
           GHOSTEX_RELEASE_WINDOWS_SIGNED: ${{ inputs.windows_signed && '1' || '0' }}
           GHOSTEX_RELEASE_AMEND_PRODUCTS: ${{ inputs.amend_products }}
           GHOSTEX_RELEASE_STAGE: ${{ inputs.stage }}
+          INPUT_PUBLISH_SCRIPT: ${{ inputs.stage != '' && 'publish-staged.mjs' || (inputs.amend && 'amend-existing.mjs' || 'assemble.mjs') }}
+          INPUT_VERSION: ${{ inputs.version }}
         # A stage runs publish-staged.mjs, which creates the release when this
         # stage is first and amends it otherwise. The classic paths are
         # unchanged: the whole-scope assemble, and the standalone amend.
         run: >-
-          node tooling/release-gpui/${{ inputs.stage != '' && 'publish-staged.mjs' || (inputs.amend && 'amend-existing.mjs' || 'assemble.mjs') }}
-          "${{ inputs.version }}"
+          node tooling/release-gpui/${INPUT_PUBLISH_SCRIPT}
+          "${INPUT_VERSION}"
           build/release-gpui/workflow-artifacts
       # The vendor-maintained `ghostex-bin` AUR package tracks the portable
       # Linux tarball of the release that was just published. Its template,

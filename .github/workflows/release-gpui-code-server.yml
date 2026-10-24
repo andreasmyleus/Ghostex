@@ -70,14 +70,16 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
       - name: Restore the code-server identity input
         run: git submodule update --init --depth=1 -- .dependencies/code-server
       - name: Resolve immutable code-server component identity
         id: code_server_identity
-        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "linux-${{ inputs.arch }}" --github-output >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: node tooling/release-gpui/code-server-component-identity.mjs --root .dependencies/code-server --platform "linux-${INPUT_ARCH}" --github-output >> "$GITHUB_OUTPUT"
       - name: Probe the published component tag
         id: probe
         env:
@@ -145,6 +147,7 @@ jobs:
         if: ${{ steps.probe.outputs.action == 'reuse' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           tooling/release-gpui/retry.sh 4 2 -- node tooling/release-gpui/publish-component.mjs \
             --reuse-published \
@@ -152,13 +155,13 @@ jobs:
             --require-sha256-sidecars \
             --component code-server \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "linux-${{ inputs.arch }}" \
+            --platform "linux-${INPUT_ARCH}" \
             --asset-dir "$OUTPUT_DIR" \
             --output build/on-demand-components/components.json
           node tooling/release-gpui/verify-code-server-archive.mjs \
             --archive "$OUTPUT_DIR/${{ steps.code_server_identity.outputs.archive_name }}" \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "linux-${{ inputs.arch }}"
+            --platform "linux-${INPUT_ARCH}"
       - name: Restore the code-server build tree
         if: ${{ steps.probe.outputs.action == 'build' }}
         run: git -C .dependencies/code-server submodule update --init --depth=1 -- lib/vscode
@@ -183,20 +186,23 @@ jobs:
             .dependencies/code-server/lib/vscode/package-lock.json
       - name: Build the code-server runtime
         if: ${{ steps.probe.outputs.action == 'build' }}
+        env:
+          INPUT_ARCH_NODE_ARCH: ${{ inputs.arch == 'arm64' && 'arm64' || 'amd64' }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           tooling/release-gpui/retry.sh 3 5 -- npm --prefix .dependencies/code-server ci
           (
             cd .dependencies/code-server
             npm run build
             OS=linux \
-              ARCH="${{ inputs.arch == 'arm64' && 'arm64' || 'amd64' }}" \
-              VSCODE_TARGET="linux-${{ inputs.arch }}" \
+              ARCH="${INPUT_ARCH_NODE_ARCH}" \
+              VSCODE_TARGET="linux-${INPUT_ARCH}" \
               VERSION="$(node -p 'require("./package.json").version')" \
               npm run build:vscode
             KEEP_MODULES=1 \
               OS=linux \
-              ARCH="${{ inputs.arch == 'arm64' && 'arm64' || 'amd64' }}" \
-              VSCODE_TARGET="linux-${{ inputs.arch }}" \
+              ARCH="${INPUT_ARCH_NODE_ARCH}" \
+              VSCODE_TARGET="linux-${INPUT_ARCH}" \
               npm run release
           )
           require_file() {
@@ -225,6 +231,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COMPONENTS_GITHUB_TOKEN: ${{ secrets.COMPONENTS_GITHUB_TOKEN }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           ARCHIVE="$OUTPUT_DIR/${{ steps.code_server_identity.outputs.archive_name }}"
           mkdir -p "$OUTPUT_DIR"
@@ -236,7 +243,7 @@ jobs:
           node tooling/release-gpui/verify-code-server-archive.mjs \
             --archive "$ARCHIVE" \
             --version '${{ steps.code_server_identity.outputs.component_version }}' \
-            --platform "linux-${{ inputs.arch }}"
+            --platform "linux-${INPUT_ARCH}"
           tooling/release-gpui/retry.sh 4 2 -- node tooling/release-gpui/publish-component.mjs \
             --require-sha256-sidecars \
             --component code-server \
@@ -250,9 +257,11 @@ jobs:
           subject-path: ${{ env.OUTPUT_DIR }}/${{ steps.code_server_identity.outputs.archive_name }}
       - name: Record job observability
         if: ${{ always() }}
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           {
-            echo "### code-server linux-${{ inputs.arch }} — ${{ steps.probe.outputs.action }}"
+            echo "### code-server linux-${INPUT_ARCH} — ${{ steps.probe.outputs.action }}"
             echo ""
             echo "- Component version \`${{ steps.code_server_identity.outputs.component_version }}\`"
             echo "- Download tag \`${{ steps.code_server_identity.outputs.download_tag }}\`"

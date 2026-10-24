@@ -64,10 +64,11 @@ jobs:
       - name: Materialize the verified reuse
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_PRODUCT: ${{ inputs.product }}
         run: |
           mkdir -p "$OUTPUT_DIR"
           tooling/release-gpui/retry.sh 4 2 -- node tooling/release-gpui/materialize-reuse.mjs \
-            --product "${{ inputs.product }}" \
+            --product "${INPUT_PRODUCT}" \
             --dir "$OUTPUT_DIR" \
             --source-sha "${{ github.sha }}"
       - uses: actions/upload-artifact@v7
