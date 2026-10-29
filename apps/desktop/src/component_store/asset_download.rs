@@ -139,7 +139,7 @@ pub(crate) fn download(
         */
         let mut last_error = None;
         for attempt in 1..=3 {
-            let result = velopack::download::download_url_to_file(url, destination, |percent| {
+            let result = velopack::download::download_url_to_file(url, destination, None, |percent| {
                 if expected_size > 0 {
                     let downloaded =
                         expected_size.saturating_mul(percent.clamp(0, 100) as u64) / 100;
